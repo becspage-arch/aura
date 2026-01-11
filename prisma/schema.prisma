@@ -46,7 +46,7 @@ model UserProfile {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  clerkUserId String?  @unique
+  clerkUserId String @unique
   email       String?  @unique
   displayName String?
 
