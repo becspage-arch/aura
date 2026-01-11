@@ -1,14 +1,32 @@
 "use client";
 
+import DashboardView from "@/components/dashboard/DashboardView";
+
+export default function DashboardPage() {
+  return <DashboardView clerkUserId="dev" />;
+}
+
 import { useEffect, useMemo, useState } from "react";
 import { subscribeUserChannel } from "@/lib/ably/client";
 import { useDashboard } from "@/components/dashboard/DashboardStore";
 import type { AuraRealtimeEvent } from "@/lib/realtime/events";
 import Controls from "@/components/dashboard/Controls";
 
-export default function DashboardView({ clerkUserId }: { clerkUserId: string }) {
+export default function DashboardView({ clerkUserId }: { clerkUserId?: string }) {
   const { state, dispatch } = useDashboard();
-  const channelName = useMemo(() => `user:${clerkUserId}`, [clerkUserId]);
+
+  const channelName = useMemo(
+    () => (clerkUserId ? `user:${clerkUserId}` : null),
+    [clerkUserId]
+  );
+
+  useEffect(() => {
+    if (!channelName) return;
+    // subscribe logic...
+  }, [channelName, dispatch]);
+
+  // ...
+}
 
   // Optional: filter by selected account
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(

@@ -1,6 +1,6 @@
 "use client";
 
-import { DashboardProvider } from "@/app/components/dashboard/DashboardStore";
+import { DashboardProvider } from "@/components/dashboard/DashboardStore";
 
 export default function DashboardLayout({
   children,
