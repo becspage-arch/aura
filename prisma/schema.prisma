@@ -1,0 +1,195 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// This is your Prisma schema file
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CandleTimeframe {
+  S15
+  M3
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  STOP
+  STOP_LIMIT
+}
+
+enum OrderStatus {
+  NEW
+  PLACED
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
+  REJECTED
+}
+
+model UserProfile {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // If you use auth later, you may map this to auth provider user id
+  email         String?  @unique
+  displayName   String?
+
+  brokerAccounts BrokerAccount[]
+  auditLogs      AuditLog[]
+  userState      UserTradingState?
+}
+
+model BrokerAccount {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userId        String
+  user          UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  brokerName    String   // e.g. "OANDA", "Tradovate", etc.
+  accountLabel  String?  // user-friendly name
+  externalId    String?  // broker account id; unique per broker if you have it
+
+  orders        Order[]
+  fills         Fill[]
+
+  @@index([userId])
+  @@index([brokerName])
+  @@unique([brokerName, externalId])
+}
+
+model Order {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  brokerAccountId String
+  brokerAccount   BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+
+  externalId     String?  // broker order id
+  symbol         String   // e.g. "MGC", "XAUUSD"
+  side           OrderSide
+  type           OrderType
+  status         OrderStatus @default(NEW)
+
+  qty            Decimal
+  price          Decimal?
+  stopPrice      Decimal?
+  filledQty      Decimal   @default(0)
+  avgFillPrice   Decimal?
+
+  fills          Fill[]
+
+  @@index([brokerAccountId, createdAt])
+  @@index([symbol, createdAt])
+  @@unique([brokerAccountId, externalId])
+}
+
+model Fill {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+
+  brokerAccountId String
+  brokerAccount   BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+
+  orderId        String?
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  externalId     String?  // broker fill id
+  symbol         String
+  side           OrderSide
+  qty            Decimal
+  price          Decimal
+
+  @@index([brokerAccountId, createdAt])
+  @@index([symbol, createdAt])
+  @@unique([brokerAccountId, externalId])
+}
+
+model Candle {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+
+  symbol     String
+  timeframe  CandleTimeframe
+  ts         DateTime  // candle open time in UTC
+
+  open       Decimal
+  high       Decimal
+  low        Decimal
+  close      Decimal
+  volume     Decimal?
+
+  @@index([symbol, timeframe, ts])
+  @@unique([symbol, timeframe, ts])
+}
+
+model EventLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+
+  type       String   // e.g. "ORDER_PLACED", "ORDER_FILLED", "ERROR"
+  level      String   // "INFO" | "WARN" | "ERROR"
+  message    String
+  data       Json?
+
+  // Optional linking
+  userId        String?
+  brokerAccountId String?
+  orderId       String?
+
+  @@index([type, createdAt])
+  @@index([level, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+
+  userId     String
+  user       UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  action     String   // "LOGIN", "UPDATE_SETTINGS", etc.
+  data       Json?
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
+
+model SystemState {
+  id         String   @id @default(cuid())
+  updatedAt  DateTime @updatedAt
+
+  key        String   @unique
+  value      Json
+}
+
+model UserTradingState {
+  id         String   @id @default(cuid())
+  updatedAt  DateTime @updatedAt
+
+  userId     String   @unique
+  user       UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // examples - adjust to your app
+  selectedBrokerAccountId String?
+  selectedSymbol          String?
+  riskSettings            Json?
+}
