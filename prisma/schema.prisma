@@ -133,8 +133,14 @@ model UserTradingState {
   selectedBrokerAccountId String?
   selectedSymbol          String?
   riskSettings            Json?
+
+  isPaused                Boolean     @default(false)
+  isKillSwitched          Boolean     @default(false)
+  killSwitchedAt          DateTime?
+
   user                    UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
 
 enum CandleTimeframe {
   S15
