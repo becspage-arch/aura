@@ -42,13 +42,13 @@ enum OrderStatus {
 }
 
 model UserProfile {
-  id            String   @id @default(cuid())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  // If you use auth later, you may map this to auth provider user id
-  email         String?  @unique
-  displayName   String?
+  clerkUserId String   @unique   // <-- add this
+  email       String?  @unique
+  displayName String?
 
   brokerAccounts BrokerAccount[]
   auditLogs      AuditLog[]
