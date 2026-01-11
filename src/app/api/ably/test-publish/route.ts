@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { publishToUser } from "@/lib/ably/server";
 
 export async function POST() {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) return new Response("Unauthorized", { status: 401 });
 
   await publishToUser(userId, "order_filled", {
