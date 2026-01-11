@@ -7,7 +7,7 @@ export async function ensureUserProfile(params: {
 }) {
   const { clerkUserId, email, displayName } = params;
 
-  return prisma.userProfile.upsert({
+  return db.userProfile.upsert({
     where: { clerkUserId },
     update: {
       email: email ?? undefined,
