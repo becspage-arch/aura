@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { userChannelName } from "@/lib/ably/server";
 
 export async function GET() {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) return new Response("Unauthorized", { status: 401 });
 
   const key = process.env.ABLY_API_KEY;
