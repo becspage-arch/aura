@@ -1,11 +1,5 @@
 "use client";
 
-import DashboardView from "@/components/dashboard/DashboardView";
-
-export default function DashboardPage() {
-  return <DashboardView clerkUserId="dev" />;
-}
-
 import { useEffect, useMemo, useState } from "react";
 import { subscribeUserChannel } from "@/lib/ably/client";
 import { useDashboard } from "@/components/dashboard/DashboardStore";
@@ -20,20 +14,14 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
     [clerkUserId]
   );
 
-  useEffect(() => {
-    if (!channelName) return;
-    // subscribe logic...
-  }, [channelName, dispatch]);
-
-  // ...
-}
-
   // Optional: filter by selected account
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
-    state.tradingState.selectedBrokerAccountId ?? null
+    state.tradingState?.selectedBrokerAccountId ?? null
   );
 
   useEffect(() => {
+    if (!channelName) return;
+
     const unsubscribe = subscribeUserChannel(channelName, ({ event }) => {
       const e = event as AuraRealtimeEvent;
 
@@ -145,7 +133,7 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       }
 
       if (e.type === "error") {
-        // you can optionally mark affected orders as REJECTED if event includes orderId
+        // optionally mark affected orders as REJECTED if event includes orderId
       }
     });
 
@@ -154,11 +142,11 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
 
   const accounts = state.accounts ?? [];
   const orders = selectedAccountId
-    ? state.orders.filter((o) => o.brokerAccountId === selectedAccountId)
+    ? state.orders.filter((o: any) => o.brokerAccountId === selectedAccountId)
     : state.orders;
 
   const fills = selectedAccountId
-    ? state.fills.filter((f) => f.brokerAccountId === selectedAccountId)
+    ? state.fills.filter((f: any) => f.brokerAccountId === selectedAccountId)
     : state.fills;
 
   const events = state.events;
@@ -184,7 +172,8 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
             >
               All
             </button>
-            {accounts.map((a) => (
+
+            {accounts.map((a: any) => (
               <button
                 key={a.id}
                 type="button"
