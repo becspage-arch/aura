@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { currentUser } from "@clerk/nextjs/server";
-import { ensureUserProfile } from "@/src/lib/user-profile"; // adjust if needed
+import { ensureUserProfile } from "@/lib/user-profile";
 
 export default async function AppHome() {
   const user = await currentUser();
