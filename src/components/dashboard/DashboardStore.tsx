@@ -13,13 +13,19 @@ export type DashboardState = {
   tradingState: {
     isPaused: boolean;
     isKillSwitched: boolean;
+    killSwitchedAt?: string | null;
+    selectedBrokerAccountId?: string | null;
+    selectedSymbol?: string | null;
   };
 };
 
 type Action =
   | { type: "INIT"; payload: DashboardState }
   | { type: "ADD_EVENT"; payload: any }
-  | { type: "SET_TRADING_STATE"; payload: Partial<DashboardState["tradingState"]> };
+  | {
+      type: "SET_TRADING_STATE";
+      payload: Partial<DashboardState["tradingState"]>;
+    };
 
 /* -------------------------
    Reducer
