@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "seed": "echo \"⚠️ DEV ONLY\" && tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.2.0",
