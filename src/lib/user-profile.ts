@@ -1,4 +1,4 @@
-import { db } from "@/src/lib/db"; // adjust import if your path differs
+import { prisma } from "@/lib/db";
 
 export async function ensureUserProfile(params: {
   clerkUserId: string;
@@ -7,7 +7,7 @@ export async function ensureUserProfile(params: {
 }) {
   const { clerkUserId, email, displayName } = params;
 
-  return db.userProfile.upsert({
+  return prisma.userProfile.upsert({
     where: { clerkUserId },
     update: {
       email: email ?? undefined,
