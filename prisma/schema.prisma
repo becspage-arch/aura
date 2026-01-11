@@ -141,7 +141,6 @@ model UserTradingState {
   user                    UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-
 enum CandleTimeframe {
   S15
   M3
