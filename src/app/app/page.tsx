@@ -16,27 +16,39 @@ export default async function AppHome() {
       ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()
       : user.username ?? null;
 
-  await ensureUserProfile({
+  // IMPORTANT: keep the returned profile so we have profile.id + any userState
+  const profile = await ensureUserProfile({
     clerkUserId: user.id,
     email,
     displayName,
   });
 
-  let initialDb;
-    try {
-      initialDb = await getDashboardInitialData(user.id);
-    } catch (e) {
-      return (
-        <main style={{ padding: 24 }}>
-          <h1>Welcome to Aura</h1>
-          <p>Could not load dashboard data.</p>
-          <pre style={{ fontSize: 12 }}>{e instanceof Error ? e.message : "Unknown error"}</pre>
-        </main>
-      );
-    }
+  let initialDb: any;
+  try {
+    // If your getDashboardInitialData expects profile.id, this is correct.
+    // If it expects clerkUserId, change profile.id -> user.id.
+    initialDb = await getDashboardInitialData(profile.id);
+  } catch (e) {
+    return (
+      <main style={{ padding: 24 }}>
+        <h1>Welcome to Aura</h1>
+        <p>Could not load dashboard data.</p>
+        <pre style={{ fontSize: 12 }}>
+          {e instanceof Error ? e.message : "Unknown error"}
+        </pre>
+      </main>
+    );
+  }
+
+  // Be defensive about the shape so TS/build doesn't break
+  const accounts = (initialDb?.accounts ?? initialDb?.brokerAccounts ?? []) as any[];
+  const orders = (initialDb?.orders ?? []) as any[];
+  const fills = (initialDb?.fills ?? []) as any[];
+  const events = (initialDb?.events ?? initialDb?.eventLog ?? []) as any[];
+  const tradingStateDb = initialDb?.tradingState ?? initialDb?.userState ?? null;
 
   const initial = {
-    accounts: profile.brokerAccounts.map((a) => ({
+    accounts: accounts.map((a) => ({
       id: a.id,
       brokerName: a.brokerName,
       accountLabel: a.accountLabel ?? null,
@@ -50,13 +62,13 @@ export default async function AppHome() {
       side: o.side,
       type: o.type,
       status: o.status,
-      qty: o.qty.toString(),
-      price: o.price?.toString() ?? null,
-      stopPrice: o.stopPrice?.toString() ?? null,
-      filledQty: o.filledQty.toString(),
-      avgFillPrice: o.avgFillPrice?.toString() ?? null,
-      createdAt: o.createdAt.toISOString(),
-      updatedAt: o.updatedAt.toISOString(),
+      qty: typeof o.qty === "string" ? o.qty : o.qty?.toString?.() ?? String(o.qty),
+      price: o.price == null ? null : (typeof o.price === "string" ? o.price : o.price?.toString?.()),
+      stopPrice: o.stopPrice == null ? null : (typeof o.stopPrice === "string" ? o.stopPrice : o.stopPrice?.toString?.()),
+      filledQty: typeof o.filledQty === "string" ? o.filledQty : o.filledQty?.toString?.() ?? "0",
+      avgFillPrice: o.avgFillPrice == null ? null : (typeof o.avgFillPrice === "string" ? o.avgFillPrice : o.avgFillPrice?.toString?.()),
+      createdAt: o.createdAt instanceof Date ? o.createdAt.toISOString() : String(o.createdAt),
+      updatedAt: o.updatedAt instanceof Date ? o.updatedAt.toISOString() : String(o.updatedAt),
     })),
     fills: fills.map((f) => ({
       id: f.id,
@@ -65,31 +77,34 @@ export default async function AppHome() {
       externalId: f.externalId ?? null,
       symbol: f.symbol,
       side: f.side,
-      qty: f.qty.toString(),
-      price: f.price.toString(),
-      createdAt: f.createdAt.toISOString(),
+      qty: typeof f.qty === "string" ? f.qty : f.qty?.toString?.() ?? String(f.qty),
+      price: typeof f.price === "string" ? f.price : f.price?.toString?.() ?? String(f.price),
+      createdAt: f.createdAt instanceof Date ? f.createdAt.toISOString() : String(f.createdAt),
     })),
-    events: events.map((e) => ({
-      id: e.id,
-      createdAt: e.createdAt.toISOString(),
-      type: e.type,
-      level: e.level,
-      message: e.message,
-      data: e.data ?? null,
-      brokerAccountId: e.brokerAccountId ?? null,
-      orderId: e.orderId ?? null,
+    events: events.map((ev) => ({
+      id: ev.id,
+      createdAt: ev.createdAt instanceof Date ? ev.createdAt.toISOString() : String(ev.createdAt),
+      type: ev.type,
+      level: ev.level,
+      message: ev.message,
+      data: ev.data ?? null,
+      brokerAccountId: ev.brokerAccountId ?? null,
+      orderId: ev.orderId ?? null,
     })),
     tradingState: {
-      isPaused: profile.userState?.isPaused ?? false,
-      isKillSwitched: profile.userState?.isKillSwitched ?? false,
-      killSwitchedAt: profile.userState?.killSwitchedAt?.toISOString() ?? null,
-      selectedBrokerAccountId: profile.userState?.selectedBrokerAccountId ?? null,
-      selectedSymbol: profile.userState?.selectedSymbol ?? null,
+      isPaused: tradingStateDb?.isPaused ?? false,
+      isKillSwitched: tradingStateDb?.isKillSwitched ?? false,
+      killSwitchedAt:
+        tradingStateDb?.killSwitchedAt instanceof Date
+          ? tradingStateDb.killSwitchedAt.toISOString()
+          : tradingStateDb?.killSwitchedAt ?? null,
+      selectedBrokerAccountId: tradingStateDb?.selectedBrokerAccountId ?? null,
+      selectedSymbol: tradingStateDb?.selectedSymbol ?? null,
     },
   };
 
   return (
-    <DashboardProvider initial={initial}>
+    <DashboardProvider initial={initial as any}>
       <DashboardView clerkUserId={user.id} />
     </DashboardProvider>
   );
