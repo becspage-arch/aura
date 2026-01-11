@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     userId: user.id,
   });
 
-  await publishToUser(clerkUserId, "status_update" as any, { isKillSwitched });
+  await publishToUser(clerkUserId, "status_update", { isKillSwitched });
 
   return Response.json({
     ok: true,

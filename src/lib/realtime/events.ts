@@ -4,6 +4,7 @@ export type AuraRealtimeEventType =
   | "order_cancelled"
   | "position_opened"
   | "position_closed"
+  | "status_update"
   | "error";
 
 export type AuraBaseEvent<TType extends AuraRealtimeEventType, TData> = {
@@ -12,7 +13,10 @@ export type AuraBaseEvent<TType extends AuraRealtimeEventType, TData> = {
   data: TData;
 };
 
-// Keep payloads small and stable. You can add fields later.
+/* -----------------------------
+   Trading / execution events
+------------------------------ */
+
 export type OrderSubmittedData = {
   accountId: string;
   symbol: string;
@@ -54,6 +58,20 @@ export type PositionClosedData = {
   pnlCurrency?: "USD" | "GBP" | "EUR";
 };
 
+/* -----------------------------
+   System / UI state events
+------------------------------ */
+
+export type StatusUpdateData = {
+  isPaused?: boolean;
+  isKillSwitched?: boolean;
+  killSwitchedAt?: string | null;
+};
+
+/* -----------------------------
+   Error events
+------------------------------ */
+
 export type ErrorData = {
   accountId?: string;
   code: string;
@@ -61,10 +79,15 @@ export type ErrorData = {
   context?: Record<string, unknown>;
 };
 
+/* -----------------------------
+   Unified event union
+------------------------------ */
+
 export type AuraRealtimeEvent =
   | AuraBaseEvent<"order_submitted", OrderSubmittedData>
   | AuraBaseEvent<"order_filled", OrderFilledData>
   | AuraBaseEvent<"order_cancelled", OrderCancelledData>
   | AuraBaseEvent<"position_opened", PositionOpenedData>
   | AuraBaseEvent<"position_closed", PositionClosedData>
+  | AuraBaseEvent<"status_update", StatusUpdateData>
   | AuraBaseEvent<"error", ErrorData>;
