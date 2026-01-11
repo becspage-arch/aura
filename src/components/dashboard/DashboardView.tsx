@@ -134,7 +134,7 @@ export default function DashboardView({ clerkUserId }: { clerkUserId: string }) 
     return () => unsubscribe();
   }, [channelName, dispatch]);
 
-  const accounts = state.accounts;
+  const accounts = state.accounts ?? [];
   const orders = selectedAccountId
     ? state.orders.filter((o) => o.brokerAccountId === selectedAccountId)
     : state.orders;

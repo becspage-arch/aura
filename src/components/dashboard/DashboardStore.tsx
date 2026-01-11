@@ -50,7 +50,10 @@ export type DashboardEvent = {
   orderId?: string | null;
 };
 
+export type DashboardAccount = { id: string; [key: string]: any };
+
 export type DashboardState = {
+  accounts: DashboardAccount[];
   orders: DashboardOrder[];
   fills: DashboardFill[];
   events: DashboardEvent[];
