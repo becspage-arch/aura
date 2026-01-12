@@ -1,13 +1,17 @@
 "use client";
 
-import { SignOutButton } from "@clerk/nextjs";
+import { useEffect } from "react";
+import { useClerk } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 
 export default function SignOutPage() {
-  return (
-    <div style={{ padding: 24 }}>
-      <h1>Sign out</h1>
-      <p>If you’re signed in, click below to sign out.</p>
-      <SignOutButton redirectUrl="/" />
-    </div>
-  );
+  const { signOut } = useClerk();
+  const router = useRouter();
+
+  useEffect(() => {
+    // Signs out immediately then returns home
+    signOut(() => router.push("/"));
+  }, [signOut, router]);
+
+  return <p style={{ padding: 16 }}>Signing you out…</p>;
 }

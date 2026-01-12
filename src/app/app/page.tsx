@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
 import { ensureUserProfile } from "@/lib/user-profile";
 import { getDashboardInitialData } from "@/lib/dashboard/server";
@@ -8,7 +9,32 @@ import DashboardView from "@/components/dashboard/DashboardView";
 
 export default async function AppHome() {
   const user = await currentUser();
-  if (!user) return null;
+
+  // If someone hits /app unauthenticated, give them a way out
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-zinc-50 p-6 dark:bg-black">
+        <header className="mx-auto flex max-w-5xl items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <Link href="/" className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+            Aura
+          </Link>
+          <nav className="flex items-center gap-3 text-sm">
+            <Link href="/sign-in" className="text-zinc-700 hover:underline dark:text-zinc-200">
+              Sign in
+            </Link>
+            <Link href="/sign-up" className="text-zinc-700 hover:underline dark:text-zinc-200">
+              Sign up
+            </Link>
+          </nav>
+        </header>
+
+        <div className="mx-auto mt-10 max-w-5xl text-zinc-700 dark:text-zinc-200">
+          <h1 className="text-2xl font-semibold">Welcome to Aura</h1>
+          <p className="mt-2">Please sign in to view your dashboard.</p>
+        </div>
+      </main>
+    );
+  }
 
   const email = user.emailAddresses?.[0]?.emailAddress ?? null;
   const displayName =
@@ -30,12 +56,31 @@ export default async function AppHome() {
     initialDb = await getDashboardInitialData(profile.id);
   } catch (e) {
     return (
-      <main style={{ padding: 24 }}>
-        <h1>Welcome to Aura</h1>
-        <p>Could not load dashboard data.</p>
-        <pre style={{ fontSize: 12 }}>
-          {e instanceof Error ? e.message : "Unknown error"}
-        </pre>
+      <main className="min-h-screen bg-zinc-50 p-6 dark:bg-black">
+        <header className="mx-auto flex max-w-5xl items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <Link href="/" className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+            Aura
+          </Link>
+          <nav className="flex items-center gap-3 text-sm">
+            <Link href="/app" className="text-zinc-700 hover:underline dark:text-zinc-200">
+              Dashboard
+            </Link>
+            <Link href="/app/audit" className="text-zinc-700 hover:underline dark:text-zinc-200">
+              Audit
+            </Link>
+            <Link href="/sign-out" className="text-zinc-700 hover:underline dark:text-zinc-200">
+              Sign out
+            </Link>
+          </nav>
+        </header>
+
+        <div className="mx-auto mt-10 max-w-5xl">
+          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Welcome to Aura</h1>
+          <p className="mt-2 text-zinc-700 dark:text-zinc-200">Could not load dashboard data.</p>
+          <pre className="mt-4 overflow-auto rounded-lg border border-zinc-200 bg-white p-4 text-xs text-zinc-800 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
+            {e instanceof Error ? e.message : "Unknown error"}
+          </pre>
+        </div>
       </main>
     );
   }
@@ -63,10 +108,10 @@ export default async function AppHome() {
       type: o.type,
       status: o.status,
       qty: typeof o.qty === "string" ? o.qty : o.qty?.toString?.() ?? String(o.qty),
-      price: o.price == null ? null : (typeof o.price === "string" ? o.price : o.price?.toString?.()),
-      stopPrice: o.stopPrice == null ? null : (typeof o.stopPrice === "string" ? o.stopPrice : o.stopPrice?.toString?.()),
+      price: o.price == null ? null : typeof o.price === "string" ? o.price : o.price?.toString?.(),
+      stopPrice: o.stopPrice == null ? null : typeof o.stopPrice === "string" ? o.stopPrice : o.stopPrice?.toString?.(),
       filledQty: typeof o.filledQty === "string" ? o.filledQty : o.filledQty?.toString?.() ?? "0",
-      avgFillPrice: o.avgFillPrice == null ? null : (typeof o.avgFillPrice === "string" ? o.avgFillPrice : o.avgFillPrice?.toString?.()),
+      avgFillPrice: o.avgFillPrice == null ? null : typeof o.avgFillPrice === "string" ? o.avgFillPrice : o.avgFillPrice?.toString?.(),
       createdAt: o.createdAt instanceof Date ? o.createdAt.toISOString() : String(o.createdAt),
       updatedAt: o.updatedAt instanceof Date ? o.updatedAt.toISOString() : String(o.updatedAt),
     })),
@@ -104,8 +149,37 @@ export default async function AppHome() {
   };
 
   return (
-    <DashboardProvider initial={initial as any}>
-      <DashboardView clerkUserId={user.id} />
-    </DashboardProvider>
+    <div className="min-h-screen bg-zinc-50 dark:bg-black">
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="flex items-center gap-4">
+          <Link href="/" className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            Aura
+          </Link>
+          <nav className="flex items-center gap-3 text-sm">
+            <Link href="/app" className="text-zinc-700 hover:underline dark:text-zinc-200">
+              Dashboard
+            </Link>
+            <Link href="/app/audit" className="text-zinc-700 hover:underline dark:text-zinc-200">
+              Audit
+            </Link>
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-3 text-sm">
+          <span className="hidden text-zinc-500 dark:text-zinc-400 sm:inline">
+            {displayName ?? email ?? ""}
+          </span>
+          <Link href="/sign-out" className="text-zinc-700 hover:underline dark:text-zinc-200">
+            Sign out
+          </Link>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-6xl px-6 pb-10">
+        <DashboardProvider initial={initial as any}>
+          <DashboardView clerkUserId={user.id} />
+        </DashboardProvider>
+      </div>
+    </div>
   );
 }
