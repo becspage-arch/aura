@@ -10,12 +10,82 @@ function getDbUrl() {
 }
 
 function assertNotProduction() {
-  const url = getDbUrl();
-  // basic safety: refuse to seed if explicitly flagged as prod or if URL looks like prod main
   if (process.env.NODE_ENV === "production") {
     throw new Error("Refusing to seed in NODE_ENV=production.");
   }
-  // If you want stronger checks later (e.g., match branch hostnames), we can add them.
+}
+
+function floorToMs(ms: number, stepMs: number) {
+  return Math.floor(ms / stepMs) * stepMs;
+}
+
+function genCandles(params: {
+  symbol: string;
+  timeframe: CandleTimeframe;
+  endMs: number;
+  stepMs: number;
+  count: number;
+  startPrice: number;
+  volatility: number; // rough price movement size
+  volumeBase: number;
+}) {
+  const { symbol, timeframe, endMs, stepMs, count, startPrice, volatility, volumeBase } = params;
+
+  // Build ascending candles from oldest -> newest
+  const startMs = endMs - (count - 1) * stepMs;
+
+  let lastClose = startPrice;
+
+  const out = new Array(count);
+  for (let i = 0; i < count; i++) {
+    const ts = new Date(startMs + i * stepMs);
+
+    // simple random walk
+    const drift = (Math.random() - 0.5) * volatility;
+    const open = lastClose;
+    const close = open + drift;
+
+    const wickUp = Math.random() * (volatility * 0.8);
+    const wickDn = Math.random() * (volatility * 0.8);
+
+    const high = Math.max(open, close) + wickUp;
+    const low = Math.min(open, close) - wickDn;
+
+    lastClose = close;
+
+    out[i] = {
+      symbol,
+      timeframe,
+      ts,
+      open: open.toFixed(2),
+      high: high.toFixed(2),
+      low: low.toFixed(2),
+      close: close.toFixed(2),
+      volume: String(volumeBase + (i % 50)),
+    };
+  }
+
+  return out;
+}
+
+async function createManyBatched<T extends Record<string, any>>(
+  prisma: PrismaClient,
+  data: T[],
+  batchSize = 5000
+) {
+  let inserted = 0;
+  const total = data.length;
+  const batches = Math.ceil(total / batchSize);
+
+  for (let i = 0; i < batches; i++) {
+    const chunk = data.slice(i * batchSize, (i + 1) * batchSize);
+    // @ts-expect-error prisma typing for createMany
+    await prisma.candle.createMany({ data: chunk });
+    inserted += chunk.length;
+    console.log(`🕯️ Inserted candle batch ${i + 1}/${batches} (${chunk.length})`);
+  }
+
+  return inserted;
 }
 
 async function main() {
@@ -24,19 +94,7 @@ async function main() {
   const adapter = new PrismaPg({ connectionString: getDbUrl() });
   const prisma = new PrismaClient({ adapter });
 
-  // Optional: start from a clean slate (dev only)
-  // Comment these out if you don't want deletes.
-  // await prisma.fill.deleteMany();
-  // await prisma.order.deleteMany();
-  // await prisma.brokerAccount.deleteMany();
-  // await prisma.auditLog.deleteMany();
-  // await prisma.eventLog.deleteMany();
-  // await prisma.candle.deleteMany();
-  // await prisma.userTradingState.deleteMany();
-  // await prisma.systemState.deleteMany();
-  // await prisma.userProfile.deleteMany();
-    // Optional: start from a clean slate (dev only)
-  // If tables don't exist yet, guide the user instead of crashing.
+  // Wipe dev tables (safe because NOT production)
   try {
     await prisma.fill.deleteMany();
     await prisma.order.deleteMany();
@@ -53,7 +111,6 @@ async function main() {
     throw e;
   }
 
-
   // Users
   const user = await prisma.userProfile.create({
     data: {
@@ -66,9 +123,7 @@ async function main() {
         },
       },
       auditLogs: {
-        create: [
-          { action: "SEED_INIT", data: { note: "Seeded initial dev user" } },
-        ],
+        create: [{ action: "SEED_INIT", data: { note: "Seeded initial dev user" } }],
       },
     },
   });
@@ -140,49 +195,46 @@ async function main() {
     },
   });
 
-  // Candles (tiny dataset: last ~10 points each timeframe)
-  const now = new Date();
-  const baseTs = new Date(now.getTime() - 10 * 60 * 1000); // 10 minutes ago
+  // -----------------------------
+  // Candles: seed MORE history
+  // -----------------------------
+  const SEED_15S_DAYS = Number(process.env.SEED_15S_DAYS ?? 7);   // 7 days of 15s by default
+  const SEED_3M_DAYS = Number(process.env.SEED_3M_DAYS ?? 30);    // 30 days of 3m by default
 
-  const candles15s = Array.from({ length: 20 }).map((_, i) => {
-    const ts = new Date(baseTs.getTime() + i * 15_000);
-    const open = 2050 + i * 0.1;
-    const close = open + (i % 2 === 0 ? 0.05 : -0.03);
-    const high = Math.max(open, close) + 0.08;
-    const low = Math.min(open, close) - 0.07;
+  const nowMs = Date.now();
 
-    return {
-      symbol: "MGC",
-      timeframe: CandleTimeframe.S15,
-      ts,
-      open: open.toFixed(2),
-      high: high.toFixed(2),
-      low: low.toFixed(2),
-      close: close.toFixed(2),
-      volume: (100 + i).toString(),
-    };
+  const step15s = 15_000;
+  const step3m = 180_000;
+
+  const end15s = floorToMs(nowMs, step15s);
+  const end3m = floorToMs(nowMs, step3m);
+
+  const count15s = Math.floor((SEED_15S_DAYS * 24 * 60 * 60 * 1000) / step15s) + 1;
+  const count3m = Math.floor((SEED_3M_DAYS * 24 * 60 * 60 * 1000) / step3m) + 1;
+
+  const candles15s = genCandles({
+    symbol: "MGC",
+    timeframe: CandleTimeframe.S15,
+    endMs: end15s,
+    stepMs: step15s,
+    count: count15s,
+    startPrice: 2050,
+    volatility: 0.35,
+    volumeBase: 100,
   });
 
-  const candles3m = Array.from({ length: 10 }).map((_, i) => {
-    const ts = new Date(baseTs.getTime() + i * 180_000);
-    const open = 2050 + i * 0.4;
-    const close = open + (i % 2 === 0 ? 0.2 : -0.15);
-    const high = Math.max(open, close) + 0.25;
-    const low = Math.min(open, close) - 0.22;
-
-    return {
-      symbol: "MGC",
-      timeframe: CandleTimeframe.M3,
-      ts,
-      open: open.toFixed(2),
-      high: high.toFixed(2),
-      low: low.toFixed(2),
-      close: close.toFixed(2),
-      volume: (500 + i * 10).toString(),
-    };
+  const candles3m = genCandles({
+    symbol: "MGC",
+    timeframe: CandleTimeframe.M3,
+    endMs: end3m,
+    stepMs: step3m,
+    count: count3m,
+    startPrice: 2050,
+    volatility: 1.2,
+    volumeBase: 500,
   });
 
-  await prisma.candle.createMany({ data: [...candles15s, ...candles3m] });
+  const totalInserted = await createManyBatched(prisma, [...candles15s, ...candles3m], 5000);
 
   // Event logs
   await prisma.eventLog.createMany({
@@ -212,12 +264,22 @@ async function main() {
   await prisma.systemState.create({
     data: {
       key: "seedVersion",
-      value: { version: 1, seededAt: new Date().toISOString() },
+      value: { version: 2, seededAt: new Date().toISOString() },
     },
   });
 
   console.log("✅ Seed complete");
-  console.log({ user: user.email, acct1: acct1.brokerName, order1: order1.externalId });
+  console.log({
+    user: user.email,
+    acct1: acct1.brokerName,
+    order1: order1.externalId,
+    candles15s: candles15s.length,
+    candles3m: candles3m.length,
+    totalInserted,
+    seed15sDays: SEED_15S_DAYS,
+    seed3mDays: SEED_3M_DAYS,
+  });
+
   await prisma.$disconnect();
 }
 

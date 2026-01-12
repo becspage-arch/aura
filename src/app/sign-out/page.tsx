@@ -2,16 +2,15 @@
 
 import { useEffect } from "react";
 import { useClerk } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
 
 export default function SignOutPage() {
   const { signOut } = useClerk();
-  const router = useRouter();
 
   useEffect(() => {
-    // Signs out immediately then returns home
-    signOut(() => router.push("/"));
-  }, [signOut, router]);
+    signOut().finally(() => {
+      window.location.href = "/";
+    });
+  }, [signOut]);
 
-  return <p style={{ padding: 16 }}>Signing you out…</p>;
+  return <div className="p-6">Signing you out...</div>;
 }

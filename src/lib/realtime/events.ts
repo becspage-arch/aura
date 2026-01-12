@@ -5,7 +5,8 @@ export type AuraRealtimeEventType =
   | "position_opened"
   | "position_closed"
   | "status_update"
-  | "error";
+  | "error"
+  | "candle_closed";
 
 export type AuraBaseEvent<TType extends AuraRealtimeEventType, TData> = {
   type: TType;
@@ -58,6 +59,17 @@ export type PositionClosedData = {
   pnlCurrency?: "USD" | "GBP" | "EUR";
 };
 
+export type CandleClosedData = {
+  symbol: string;
+  timeframe: "15s"; // canonical stream
+  time: number; // epoch seconds candle OPEN time (UTC)
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+};
+
 /* -----------------------------
    System / UI state events
 ------------------------------ */
@@ -90,4 +102,5 @@ export type AuraRealtimeEvent =
   | AuraBaseEvent<"position_opened", PositionOpenedData>
   | AuraBaseEvent<"position_closed", PositionClosedData>
   | AuraBaseEvent<"status_update", StatusUpdateData>
-  | AuraBaseEvent<"error", ErrorData>;
+  | AuraBaseEvent<"error", ErrorData>
+  | AuraBaseEvent<"candle_closed", CandleClosedData>;

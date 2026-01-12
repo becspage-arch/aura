@@ -76,6 +76,38 @@ model Fill {
   @@index([symbol, createdAt])
 }
 
+/**
+ * -----------------------------
+ * Canonical candle storage (BEST LONG-TERM)
+ * -----------------------------
+ * Store ONLY 15-second candles here.
+ * - time = epoch seconds (UTC), candle OPEN time
+ * - This makes charting + merging + marker mapping deterministic and fast.
+ * - All higher timeframes (3m, 5m, etc.) are derived server-side.
+ */
+model Candle15s {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  symbol    String
+  time      Int // epoch seconds (UTC), candle OPEN time
+
+  open   Decimal
+  high   Decimal
+  low    Decimal
+  close  Decimal
+  volume Decimal?
+
+  @@unique([symbol, time])
+  @@index([symbol, time])
+}
+
+/**
+ * -----------------------------
+ * Legacy candle table (keep for now)
+ * -----------------------------
+ * You already have this. We leave it in place so nothing breaks.
+ * We'll gradually migrate reads/writes to Candle15s.
+ */
 model Candle {
   id        String          @id @default(cuid())
   createdAt DateTime        @default(now())
@@ -127,18 +159,18 @@ model SystemState {
 }
 
 model UserTradingState {
-  id                      String      @id @default(cuid())
-  updatedAt               DateTime    @updatedAt
-  userId                  String      @unique
+  id                      String   @id @default(cuid())
+  updatedAt               DateTime @updatedAt
+  userId                  String   @unique
   selectedBrokerAccountId String?
   selectedSymbol          String?
   riskSettings            Json?
 
-  isPaused                Boolean     @default(false)
-  isKillSwitched          Boolean     @default(false)
-  killSwitchedAt          DateTime?
+  isPaused       Boolean   @default(false)
+  isKillSwitched Boolean   @default(false)
+  killSwitchedAt DateTime?
 
-  user                    UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum CandleTimeframe {

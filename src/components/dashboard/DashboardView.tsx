@@ -5,6 +5,7 @@ import { subscribeUserChannel } from "@/lib/ably/client";
 import { useDashboard } from "@/components/dashboard/DashboardStore";
 import type { AuraRealtimeEvent } from "@/lib/realtime/events";
 import Controls from "@/components/dashboard/Controls";
+import { TradingChart } from "@/components/charts/TradingChart";
 
 export default function DashboardView({ clerkUserId }: { clerkUserId?: string }) {
   const { state, dispatch } = useDashboard();
@@ -151,6 +152,9 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
 
   const events = state.events;
 
+  // Prefer the app-selected symbol if you have it, otherwise default to MGC
+  const selectedSymbol = state.tradingState?.selectedSymbol ?? "MGC";
+
   return (
     <div style={{ display: "grid", gap: 24 }}>
       <h1>Dashboard</h1>
@@ -191,13 +195,19 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
         )}
       </section>
 
-      {/* 3) Orders */}
+      {/* 3) Chart */}
+      <section style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 16 }}>
+        <h2 style={{ marginTop: 0 }}>Chart</h2>
+        <TradingChart symbol={selectedSymbol} initialTf="15s" channelName={channelName} />
+      </section>
+
+      {/* 4) Orders */}
       <OrdersTable orders={orders} />
 
-      {/* 4) Fills */}
+      {/* 5) Fills */}
       <FillsTable fills={fills} />
 
-      {/* 5) Timeline */}
+      {/* 6) Timeline */}
       <Timeline events={events} />
     </div>
   );
