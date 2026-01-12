@@ -53,7 +53,7 @@ export default async function AppHome() {
   try {
     // If your getDashboardInitialData expects profile.id, this is correct.
     // If it expects clerkUserId, change profile.id -> user.id.
-    initialDb = await getDashboardInitialData(profile.id);
+    initialDb = await getDashboardInitialData(user.id);
   } catch (e) {
     return (
       <main className="min-h-screen bg-zinc-50 p-6 dark:bg-black">
