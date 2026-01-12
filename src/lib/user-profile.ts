@@ -1,22 +1,28 @@
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
-export async function ensureUserProfile(params: {
+export async function ensureUserProfile(input: {
   clerkUserId: string;
-  email?: string | null;
-  displayName?: string | null;
+  email: string | null;
+  displayName: string | null;
 }) {
-  const { clerkUserId, email, displayName } = params;
+  const { clerkUserId, email, displayName } = input;
 
-  return db.userProfile.upsert({
+  const existing = await prisma.userProfile.findUnique({
     where: { clerkUserId },
-    update: {
-      email: email ?? undefined,
-      displayName: displayName ?? undefined,
-    },
-    create: {
-      clerkUserId,
-      email: email ?? undefined,
-      displayName: displayName ?? undefined,
-    },
+  });
+
+  if (existing) {
+    // optional: keep details up to date
+    if (existing.email !== email || existing.displayName !== displayName) {
+      return prisma.userProfile.update({
+        where: { clerkUserId },
+        data: { email, displayName },
+      });
+    }
+    return existing;
+  }
+
+  return prisma.userProfile.create({
+    data: { clerkUserId, email, displayName },
   });
 }
