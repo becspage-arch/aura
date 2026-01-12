@@ -2,13 +2,21 @@ export const dynamic = "force-dynamic";
 
 import { currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
+import { ensureUserProfile } from "@/lib/user-profile";
 
 export default async function AuditPage() {
   const user = await currentUser();
   if (!user) return null;
 
-  const profile = await db.userProfile.findUnique({ where: { clerkUserId: user.id } });
-  if (!profile) return <div>UserProfile not found</div>;
+  // Ensure the user profile exists (create if missing)
+  const profile = await ensureUserProfile({
+    clerkUserId: user.id,
+    email: user.emailAddresses?.[0]?.emailAddress ?? null,
+    displayName:
+      user.firstName || user.lastName
+        ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()
+        : user.username ?? null,
+  });
 
   const audit = await db.auditLog.findMany({
     where: { userId: profile.id },

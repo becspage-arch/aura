@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
+import { ensureUserProfile } from "@/lib/user-profile";
 import { publishToUser } from "@/lib/ably/server";
 import { writeAuditLog, writeEventLog } from "@/lib/logging/server";
 
@@ -10,8 +11,12 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const isPaused = Boolean(body?.isPaused);
 
-  const user = await db.userProfile.findUnique({ where: { clerkUserId } });
-  if (!user) return new Response("UserProfile not found", { status: 404 });
+  // ✅ Ensure profile exists (create if missing)
+  const user = await ensureUserProfile({
+    clerkUserId,
+    email: null,
+    displayName: null,
+  });
 
   const next = await db.userTradingState.upsert({
     where: { userId: user.id },
@@ -20,6 +25,7 @@ export async function POST(req: Request) {
   });
 
   await writeAuditLog(user.id, "TRADING_PAUSE_TOGGLED", { isPaused });
+
   await writeEventLog({
     type: "control_changed",
     level: "info",

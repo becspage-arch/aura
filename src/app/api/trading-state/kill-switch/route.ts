@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
+import { ensureUserProfile } from "@/lib/user-profile";
 import { publishToUser } from "@/lib/ably/server";
 import { writeAuditLog, writeEventLog } from "@/lib/logging/server";
 
@@ -7,24 +8,25 @@ export async function POST(req: Request) {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
 
-  // Parse body safely
   const body = (await req.json().catch(() => ({}))) as { isKillSwitched?: unknown };
-
-  // IMPORTANT: this must match your Prisma schema field name: isKillSwitched
   const isKillSwitched = Boolean(body?.isKillSwitched);
 
-  const user = await db.userProfile.findUnique({ where: { clerkUserId } });
-  if (!user) return new Response("UserProfile not found", { status: 404 });
+  // ✅ Ensure profile exists (create if missing)
+  const user = await ensureUserProfile({
+    clerkUserId,
+    email: null,
+    displayName: null,
+  });
 
   const next = await db.userTradingState.upsert({
     where: { userId: user.id },
     update: {
-      isKillSwitched: isKillSwitched,
+      isKillSwitched,
       killSwitchedAt: isKillSwitched ? new Date() : null,
     },
     create: {
       userId: user.id,
-      isKillSwitched: isKillSwitched,
+      isKillSwitched,
       killSwitchedAt: isKillSwitched ? new Date() : null,
     },
   });
