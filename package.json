@@ -9,7 +9,8 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "seed": "echo \"⚠️ DEV ONLY\" && tsx prisma/seed.ts",
-    "seed:charts": "tsx prisma/seedCharts.ts"
+    "seed:charts": "tsx prisma/seedCharts.ts",
+    "seed:prod:candles": "tsx prisma/seedProdCandles.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.7",
