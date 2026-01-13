@@ -5,23 +5,26 @@ const prisma = new PrismaClient();
 
 async function main() {
   const symbol = "MGC";
-  const tf = "15s";
 
-  const min = await prisma.candle.findFirst({
-    where: { symbol, tf },
+  const min = await prisma.candle15s.findFirst({
+    where: { symbol },
     orderBy: { time: "asc" },
     select: { time: true },
   });
 
-  const max = await prisma.candle.findFirst({
-    where: { symbol, tf },
+  const max = await prisma.candle15s.findFirst({
+    where: { symbol },
     orderBy: { time: "desc" },
     select: { time: true },
   });
 
-  const count = await prisma.candle.count({ where: { symbol, tf } });
+  const count = await prisma.candle15s.count({ where: { symbol } });
 
-  console.log({ count, minTime: min?.time ?? null, maxTime: max?.time ?? null });
+  console.log({
+    count,
+    minTime: min?.time ?? null,
+    maxTime: max?.time ?? null,
+  });
 }
 
 main()
@@ -32,4 +35,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-  
