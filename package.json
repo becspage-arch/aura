@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
-    "seed": "echo \"⚠️ DEV ONLY\" && tsx prisma/seed.ts"
+    "seed": "echo \"⚠️ DEV ONLY\" && tsx prisma/seed.ts",
+    "seed:charts": "tsx prisma/seedCharts.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.7",
