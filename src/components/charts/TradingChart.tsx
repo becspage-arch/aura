@@ -83,7 +83,7 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
   const overlayRef = useRef<HTMLDivElement | null>(null);
 
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<typeof CandlestickSeries> | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
   const [tf, setTf] = useState<Timeframe>(initialTf);
   const [isLoading, setIsLoading] = useState(false);
