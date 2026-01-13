@@ -1,4 +1,4 @@
-import type { Candle } from "@/src/lib/charts/types";
+import type { Candle } from "@/lib/charts/types";
 
 export function mergeClosedCandle(existing: Candle[], incoming: Candle): Candle[] {
   if (!existing.length) return [incoming];
