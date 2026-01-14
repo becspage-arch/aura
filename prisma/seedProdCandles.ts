@@ -34,63 +34,57 @@ async function main() {
   const total = days * 24 * 60 * 4; // 15s candles per day
   const startMs = endMs - (total - 1) * stepMs;
 
-  const batchSize = 1000; // use upsert per row; keep batch moderate
-
   let price = 2050.0;
 
   let upserted = 0;
-  for (let offset = 0; offset < total; offset += batchSize) {
-    const count = Math.min(batchSize, total - offset);
 
-    const ops = [];
-    for (let i = 0; i < count; i++) {
-      const idx = offset + i;
-      const ts = new Date(startMs + idx * stepMs);
+  for (let idx = 0; idx < total; idx++) {
+    const ts = new Date(startMs + idx * stepMs);
 
-      // deterministic drift
-      const drift = Math.sin(idx / 180) * 0.25 + Math.sin(idx / 33) * 0.08;
-      const open = price;
-      const close = open + drift;
+    // deterministic drift (stable + repeatable)
+    const drift = Math.sin(idx / 180) * 0.25 + Math.sin(idx / 33) * 0.08;
+    const open = price;
+    const close = open + drift;
 
-      const wickUp = 0.12 + Math.abs(Math.sin(idx / 29)) * 0.18;
-      const wickDn = 0.12 + Math.abs(Math.cos(idx / 31)) * 0.18;
+    const wickUp = 0.12 + Math.abs(Math.sin(idx / 29)) * 0.18;
+    const wickDn = 0.12 + Math.abs(Math.cos(idx / 31)) * 0.18;
 
-      const high = Math.max(open, close) + wickUp;
-      const low = Math.min(open, close) - wickDn;
+    const high = Math.max(open, close) + wickUp;
+    const low = Math.min(open, close) - wickDn;
 
-      const volume = 80 + (idx % 40);
+    const volume = 80 + (idx % 40);
 
-      price = close;
+    price = close;
 
-      ops.push(
-        prisma.candle.upsert({
-          where: {
-            symbol_timeframe_ts: { symbol, timeframe: CandleTimeframe.S15, ts },
-          },
-          create: {
-            symbol,
-            timeframe: CandleTimeframe.S15,
-            ts,
-            open: open.toFixed(2) as any,
-            high: high.toFixed(2) as any,
-            low: low.toFixed(2) as any,
-            close: close.toFixed(2) as any,
-            volume: String(volume) as any,
-          },
-          update: {
-            open: open.toFixed(2) as any,
-            high: high.toFixed(2) as any,
-            low: low.toFixed(2) as any,
-            close: close.toFixed(2) as any,
-            volume: String(volume) as any,
-          },
-        })
-      );
+    await prisma.candle.upsert({
+      where: {
+        symbol_timeframe_ts: { symbol, timeframe: CandleTimeframe.S15, ts },
+      },
+      create: {
+        symbol,
+        timeframe: CandleTimeframe.S15,
+        ts,
+        open: open.toFixed(2) as any,
+        high: high.toFixed(2) as any,
+        low: low.toFixed(2) as any,
+        close: close.toFixed(2) as any,
+        volume: String(volume) as any,
+      },
+      update: {
+        open: open.toFixed(2) as any,
+        high: high.toFixed(2) as any,
+        low: low.toFixed(2) as any,
+        close: close.toFixed(2) as any,
+        volume: String(volume) as any,
+      },
+    });
+
+    upserted += 1;
+
+    // progress log every 2000 candles
+    if (upserted % 2000 === 0) {
+      console.log(`🕯️ Upserted ${upserted}/${total} S15 candles...`);
     }
-
-    await prisma.$transaction(ops);
-    upserted += ops.length;
-    console.log(`🕯️ Upserted ${upserted}/${total} S15 candles...`);
   }
 
   console.log("✅ Done seeding Candle (S15)", { symbol, days, total });
