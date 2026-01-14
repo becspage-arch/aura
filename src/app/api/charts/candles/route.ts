@@ -97,13 +97,13 @@ export async function GET(req: Request) {
 
   try {
     const rows = await prisma.candle.findMany({
-      where: { symbol, timeframe: dbTf as any, ts: { lt: toDate } },
+      where: { symbol, timeframe: dbTf as any, ts: { lte: toDate } },
       orderBy: { ts: "desc" },
       take: limit,
     });
 
     const candles = rows.map(normalizeDecimalRow).reverse();
-    const nextTo = candles.length ? candles[0].time : null;
+    const nextTo = candles.length ? candles[0].time - TF_SECONDS[apiTf] : null;
 
     return NextResponse.json({
       symbol,
