@@ -1,5 +1,6 @@
 import type { IBrokerAdapter, BrokerName } from "./IBrokerAdapter.js";
 import { CqgBrokerAdapter } from "./CqgBrokerAdapter.js";
+import { RithmicBrokerAdapter } from "./RithmicBrokerAdapter.js";
 
 class DisabledBroker implements IBrokerAdapter {
   public readonly name: BrokerName = "mock";
@@ -33,7 +34,7 @@ export function createBroker(): IBrokerAdapter {
   }
 
   if (broker === "rithmic") {
-    throw new Error("Rithmic adapter not wired yet");
+    return new RithmicBrokerAdapter();
   }
 
   return new DisabledBroker();
