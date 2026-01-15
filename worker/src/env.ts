@@ -24,6 +24,9 @@ const EnvSchema = z.object({
   CQG_PROTOCOL_VERSION_MAJOR: z.string().default("2"),
   CQG_PROTOCOL_VERSION_MINOR: z.string().default("270"),
   CQG_SYMBOLS: z.string().default("MGC,GCE"),
+
+  // ProjectX (TopstepX)
+  PROJECTX_API_KEY: z.string().optional(),
 });
 
 export const env = EnvSchema.parse(process.env);
@@ -41,4 +44,8 @@ export const CQG = {
   protocolMajor: Number(env.CQG_PROTOCOL_VERSION_MAJOR),
   protocolMinor: Number(env.CQG_PROTOCOL_VERSION_MINOR),
   symbols: env.CQG_SYMBOLS.split(",").map((s) => s.trim()).filter(Boolean),
+};
+
+export const PROJECTX = {
+  apiKey: env.PROJECTX_API_KEY ?? "",
 };
