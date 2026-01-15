@@ -1,10 +1,56 @@
 import type { IBrokerAdapter } from "./IBrokerAdapter.js";
 
+type ValidateResponse = {
+  success?: boolean;
+  errorCode?: number;
+  errorMessage?: string | null;
+  token?: string;
+};
+
+type Account = {
+  id: number;
+  name: string;
+  balance: number;
+  canTrade: boolean;
+  isVisible: boolean;
+  simulated: boolean;
+};
+
+type AccountSearchResponse = {
+  accounts?: Account[];
+  success?: boolean;
+  errorCode?: number;
+  errorMessage?: string | null;
+};
+
 export class ProjectXBrokerAdapter implements IBrokerAdapter {
   readonly name = "projectx" as const;
 
+  private token: string | null = null;
+
+  private accountId: number | null = null;
+  private accountName: string | null = null;
+  private accountSimulated: boolean | null = null;
+
+  private keepAliveTimer: NodeJS.Timer | null = null;
+
+  // validate no more than every 10 minutes (well within 200/60s rate limit)
+  private lastValidateAtMs = 0;
+
+  getStatus() {
+    return {
+      tokenOk: Boolean(this.token),
+      accountId: this.accountId,
+      accountName: this.accountName,
+      simulated: this.accountSimulated,
+    };
+  }
+
   async connect(): Promise<void> {
-    const hasKey = Boolean(process.env.PROJECTX_API_KEY && process.env.PROJECTX_API_KEY !== "PASTE-HERE");
+    const hasKey = Boolean(
+      process.env.PROJECTX_API_KEY &&
+        process.env.PROJECTX_API_KEY !== "PASTE-HERE"
+    );
     console.log("[projectx-adapter] connect", { hasKey });
   }
 
@@ -26,22 +72,189 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
 
     const text = await res.text();
 
+    const json = JSON.parse(text) as {
+      token?: string;
+      success?: boolean;
+      errorCode?: number;
+      errorMessage?: string | null;
+    };
+
+    this.token = json.token ?? null;
+
     console.log("[projectx-adapter] authorize loginKey", {
       status: res.status,
       ok: res.ok,
-      body: text.slice(0, 300),
+      success: json.success,
+      errorCode: json.errorCode,
+      hasToken: Boolean(this.token),
+      tokenPreview: this.token
+        ? `${this.token.slice(0, 12)}...${this.token.slice(-12)}`
+        : null,
     });
+
+    if (!this.token) {
+      throw new Error("ProjectX authorization failed - no token returned");
+    }
+  }
+
+  private async validateToken(): Promise<void> {
+    if (!this.token) return;
+
+    const res = await fetch("https://api.topstepx.com/api/Auth/validate", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: "{}",
+    });
+
+    const text = await res.text();
+
+    let json: ValidateResponse | null = null;
+    try {
+      json = text ? (JSON.parse(text) as ValidateResponse) : null;
+    } catch {
+      json = null;
+    }
+
+    if (json?.token && typeof json.token === "string") {
+      this.token = json.token;
+    }
+
+    console.log("[projectx-adapter] validate token", {
+      status: res.status,
+      ok: res.ok,
+      success: json?.success,
+      errorCode: json?.errorCode,
+      errorMessage: json?.errorMessage ?? null,
+      tokenPreview: this.token
+        ? `${this.token.slice(0, 12)}...${this.token.slice(-12)}`
+        : null,
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `ProjectX token validate failed (HTTP ${res.status})${
+          json?.errorMessage ? `: ${json.errorMessage}` : ""
+        }`
+      );
+    }
+  }
+
+  private async fetchActiveAccounts(): Promise<void> {
+    if (!this.token) throw new Error("Cannot fetch accounts without token");
+
+    const res = await fetch("https://api.topstepx.com/api/Account/search", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ onlyActiveAccounts: true }),
+    });
+
+    const text = await res.text();
+
+    let json: AccountSearchResponse | null = null;
+    try {
+      json = text ? (JSON.parse(text) as AccountSearchResponse) : null;
+    } catch {
+      json = null;
+    }
+
+    const accounts = json?.accounts ?? [];
+    const selected =
+      accounts.find((a) => a.canTrade && a.isVisible) ?? accounts[0] ?? null;
+
+    this.accountId = selected?.id ?? null;
+    this.accountName = selected?.name ?? null;
+    this.accountSimulated = selected?.simulated ?? null;
+
+    console.log("[projectx-adapter] account search", {
+      status: res.status,
+      ok: res.ok,
+      success: json?.success,
+      errorCode: json?.errorCode,
+      errorMessage: json?.errorMessage ?? null,
+      activeAccountsCount: accounts.length,
+      selectedAccountId: this.accountId,
+      selectedAccountName: this.accountName,
+      selectedAccountSimulated: this.accountSimulated,
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `ProjectX account search failed (HTTP ${res.status})${
+          json?.errorMessage ? `: ${json.errorMessage}` : ""
+        }`
+      );
+    }
+
+    if (!this.accountId) {
+      throw new Error("ProjectX account search returned no accounts");
+    }
   }
 
   startKeepAlive(): void {
-    // TODO: implement if required by ProjectX gateway
+    if (!this.token) {
+      throw new Error("Cannot start keepalive without ProjectX token");
+    }
+    if (this.keepAliveTimer) {
+      console.warn("[projectx-adapter] keepalive already running");
+      return;
+    }
+
+    console.log("[projectx-adapter] starting keepalive");
+
+    void (async () => {
+      try {
+        this.lastValidateAtMs = Date.now();
+        await this.validateToken();
+        await this.fetchActiveAccounts();
+      } catch (e) {
+        console.error("[projectx-adapter] startup health checks failed", e);
+      }
+    })();
+
+    this.keepAliveTimer = setInterval(() => {
+      console.log("[projectx-adapter] keepalive tick", {
+        hasToken: Boolean(this.token),
+        hasAccountId: Boolean(this.accountId),
+        at: new Date().toISOString(),
+      });
+
+      const now = Date.now();
+      const tenMin = 10 * 60 * 1000;
+      if (now - this.lastValidateAtMs >= tenMin) {
+        this.lastValidateAtMs = now;
+        void (async () => {
+          try {
+            await this.validateToken();
+          } catch (e) {
+            console.error("[projectx-adapter] scheduled token validate failed", e);
+          }
+        })();
+      }
+    }, 30_000);
   }
 
   stopKeepAlive(): void {
-    // TODO
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+      console.log("[projectx-adapter] keepalive stopped");
+    }
   }
 
   async disconnect(): Promise<void> {
-    // TODO
+    this.stopKeepAlive();
+    this.token = null;
+    this.accountId = null;
+    this.accountName = null;
+    this.accountSimulated = null;
+    console.log("[projectx-adapter] disconnected");
   }
 }

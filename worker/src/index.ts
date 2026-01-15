@@ -35,8 +35,17 @@ async function main() {
   console.log(`[${env.WORKER_NAME}] Ably connected`);
 
   // 4) Start broker feed (non-blocking)
+  // 4) Start broker feed + emit lifecycle events to Ably
+  const brokerChannel = ably.channels.get("aura:broker");
+
   try {
-    await startBrokerFeed();
+    await startBrokerFeed(async (event) => {
+      await brokerChannel.publish(event.name, event);
+      console.log(`[${env.WORKER_NAME}] published broker event`, {
+        name: event.name,
+        broker: event.broker,
+      });
+    });
   } catch (e) {
     console.error(`[${env.WORKER_NAME}] broker start failed`, e);
     process.exit(1);
