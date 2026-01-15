@@ -1,6 +1,7 @@
 import type { IBrokerAdapter, BrokerName } from "./IBrokerAdapter.js";
 import { CqgBrokerAdapter } from "./CqgBrokerAdapter.js";
 import { RithmicBrokerAdapter } from "./RithmicBrokerAdapter.js";
+import { ProjectXBrokerAdapter } from "./ProjectXBrokerAdapter.js";
 
 class DisabledBroker implements IBrokerAdapter {
   public readonly name: BrokerName = "mock";
@@ -34,8 +35,11 @@ export function createBroker(): IBrokerAdapter {
   }
 
   if (broker === "rithmic") {
-    // Fail fast if config is missing so we don't half-start the worker
     return new RithmicBrokerAdapter();
+  }
+
+  if (broker === "projectx") {
+    return new ProjectXBrokerAdapter();
   }
 
   return new DisabledBroker();
