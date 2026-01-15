@@ -1,4 +1,5 @@
 import type { IBrokerAdapter, BrokerName } from "./IBrokerAdapter.js";
+import { CqgBrokerAdapter } from "./CqgBrokerAdapter.js";
 
 class DisabledBroker implements IBrokerAdapter {
   public readonly name: BrokerName = "mock";
@@ -28,7 +29,7 @@ export function createBroker(): IBrokerAdapter {
   const broker = (process.env.BROKER || "disabled").toLowerCase();
 
   if (broker === "cqg") {
-    throw new Error("CQG adapter not wired yet");
+    return new CqgBrokerAdapter();
   }
 
   if (broker === "rithmic") {
