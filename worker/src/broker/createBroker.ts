@@ -34,6 +34,7 @@ export function createBroker(): IBrokerAdapter {
   }
 
   if (broker === "rithmic") {
+    // Fail fast if config is missing so we don't half-start the worker
     return new RithmicBrokerAdapter();
   }
 
