@@ -1,25 +1,42 @@
 import type { IBrokerAdapter } from "./IBrokerAdapter.js";
+import { getRithmicConfig } from "./rithmicConfig.js";
 
 export class RithmicBrokerAdapter implements IBrokerAdapter {
   readonly name = "rithmic" as const;
 
   async connect(): Promise<void> {
-    console.log("[rithmic-adapter] connect (stub)");
+    const cfg = getRithmicConfig();
+
+    console.log("[rithmic-adapter] connect", {
+      system: cfg.system,
+      host: cfg.host,
+      port: cfg.port,
+      username: cfg.username,
+    });
+
+    // IMPORTANT:
+    // No socket or protocol work yet.
+    // This step is ONLY to:
+    // - validate env vars exist
+    // - prove broker selection + wiring works
+    // - fail fast if config is missing
   }
 
   async authorize(): Promise<void> {
+    // Rithmic logon will be implemented AFTER socket connection exists.
+    // For now, keep this as a stub so the broker lifecycle stays consistent.
     console.log("[rithmic-adapter] authorize (stub)");
   }
 
   startKeepAlive(): void {
-    // no-op for now
+    // Will be implemented once the Rithmic heartbeat rules are wired
   }
 
   stopKeepAlive(): void {
-    // no-op for now
+    // Will be implemented with socket lifecycle
   }
 
   async disconnect(): Promise<void> {
-    // no-op for now
+    // Will close socket cleanly later
   }
 }
