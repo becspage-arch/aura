@@ -5,7 +5,7 @@ import { getSafetyStateForUser } from "./safety.js";
 import { hasSeen, markSeen } from "./idempotency.js";
 import { logEvent } from "./audit.js";
 import { acquireLock } from "./locks.js";
-import { startCqgDemoFeed } from "./cqg/client.js";
+import { startBrokerFeed } from "./broker/startBrokerFeed.js";
 
 async function main() {
   console.log(`[${env.WORKER_NAME}] boot`, {
@@ -34,14 +34,10 @@ async function main() {
   });
   console.log(`[${env.WORKER_NAME}] Ably connected`);
 
-  // 4) Start CQG demo feed (non-blocking)
-  if (CQG_ENABLED) {
-    startCqgDemoFeed().catch((e) => {
-      console.error(`[${env.WORKER_NAME}] CQG start failed`, e);
-    });
-  } else {
-    console.log(`[${env.WORKER_NAME}] CQG disabled (CQG_ENABLED=false)`);
-  }
+  // 4) Start broker feed (non-blocking)
+  await startBrokerFeed().catch((e) => {
+    console.error(`[${env.WORKER_NAME}] broker start failed`, e);
+  });
 
   // 5) Subscribe to execution commands
   const channel = ably.channels.get("aura:exec");
