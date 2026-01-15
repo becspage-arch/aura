@@ -4,9 +4,17 @@ export class CqgBrokerAdapter implements IBrokerAdapter {
   readonly name = "cqg" as const;
 
   async connect(): Promise<void> {
-    // Intentionally empty for now
-    // We will move existing CQG connect logic here next
-    console.log("[cqg-adapter] connect (stub)");
+    console.log("[cqg-adapter] connect");
+
+    const { startCqgDemoFeed } = await import("../cqg/client.js");
+
+    // startCqgDemoFeed already:
+    // - opens the WS
+    // - loads protos
+    // - sends logon
+    // - gates on failure
+    // - manages keepalive internally (for now)
+    await startCqgDemoFeed();
   }
 
   async authorize(): Promise<void> {
