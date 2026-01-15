@@ -4,8 +4,8 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   readonly name = "projectx" as const;
 
   async connect(): Promise<void> {
-    // TODO: implement ProjectX auth (TopstepX API key flow)
-    console.log("[projectx-adapter] connect (stub)");
+    const hasKey = Boolean(process.env.PROJECTX_API_KEY && process.env.PROJECTX_API_KEY !== "PASTE-HERE");
+    console.log("[projectx-adapter] connect", { hasKey });
   }
 
   async authorize(): Promise<void> {
