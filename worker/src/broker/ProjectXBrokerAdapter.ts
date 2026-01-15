@@ -9,21 +9,27 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   }
 
   async authorize(): Promise<void> {
+    const userName = process.env.PROJECTX_USERNAME;
     const apiKey = process.env.PROJECTX_API_KEY;
 
-    if (!apiKey) {
-      throw new Error("PROJECTX_API_KEY missing");
-    }
+    if (!userName) throw new Error("PROJECTX_USERNAME missing");
+    if (!apiKey) throw new Error("PROJECTX_API_KEY missing");
 
-    const res = await fetch("https://api.topstepx.com/v1/account", {
+    const res = await fetch("https://gateway-api-demo.s2f.projectx.com/api/Auth/loginKey", {
+      method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        accept: "text/plain",
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({ userName, apiKey }),
     });
 
-    console.log("[projectx-adapter] authorize response", {
+    const text = await res.text();
+
+    console.log("[projectx-adapter] authorize loginKey", {
       status: res.status,
       ok: res.ok,
+      body: text.slice(0, 300),
     });
   }
 
