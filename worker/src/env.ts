@@ -13,8 +13,32 @@ const EnvSchema = z.object({
 
   SYMBOL_DEFAULT: z.string().default("MGC"),
   DRY_RUN: z.string().default("true"),
+
+  // CQG WebAPI
+  CQG_ENABLED: z.string().default("false"),
+  CQG_WS_URL: z.string().default("wss://demoapi.cqg.com:443"),
+  CQG_USERNAME: z.string().optional(),
+  CQG_PASSWORD: z.string().optional(),
+  CQG_CLIENT_APP_ID: z.string().default("aura-worker"),
+  CQG_CLIENT_VERSION: z.string().default("0.1.0"),
+  CQG_PROTOCOL_VERSION_MAJOR: z.string().default("2"),
+  CQG_PROTOCOL_VERSION_MINOR: z.string().default("270"),
+  CQG_SYMBOLS: z.string().default("MGC,GCE"),
 });
 
 export const env = EnvSchema.parse(process.env);
 
 export const DRY_RUN = env.DRY_RUN.toLowerCase() === "true";
+
+export const CQG_ENABLED = env.CQG_ENABLED.toLowerCase() === "true";
+
+export const CQG = {
+  wsUrl: env.CQG_WS_URL,
+  username: env.CQG_USERNAME ?? "",
+  password: env.CQG_PASSWORD ?? "",
+  clientAppId: env.CQG_CLIENT_APP_ID,
+  clientVersion: env.CQG_CLIENT_VERSION,
+  protocolMajor: Number(env.CQG_PROTOCOL_VERSION_MAJOR),
+  protocolMinor: Number(env.CQG_PROTOCOL_VERSION_MINOR),
+  symbols: env.CQG_SYMBOLS.split(",").map((s) => s.trim()).filter(Boolean),
+};

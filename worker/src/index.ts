@@ -1,10 +1,11 @@
-import { env, DRY_RUN } from "./env.js";
+import { env, DRY_RUN, CQG_ENABLED } from "./env.js";
 import { db, checkDb } from "./db.js";
 import { createAblyRealtime } from "./ably.js";
 import { getSafetyStateForUser } from "./safety.js";
 import { hasSeen, markSeen } from "./idempotency.js";
 import { logEvent } from "./audit.js";
 import { acquireLock } from "./locks.js";
+import { startCqgDemoFeed } from "./cqg/client.js";
 
 async function main() {
   console.log(`[${env.WORKER_NAME}] boot`, {
@@ -12,18 +13,18 @@ async function main() {
     dryRun: DRY_RUN,
   });
 
-  // 1️⃣ DB bootstrap check (THIS is the "startup" step)
+  // 1) DB bootstrap check
   await checkDb();
   console.log(`[${env.WORKER_NAME}] DB connected`);
 
-  // 2️⃣ Acquire worker lock (single active worker)
+  // 2) Acquire worker lock (single active worker)
   const ok = await acquireLock(`workerLock:${env.WORKER_NAME}`, 60_000);
   if (!ok) {
     console.log(`[${env.WORKER_NAME}] lock already held, exiting`);
     process.exit(0);
   }
 
-  // 3️⃣ Connect to Ably
+  // 3) Connect to Ably
   const ably = createAblyRealtime();
   await new Promise<void>((resolve, reject) => {
     ably.connection.on("connected", () => resolve());
@@ -31,18 +32,27 @@ async function main() {
       reject(new Error("Ably connection failed"))
     );
   });
-
   console.log(`[${env.WORKER_NAME}] Ably connected`);
 
-  // 4️⃣ Subscribe to execution commands
+  // 4) Start CQG demo feed (non-blocking)
+  if (CQG_ENABLED) {
+    startCqgDemoFeed().catch((e) => {
+      console.error(`[${env.WORKER_NAME}] CQG start failed`, e);
+    });
+  } else {
+    console.log(`[${env.WORKER_NAME}] CQG disabled (CQG_ENABLED=false)`);
+  }
+
+  // 5) Subscribe to execution commands
   const channel = ably.channels.get("aura:exec");
 
   channel.subscribe(async (msg) => {
     console.log("[cqg-worker] RAW MESSAGE RECEIVED", {
-        msgId: msg.id,
-        msgName: msg.name,
-        data: msg.data,
+      msgId: msg.id,
+      msgName: msg.name,
+      data: msg.data,
     });
+
     const payload = msg.data as any;
 
     // Idempotency key
@@ -54,13 +64,13 @@ async function main() {
     if (!clerkUserId) return;
 
     let safety;
-        try {
-        console.log("[cqg-worker] calling getSafetyStateForUser", clerkUserId);
-        safety = await getSafetyStateForUser(clerkUserId);
-        console.log("[cqg-worker] safety result", safety);
-        } catch (err) {
-        console.error("[cqg-worker] getSafetyStateForUser FAILED", err);
-        return;
+    try {
+      console.log("[cqg-worker] calling getSafetyStateForUser", clerkUserId);
+      safety = await getSafetyStateForUser(clerkUserId);
+      console.log("[cqg-worker] safety result", safety);
+    } catch (err) {
+      console.error("[cqg-worker] getSafetyStateForUser FAILED", err);
+      return;
     }
 
     if (!safety.allow) {
@@ -85,9 +95,7 @@ async function main() {
     });
   });
 
-  console.log(
-    `[${env.WORKER_NAME}] listening on Ably channel aura:exec`
-  );
+  console.log(`[${env.WORKER_NAME}] listening on Ably channel aura:exec`);
 }
 
 main()
