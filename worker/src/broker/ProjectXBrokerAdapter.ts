@@ -9,7 +9,9 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   }
 
   async authorize(): Promise<void> {
-    console.log("[projectx-adapter] authorize (stub)");
+    console.log("[projectx-adapter] authorize", {
+      apiKeyLoaded: Boolean(process.env.PROJECTX_API_KEY),
+    });
   }
 
   startKeepAlive(): void {
