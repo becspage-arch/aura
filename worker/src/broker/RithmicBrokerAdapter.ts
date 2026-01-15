@@ -1,5 +1,6 @@
 import type { IBrokerAdapter } from "./IBrokerAdapter.js";
 import { getRithmicConfig } from "./rithmicConfig.js";
+import { createRithmicSocket } from "./rithmicSocket.js";
 
 export class RithmicBrokerAdapter implements IBrokerAdapter {
   readonly name = "rithmic" as const;
@@ -14,12 +15,8 @@ export class RithmicBrokerAdapter implements IBrokerAdapter {
       username: cfg.username,
     });
 
-    // IMPORTANT:
-    // No socket or protocol work yet.
-    // This step is ONLY to:
-    // - validate env vars exist
-    // - prove broker selection + wiring works
-    // - fail fast if config is missing
+    // Open TCP socket (no protocol yet)
+    createRithmicSocket(cfg.host, cfg.port);
   }
 
   async authorize(): Promise<void> {
