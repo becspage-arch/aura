@@ -44,6 +44,7 @@ async function main() {
       console.log(`[${env.WORKER_NAME}] published broker event`, {
         name: event.name,
         broker: event.broker,
+        data: event.data ?? null,
       });
     });
   } catch (e) {

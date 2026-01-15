@@ -1,5 +1,6 @@
 import { env } from "../env.js";
 import { createBroker } from "./createBroker.js";
+import { ProjectXMarketHub } from "./projectxMarketHub.js";
 
 export type BrokerEventName =
   | "broker.connected"
@@ -49,6 +50,11 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       broker: broker.name,
     });
 
+    // Optional warmup so "ready" includes real broker status (e.g. ProjectX accountId)
+    if (typeof (broker as any).warmup === "function") {
+      await (broker as any).warmup();
+    }
+
     broker.startKeepAlive();
 
     console.log(`[${env.WORKER_NAME}] broker ready for market data`, {
@@ -59,7 +65,45 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       name: "broker.ready",
       ts: new Date().toISOString(),
       broker: broker.name,
+      data: broker.getStatus?.(),
     });
+
+    // Start ProjectX market hub (read-only) AFTER broker is authorized + warm
+    // IMPORTANT: market hub failures must NOT crash the worker.
+    if (broker.name === "projectx") {
+      const token =
+        typeof (broker as any).getAuthToken === "function"
+          ? (broker as any).getAuthToken()
+          : null;
+
+      const status =
+        typeof (broker as any).getStatus === "function"
+          ? (broker as any).getStatus()
+          : null;
+
+      // You can override this with env later; for now we’ll just require it be set
+      const contractId = process.env.PROJECTX_CONTRACT_ID?.trim() || null;
+
+      if (!token) {
+        console.warn("[projectx-market] no token available, market hub not started");
+      } else if (!contractId) {
+        console.warn(
+          "[projectx-market] PROJECTX_CONTRACT_ID not set, market hub not started",
+          { hint: "Set PROJECTX_CONTRACT_ID to something like CON.F.US.MGC..." }
+        );
+      } else {
+        try {
+          const marketHub = new ProjectXMarketHub({ token, contractId });
+          await marketHub.start();
+          console.log("[projectx-market] started", {
+            accountId: status?.accountId ?? null,
+            contractId,
+          });
+        } catch (e) {
+          console.error("[projectx-market] failed to start (non-fatal)", e);
+        }
+      }
+    }
   } catch (e) {
     await emitSafe({
       name: "broker.error",

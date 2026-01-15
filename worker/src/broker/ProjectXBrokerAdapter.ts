@@ -46,6 +46,10 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     };
   }
 
+  getAuthToken(): string | null {
+    return this.token;
+  }
+
   async connect(): Promise<void> {
     const hasKey = Boolean(
       process.env.PROJECTX_API_KEY &&
@@ -166,8 +170,26 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     }
 
     const accounts = json?.accounts ?? [];
+
+    const preferredName = process.env.PROJECTX_ACCOUNT_NAME?.trim();
+    const preferredIdRaw = process.env.PROJECTX_ACCOUNT_ID?.trim();
+    const preferredId = preferredIdRaw ? Number(preferredIdRaw) : null;
+
+    const preferredById =
+      typeof preferredId === "number" && Number.isFinite(preferredId)
+        ? accounts.find((a) => a.id === preferredId)
+        : null;
+
+    const preferredByName = preferredName
+      ? accounts.find((a) => a.name === preferredName)
+      : null;
+
     const selected =
-      accounts.find((a) => a.canTrade && a.isVisible) ?? accounts[0] ?? null;
+      preferredById ??
+      preferredByName ??
+      accounts.find((a) => a.canTrade && a.isVisible) ??
+      accounts[0] ??
+      null;
 
     this.accountId = selected?.id ?? null;
     this.accountName = selected?.name ?? null;
@@ -180,6 +202,8 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       errorCode: json?.errorCode,
       errorMessage: json?.errorMessage ?? null,
       activeAccountsCount: accounts.length,
+      preferredAccountName: preferredName ?? null,
+      preferredAccountId: preferredIdRaw ?? null,
       selectedAccountId: this.accountId,
       selectedAccountName: this.accountName,
       selectedAccountSimulated: this.accountSimulated,
@@ -198,6 +222,12 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     }
   }
 
+  async warmup(): Promise<void> {
+    // Runs before broker.ready is emitted (called by startBrokerFeed if present)
+    await this.validateToken();
+    await this.fetchActiveAccounts();
+  }
+
   startKeepAlive(): void {
     if (!this.token) {
       throw new Error("Cannot start keepalive without ProjectX token");
@@ -209,15 +239,8 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
 
     console.log("[projectx-adapter] starting keepalive");
 
-    void (async () => {
-      try {
-        this.lastValidateAtMs = Date.now();
-        await this.validateToken();
-        await this.fetchActiveAccounts();
-      } catch (e) {
-        console.error("[projectx-adapter] startup health checks failed", e);
-      }
-    })();
+    // warmup() handles initial validate + account selection before broker.ready
+    this.lastValidateAtMs = Date.now();
 
     this.keepAliveTimer = setInterval(() => {
       console.log("[projectx-adapter] keepalive tick", {

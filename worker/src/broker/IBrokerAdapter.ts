@@ -5,13 +5,6 @@ export interface BrokerContext {
   env: "demo" | "live";
 }
 
-export type BrokerStatus = {
-  tokenOk?: boolean;
-  accountId?: number | null;
-  accountName?: string | null;
-  simulated?: boolean | null;
-};
-
 export interface IBrokerAdapter {
   readonly name: BrokerName;
 
@@ -24,6 +17,8 @@ export interface IBrokerAdapter {
   startKeepAlive(): void;
   stopKeepAlive(): void;
 
-  // optional status surface (safe for adapters that don't support it yet)
-  getStatus?: () => BrokerStatus;
+  // optional helpers (safe for adapters that don't implement them)
+  warmup?(): Promise<void>;
+  getStatus?(): Record<string, unknown>;
+  getAuthToken?(): string | null;
 }
