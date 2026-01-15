@@ -18,9 +18,8 @@ export class CqgBrokerAdapter implements IBrokerAdapter {
   }
 
   async authorize(): Promise<void> {
-    // Intentionally empty for now
-    // We will move existing CQG logon logic here next
-    console.log("[cqg-adapter] authorize (stub)");
+    // No-op for now because startCqgDemoFeed() already performs logon inside connect().
+    console.log("[cqg-adapter] authorize (noop - handled in connect)");
   }
 
   startKeepAlive(): void {
