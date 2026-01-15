@@ -15,7 +15,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     if (!userName) throw new Error("PROJECTX_USERNAME missing");
     if (!apiKey) throw new Error("PROJECTX_API_KEY missing");
 
-    const res = await fetch("https://gateway-api.s2f.projectx.com/api/Auth/loginKey", {
+    const res = await fetch("https://api.topstepx.com/api/Auth/loginKey", {
       method: "POST",
       headers: {
         accept: "text/plain",
