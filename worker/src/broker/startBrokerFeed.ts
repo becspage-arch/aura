@@ -6,7 +6,8 @@ export type BrokerEventName =
   | "broker.connected"
   | "broker.authorized"
   | "broker.ready"
-  | "broker.error";
+  | "broker.error"
+  | "broker.market.quote";
 
 export type BrokerEvent = {
   name: BrokerEventName;
@@ -81,7 +82,6 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
           ? (broker as any).getStatus()
           : null;
 
-      // You can override this with env later; for now we’ll just require it be set
       const contractId = process.env.PROJECTX_CONTRACT_ID?.trim() || null;
 
       if (!token) {
@@ -93,8 +93,28 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
         );
       } else {
         try {
-          const marketHub = new ProjectXMarketHub({ token, contractId });
+          const marketHub = new ProjectXMarketHub({
+            token,
+            contractId,
+            onQuote: async (q) => {
+              // Emit merged quote into Aura event stream
+              await emitSafe({
+                name: "broker.market.quote",
+                ts: new Date().toISOString(),
+                broker: "projectx",
+                data: {
+                  contractId: q.contractId,
+                  bid: q.bid,
+                  ask: q.ask,
+                  last: q.last ?? null,
+                  ts: q.ts ?? null,
+                },
+              });
+            },
+          });
+
           await marketHub.start();
+
           console.log("[projectx-market] started", {
             accountId: status?.accountId ?? null,
             contractId,
