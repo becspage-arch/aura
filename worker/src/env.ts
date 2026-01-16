@@ -27,9 +27,29 @@ const EnvSchema = z.object({
 
   // ProjectX (TopstepX)
   PROJECTX_API_KEY: z.string().optional(),
+  PROJECTX_CONTRACT_ID: z.string().min(1),
 });
 
 export const env = EnvSchema.parse(process.env);
+
+/**
+ * TEMP: print DB fingerprint so we know which DB the worker is using.
+ * (host + db name only, no secrets)
+ */
+function dbFingerprint(url: string | undefined) {
+  if (!url) return "(NOT SET)";
+  try {
+    const u = new URL(url);
+    return `${u.host}${u.pathname}`;
+  } catch {
+    return "(INVALID URL)";
+  }
+}
+
+console.log(
+  "[env] DATABASE_URL fingerprint",
+  dbFingerprint(process.env.DATABASE_URL)
+);
 
 export const DRY_RUN = env.DRY_RUN.toLowerCase() === "true";
 
@@ -48,4 +68,5 @@ export const CQG = {
 
 export const PROJECTX = {
   apiKey: env.PROJECTX_API_KEY ?? "",
+  contractId: env.PROJECTX_CONTRACT_ID,
 };

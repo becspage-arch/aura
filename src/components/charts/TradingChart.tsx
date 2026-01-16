@@ -222,7 +222,9 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         seriesRef.current.setData(cached.map(toSeries));
 
         const to = floorToTf(Math.floor(Date.now() / 1000), nextTf);
-        const url = `/api/charts/candles?symbol=${encodeURIComponent(symbol)}&tf=${nextTf}&to=${to}&limit=800`;
+        const url = `/api/charts/candles?symbol=${encodeURIComponent(
+          symbol
+        )}&tf=${nextTf}&to=${to}&limit=800&fill=1`;
 
         const res = await fetch(url, { signal: ac.signal });
         if (!res.ok) throw new Error(`Failed to load candles (${res.status})`);
@@ -290,7 +292,9 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
   const requestOlderPage = useCallback(
     async (nextTf: Timeframe, toParam: number) => {
-      const url = `/api/charts/candles?symbol=${encodeURIComponent(symbol)}&tf=${nextTf}&to=${toParam}&limit=800`;
+      const url = `/api/charts/candles?symbol=${encodeURIComponent(
+        symbol
+      )}&tf=${nextTf}&to=${toParam}&limit=800&fill=1`;
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return null;
       const json = (await res.json()) as ApiResponse;

@@ -16,7 +16,8 @@ export type BrokerEventName =
   | "broker.authorized"
   | "broker.ready"
   | "broker.error"
-  | "broker.market.quote";
+  | "broker.market.quote"
+  | "candle.15s.closed";
 
 export type BrokerEvent = {
   name: BrokerEventName;
@@ -36,7 +37,7 @@ function getDatabaseUrl(): string {
 
   if (!url) {
     throw new Error(
-      "DATABASE_URL is missing/empty. Set it in worker/.env.local (or your shell env)."
+      "DATABASE_URL is missing/empty. Set it in worker/.env (or your shell env)."
     );
   }
 
@@ -48,10 +49,6 @@ function getPrisma(): PrismaClient {
 
   const url = getDatabaseUrl();
 
-  // Prisma v7 in this repo is using the "client" engine, which REQUIRES either:
-  // - an adapter, or
-  // - accelerateUrl
-  // We use adapter-pg to keep it simple locally.
   prismaPool = new Pool({ connectionString: url });
   const adapter = new PrismaPg(prismaPool);
 
@@ -127,7 +124,6 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       broker: broker.name,
     });
 
-    // Optional warmup so "ready" includes real broker status (e.g. ProjectX accountId)
     if (typeof (broker as any).warmup === "function") {
       await (broker as any).warmup();
     }
@@ -145,8 +141,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       data: broker.getStatus?.(),
     });
 
-    // Start ProjectX market hub (read-only) AFTER broker is authorized + warm
-    // IMPORTANT: market hub failures must NOT crash the worker.
+    // --- ProjectX market hub ---
     if (broker.name === "projectx") {
       const token =
         typeof (broker as any).getAuthToken === "function"
@@ -161,108 +156,126 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       const contractId = process.env.PROJECTX_CONTRACT_ID?.trim() || null;
 
       if (!token) {
+        console.warn("[projectx-market] no token available, market hub not started");
+        return;
+      }
+
+      if (!contractId) {
         console.warn(
-          "[projectx-market] no token available, market hub not started"
+          "[projectx-market] PROJECTX_CONTRACT_ID not set, market hub not started"
         );
-      } else if (!contractId) {
-        console.warn(
-          "[projectx-market] PROJECTX_CONTRACT_ID not set, market hub not started",
-          { hint: "Set PROJECTX_CONTRACT_ID to something like CON.F.US.MGC..." }
-        );
-      } else {
-        try {
-          const marketHub = new ProjectXMarketHub({
-            token,
-            contractId,
-            onQuote: async (q) => {
-              // 1) Persist quote snapshot (THROTTLED, non-fatal)
-              try {
-                const instrumentKey = q.contractId;
-                const now = Date.now();
-                const last = lastPersistAtByInstrument.get(instrumentKey) ?? 0;
+        return;
+      }
 
-                if (now - last >= PERSIST_EVERY_MS) {
-                  lastPersistAtByInstrument.set(instrumentKey, now);
+      try {
+        const marketHub = new ProjectXMarketHub({
+          token,
+          contractId,
+          onQuote: async (q) => {
+            // 1) Persist quote snapshot (THROTTLED)
+            try {
+              const instrumentKey = q.contractId;
+              const now = Date.now();
+              const last = lastPersistAtByInstrument.get(instrumentKey) ?? 0;
 
-                  const db = getPrisma();
+              if (now - last >= PERSIST_EVERY_MS) {
+                lastPersistAtByInstrument.set(instrumentKey, now);
 
-                  // (We keep parsing ts here in case we later store it in a dedicated model)
-                  const quoteTs =
-                    typeof q.ts === "string" && q.ts.trim().length > 0
-                      ? new Date(q.ts)
-                      : null;
-                  void quoteTs; // avoid unused var warnings if your TS settings complain
+                const db = getPrisma();
 
-                  // Persist quotes into `eventLog` for now.
-                  await db.eventLog.create({
+                await db.eventLog.create({
+                  data: {
+                    type: "market.quote",
+                    level: "info",
+                    message: "ProjectX quote",
                     data: {
-                      type: "market.quote",
-                      level: "info",
-                      message: "ProjectX quote",
-                      data: {
-                        broker: "projectx",
-                        contractId: q.contractId,
-                        bid: q.bid ?? null,
-                        ask: q.ask ?? null,
-                        last: q.last ?? null,
-                        ts: q.ts ?? null,
-                      },
+                      broker: "projectx",
+                      contractId: q.contractId,
+                      bid: q.bid ?? null,
+                      ask: q.ask ?? null,
+                      last: q.last ?? null,
+                      ts: q.ts ?? null,
                     },
-                  });
-                }
-              } catch (e) {
-                console.error(
-                  "[projectx-market] failed to persist quote (non-fatal)",
-                  e
-                );
-              }
-
-              // 2) Emit merged quote into Aura event stream (UNTHROTTLED)
-              await emitSafe({
-                name: "broker.market.quote",
-                ts: new Date().toISOString(),
-                broker: "projectx",
-                data: {
-                  contractId: q.contractId,
-                  bid: q.bid,
-                  ask: q.ask,
-                  last: q.last ?? null,
-                  ts: q.ts ?? null,
-                },
-              });
-              // 3) Build 15s candles from quote ticks (UNTHROTTLED)
-              const closed = candle15s.ingest(
-                {
-                  contractId: q.contractId,
-                  bid: q.bid,
-                  ask: q.ask,
-                  last: q.last ?? null,
-                  ts: q.ts ?? null,
-                },
-                Date.now()
-              );
-
-              if (closed) {
-                // Emit internal candle-close event
-                await emitSafe({
-                  name: "candle.15s.closed",
-                  ts: new Date().toISOString(),
-                  broker: "projectx",
-                  data: closed.data,
+                  },
                 });
               }
-            },
-          });
+            } catch (e) {
+              console.error("[projectx-market] failed to persist quote", e);
+            }
 
-          await marketHub.start();
+            // 2) Emit quote event
+            await emitSafe({
+              name: "broker.market.quote",
+              ts: new Date().toISOString(),
+              broker: "projectx",
+              data: {
+                contractId: q.contractId,
+                bid: q.bid,
+                ask: q.ask,
+                last: q.last ?? null,
+                ts: q.ts ?? null,
+              },
+            });
 
-          console.log("[projectx-market] started", {
-            accountId: status?.accountId ?? null,
-            contractId,
-          });
-        } catch (e) {
-          console.error("[projectx-market] failed to start (non-fatal)", e);
-        }
+            // 3) Build 15s candle
+            const closed = candle15s.ingest(
+              {
+                contractId: q.contractId,
+                bid: q.bid,
+                ask: q.ask,
+                last: q.last ?? null,
+                ts: q.ts ?? null,
+              },
+              Date.now()
+            );
+
+            if (!closed) return;
+
+            // 3a) Persist CLOSED candle
+            try {
+              const db = getPrisma();
+              const symbol = closed.data.contractId;
+              const time = Math.floor(closed.data.t0 / 1000);
+
+              await db.candle15s.upsert({
+                where: { symbol_time: { symbol, time } },
+                create: {
+                  symbol,
+                  time,
+                  open: closed.data.o,
+                  high: closed.data.h,
+                  low: closed.data.l,
+                  close: closed.data.c,
+                },
+                update: {
+                  open: closed.data.o,
+                  high: closed.data.h,
+                  low: closed.data.l,
+                  close: closed.data.c,
+                },
+              });
+            } catch (e) {
+              console.error("[projectx-market] failed to persist Candle15s", e);
+            }
+
+            // 3b) Emit candle close event
+            await emitSafe({
+              name: "candle.15s.closed",
+              ts: new Date().toISOString(),
+              broker: "projectx",
+              data: closed.data,
+            });
+          },
+        });
+
+        await marketHub.start();
+
+        console.log("[projectx-market] started", {
+          accountId: status?.accountId ?? null,
+          contractId,
+        });
+      } catch (e) {
+        console.error("[projectx-market] failed to start", e);
       }
     }
   } catch (e) {

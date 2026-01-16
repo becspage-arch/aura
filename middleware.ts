@@ -8,6 +8,42 @@ function isResponseLike(x: any): x is Response {
 export default clerkMiddleware((auth, req) => {
   const { pathname } = new URL(req.url);
 
+  /* =====================================================
+     AURA COMING SOON PASSWORD GATE (NEW)
+     ===================================================== */
+
+  // Always allow Next internals & static assets
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    pathname.startsWith("/robots.txt") ||
+    pathname.startsWith("/sitemap")
+  ) {
+    return NextResponse.next();
+  }
+
+  // Allow gate page + unlock endpoint
+  if (
+    pathname === "/gate" ||
+    pathname === "/api/gate/unlock"
+  ) {
+    return NextResponse.next();
+  }
+
+  // Check gate cookie
+  const isUnlocked = req.cookies.get("aura_gate")?.value === "1";
+
+  if (!isUnlocked) {
+    // Redirect EVERYTHING to /gate until unlocked
+    const url = new URL(req.url);
+    url.pathname = "/gate";
+    return NextResponse.redirect(url);
+  }
+
+  /* =====================================================
+     EXISTING LOGIC (UNCHANGED)
+     ===================================================== */
+
   // DEV-only: allow seed + chart data endpoints without auth (LOCALHOST ONLY)
   if (process.env.NODE_ENV !== "production") {
     const host = req.headers?.get?.("host") ?? "";
@@ -19,7 +55,7 @@ export default clerkMiddleware((auth, req) => {
     }
   }
 
-  // Public routes
+  // Public routes (still public AFTER gate unlock)
   if (
     pathname === "/" ||
     pathname.startsWith("/sign-in") ||

@@ -6,26 +6,29 @@ export const dynamic = "force-dynamic";
 
 /**
  * DEV ONLY seed endpoint.
- * Inserts sample candles (15s + 3m) and a sample order + fill for marker testing.
+ * Inserts sample 15s candles (Candle15s) + a sample order + fill for marker testing.
  *
  * Safety:
  * - Only enabled when NODE_ENV !== "production"
  */
 export async function POST() {
   if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not available in production" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Not available in production" },
+      { status: 404 }
+    );
   }
 
   const symbol = "MGC";
 
   const nowSec = Math.floor(Date.now() / 1000);
-  const start15 = Math.floor((nowSec - 60 * 30) / 180) * 180; // last 30 mins aligned to 3m (and therefore 15s too)
+  // last 30 mins aligned to 3m (and therefore 15s too)
+  const start15 = Math.floor((nowSec - 60 * 30) / 180) * 180;
 
   // --- Seed 15s candles (120 candles = 30 minutes) ---
   const candles15: Array<{
     symbol: string;
-    timeframe: "S15";
-    ts: Date;
+    time: number; // epoch seconds (open time)
     open: any;
     high: any;
     low: any;
@@ -47,8 +50,7 @@ export async function POST() {
 
     candles15.push({
       symbol,
-      timeframe: "S15",
-      ts: new Date(t * 1000),
+      time: t,
       open,
       high,
       low,
@@ -59,65 +61,16 @@ export async function POST() {
     price = close;
   }
 
-  // --- Derive 3m candles from 15s (10 candles = 30 minutes) ---
-  const candles3: Array<{
-    symbol: string;
-    timeframe: "M3";
-    ts: Date;
-    open: any;
-    high: any;
-    low: any;
-    close: any;
-    volume: any;
-  }> = [];
-
-  for (let b = 0; b < 10; b++) {
-    const bucketStart = start15 + b * 180;
-    const slice = candles15.filter(
-      (c) =>
-        c.ts.getTime() / 1000 >= bucketStart &&
-        c.ts.getTime() / 1000 < bucketStart + 180
-    );
-    if (!slice.length) continue;
-
-    const open = slice[0].open;
-    const close = slice[slice.length - 1].close;
-    const high = Math.max(...slice.map((c) => Number(c.high)));
-    const low = Math.min(...slice.map((c) => Number(c.low)));
-    const volume = slice.reduce((sum, c) => sum + Number(c.volume ?? 0), 0);
-
-    candles3.push({
-      symbol,
-      timeframe: "M3",
-      ts: new Date(bucketStart * 1000),
-      open,
-      high,
-      low,
-      close,
-      volume,
-    });
-  }
-
-  // Use upsert to avoid duplicate unique constraint issues
-  const candleOps = [
-    ...candles15.map((c) =>
-      prisma.candle.upsert({
-        where: { symbol_timeframe_ts: { symbol: c.symbol, timeframe: c.timeframe, ts: c.ts } },
-        create: c as any,
-        update: c as any,
-      })
-    ),
-    ...candles3.map((c) =>
-      prisma.candle.upsert({
-        where: { symbol_timeframe_ts: { symbol: c.symbol, timeframe: c.timeframe, ts: c.ts } },
-        create: c as any,
-        update: c as any,
-      })
-    ),
-  ];
+  // Upsert into Candle15s so repeated seeding is safe
+  const candleOps = candles15.map((c) =>
+    prisma.candle15s.upsert({
+      where: { symbol_time: { symbol: c.symbol, time: c.time } },
+      create: c as any,
+      update: c as any,
+    })
+  );
 
   // --- Seed a dummy broker account (needed for FK) ---
-  // We'll create a local UserProfile if none exists.
   const user = await prisma.userProfile.upsert({
     where: { clerkUserId: "dev" },
     create: { clerkUserId: "dev", email: "dev@local" },
@@ -135,15 +88,19 @@ export async function POST() {
     update: { userId: user.id, accountLabel: "Dev Account" },
   });
 
-    // 0) Clean existing DEV candles so 3m timestamps are guaranteed aligned
-  await prisma.candle.deleteMany({
-    where: { symbol, timeframe: "M3" },
+  // 0) Optional: clean previous seeded candles in this 30m window so it's deterministic
+  const end15 = start15 + (120 - 1) * 15;
+  await prisma.candle15s.deleteMany({
+    where: {
+      symbol,
+      time: { gte: start15, lte: end15 },
+    },
   });
 
-  // 1) Upsert candles FIRST so they definitely exist for the marker bucket
+  // 1) Insert candles
   await Promise.all(candleOps);
 
-  // 2) Delete previous DEV markers so the newest marker is always the one we seed
+  // 2) Delete previous DEV orders/fills so newest marker is always the one we seed
   await prisma.fill.deleteMany({
     where: {
       brokerAccountId: account.id,
@@ -161,7 +118,6 @@ export async function POST() {
   });
 
   // 3) Seed an order + fill near the END of the candle series (so it maps to a candle you just created)
-  const end15 = start15 + (120 - 1) * 15; // last 15s candle open time
   const orderCreatedSec = end15 - 60; // ~1 minute before the last candle
   const fillCreatedSec = orderCreatedSec + 15; // next 15s bucket (still within range)
 
@@ -199,7 +155,6 @@ export async function POST() {
     symbol,
     seeded: {
       candles15: candles15.length,
-      candles3: candles3.length,
       start15,
       end15,
       orderId: order.id,
