@@ -63,16 +63,44 @@ async function main() {
   // 4) Start broker feed (non-blocking)
   // 4) Start broker feed + emit lifecycle events to Ably
   const brokerChannel = ably.channels.get("aura:broker");
+  const uiChannel = ably.channels.get("aura:ui"); // UI-facing AuraRealtimeEvent stream
 
   try {
     await startBrokerFeed(async (event) => {
+      // Always publish raw broker events (debug / internal)
       await brokerChannel.publish(event.name, event);
+
+      // Additionally publish UI-friendly AuraRealtimeEvent for candle close
+      if (event.name === "candle.15s.closed" && event.data) {
+        const d: any = event.data;
+
+        // d is Candle15s from candle15sAggregator:
+        // { contractId, t0(ms), o,h,l,c, ticks }
+        const auraEvt = {
+          type: "candle_closed",
+          ts: event.ts,
+          data: {
+            symbol: String(d.contractId),
+            timeframe: "15s",
+            time: Math.floor(Number(d.t0) / 1000), // epoch seconds (open time)
+            open: Number(d.o),
+            high: Number(d.h),
+            low: Number(d.l),
+            close: Number(d.c),
+            // volume optional; we don't have real volume yet
+          },
+        };
+
+        await uiChannel.publish("aura", auraEvt);
+      }
+
       console.log(`[${env.WORKER_NAME}] published broker event`, {
         name: event.name,
         broker: event.broker,
         data: event.data ?? null,
       });
     });
+
   } catch (e) {
     console.error(`[${env.WORKER_NAME}] broker start failed`, e);
     process.exit(1);

@@ -8,6 +8,13 @@ function isResponseLike(x: any): x is Response {
 export default clerkMiddleware((auth, req) => {
   const { pathname } = new URL(req.url);
 
+    // TEMP DEBUG: prove middleware runs on /
+  if (pathname === "/") {
+    const url = new URL(req.url);
+    url.pathname = "/gate";
+    return NextResponse.redirect(url);
+  }
+
   /* =====================================================
      AURA COMING SOON PASSWORD GATE (NEW)
      ===================================================== */
