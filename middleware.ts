@@ -8,18 +8,29 @@ function isResponseLike(x: any): x is Response {
 export default clerkMiddleware((auth, req) => {
   const { pathname } = new URL(req.url);
 
-    // TEMP DEBUG: prove middleware runs on /
-  if (pathname === "/") {
-    const url = new URL(req.url);
-    url.pathname = "/gate";
-    return NextResponse.redirect(url);
+  /* =====================================================
+     ALWAYS ALLOW API DATA ENDPOINTS (DEV ONLY, LOCALHOST)
+     ===================================================== */
+
+  if (process.env.NODE_ENV !== "production") {
+    const host = req.headers?.get?.("host") ?? "";
+    const isLocal =
+      host.startsWith("localhost") || host.startsWith("127.0.0.1");
+
+    if (isLocal) {
+      if (pathname.startsWith("/api/dev/seed/")) {
+        return NextResponse.next();
+      }
+      if (pathname.startsWith("/api/charts/")) {
+        return NextResponse.next();
+      }
+    }
   }
 
   /* =====================================================
-     AURA COMING SOON PASSWORD GATE (NEW)
+     NEXT INTERNALS & STATIC ASSETS
      ===================================================== */
 
-  // Always allow Next internals & static assets
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
@@ -29,7 +40,10 @@ export default clerkMiddleware((auth, req) => {
     return NextResponse.next();
   }
 
-  // Allow gate page + unlock endpoint
+  /* =====================================================
+     AURA COMING SOON PASSWORD GATE
+     ===================================================== */
+
   if (
     pathname === "/gate" ||
     pathname === "/api/gate/unlock"
@@ -37,32 +51,18 @@ export default clerkMiddleware((auth, req) => {
     return NextResponse.next();
   }
 
-  // Check gate cookie
   const isUnlocked = req.cookies.get("aura_gate")?.value === "1";
 
   if (!isUnlocked) {
-    // Redirect EVERYTHING to /gate until unlocked
     const url = new URL(req.url);
     url.pathname = "/gate";
     return NextResponse.redirect(url);
   }
 
   /* =====================================================
-     EXISTING LOGIC (UNCHANGED)
+     PUBLIC ROUTES (AFTER GATE)
      ===================================================== */
 
-  // DEV-only: allow seed + chart data endpoints without auth (LOCALHOST ONLY)
-  if (process.env.NODE_ENV !== "production") {
-    const host = req.headers?.get?.("host") ?? "";
-    const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
-
-    if (isLocal) {
-      if (pathname.startsWith("/api/dev/seed/")) return NextResponse.next();
-      if (pathname.startsWith("/api/charts/")) return NextResponse.next();
-    }
-  }
-
-  // Public routes (still public AFTER gate unlock)
   if (
     pathname === "/" ||
     pathname.startsWith("/sign-in") ||
@@ -72,7 +72,10 @@ export default clerkMiddleware((auth, req) => {
     return NextResponse.next();
   }
 
-  // Let Clerk do its thing, but only return it if it's a real Response
+  /* =====================================================
+     CLERK AUTH
+     ===================================================== */
+
   const maybe = auth.protect();
   if (isResponseLike(maybe)) return maybe;
 
@@ -80,5 +83,9 @@ export default clerkMiddleware((auth, req) => {
 });
 
 export const config = {
-  matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api|trpc)(.*)"],
+  matcher: [
+    "/((?!.+\\.[\\w]+$|_next).*)",
+    "/",
+    "/(api|trpc)(.*)",
+  ],
 };
