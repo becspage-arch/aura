@@ -8,6 +8,13 @@ function isResponseLike(x: any): x is Response {
 export default clerkMiddleware((auth, req) => {
   const { pathname } = new URL(req.url);
 
+  // DIAGNOSTIC: prove middleware runs on production for "/"
+  if (pathname === "/") {
+    const res = NextResponse.next();
+    res.headers.set("x-aura-mw", "1");
+    return res;
+  }
+
   /* =====================================================
      ALWAYS ALLOW API DATA ENDPOINTS (DEV ONLY, LOCALHOST)
      ===================================================== */
