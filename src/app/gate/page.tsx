@@ -27,7 +27,7 @@ export default function GatePage() {
       }
 
       // success - go to the real homepage
-      window.location.href = "/";
+      window.location.href = "/home";
     } catch {
       setError("Something went wrong. Please try again.");
       setLoading(false);
