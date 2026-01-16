@@ -30,7 +30,7 @@ type ProjectXMarketHubOpts = {
 export class ProjectXMarketHub {
   private conn: HubConnection | null = null;
   private lastEventAtMs = 0;
-  private heartbeatTimer: NodeJS.Timer | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   // merge state (ProjectX often sends partial quote updates)
   private lastBid: number | undefined;
@@ -71,47 +71,6 @@ export class ProjectXMarketHub {
 
     this.conn = conn;
 
-    // DEBUG: log ALL server -> client invocations so we can see the real event target names
-    (conn as any).onreceive = undefined; // (do not add this line if it exists)
-    const httpConn = (conn as any).connection;
-    if (httpConn && typeof httpConn.onreceive === "function") {
-      const orig = httpConn.onreceive.bind(httpConn);
-      httpConn.onreceive = (data: any) => {
-        try {
-          const s =
-            typeof data === "string"
-              ? data
-              : Buffer.isBuffer(data)
-              ? data.toString("utf8")
-              : JSON.stringify(data);
-
-          // SignalR JSON protocol messages are separated by 0x1e
-          const parts = String(s).split("\u001e").filter(Boolean);
-          for (const p of parts) {
-            let msg: any;
-            try {
-              msg = JSON.parse(p);
-            } catch {
-              continue;
-            }
-
-            // type 1 = Invocation (this is where server sends events)
-            if (msg?.type === 1) {
-              console.log("[projectx-market][invoke]", {
-                target: msg.target,
-                arguments: msg.arguments,
-              });
-            }
-          }
-        } catch {
-          // ignore
-        }
-        return orig(data);
-      };
-    } else {
-      console.log("[projectx-market][invoke] httpConn.onreceive not available");
-    }
-
     console.log("[projectx-market] config", {
       contractId,
       quotes,
@@ -120,11 +79,18 @@ export class ProjectXMarketHub {
       raw,
     });
 
-    // Optional diagnostic raw frame logging
-    if (raw) {
+    /**
+     * === Single, reliable debug hook ===
+     * Wrap the underlying transport receive to:
+     * - optionally log raw frames
+     * - parse SignalR JSON protocol messages (delimited by 0x1e)
+     * - print ALL server->client invocation targets + arguments (type: 1)
+     */
+    {
       const httpConn = (conn as any).connection;
       if (httpConn && typeof httpConn.onreceive === "function") {
         const origOnReceive = httpConn.onreceive.bind(httpConn);
+
         httpConn.onreceive = (data: any) => {
           try {
             const s =
@@ -133,66 +99,98 @@ export class ProjectXMarketHub {
                 : Buffer.isBuffer(data)
                 ? data.toString("utf8")
                 : JSON.stringify(data);
-            if (typeof s === "string") console.log("[projectx-market] incoming", s);
+
+            if (raw) {
+              console.log("[projectx-market] incoming", s);
+            }
+
+            // SignalR JSON protocol messages are separated by ASCII 0x1e
+            const parts = String(s).split("\u001e");
+            for (const part of parts) {
+              const msg = part.trim();
+              if (!msg) continue;
+
+              let obj: any;
+              try {
+                obj = JSON.parse(msg);
+              } catch {
+                continue;
+              }
+
+              // type: 1 = Invocation (server -> client event)
+              if (obj?.type === 1) {
+                console.log("[projectx-market][invocation]", {
+                  target: obj.target,
+                  arguments: obj.arguments,
+                });
+              }
+            }
           } catch {
             // ignore
           }
+
           return origOnReceive(data);
         };
-      } else if (httpConn) {
-        console.warn(
-          "[projectx-market] raw hook not available (no connection.onreceive)"
-        );
       } else {
-        console.warn("[projectx-market] raw hook not available (no connection)");
+        console.warn("[projectx-market] raw/invocation hook not available");
       }
     }
 
     // QUOTES
-    // QUOTES
-if (quotes) {
-  conn.on("GatewayQuote", async (contractIdFromEvent: any, dataFromEvent?: any) => {
-    this.lastEventAtMs = Date.now();
+    if (quotes) {
+      conn.on("GatewayQuote", async (a: any, b?: any) => {
+        this.lastEventAtMs = Date.now();
 
-    // Per docs: handler is (contractId, data)
-    const cid = String(contractIdFromEvent ?? contractId);
-    const data = dataFromEvent ?? {};
+        // ProjectX sometimes sends (contractId, payload) and sometimes (payload)
+        const cid = typeof a === "string" ? a : contractId;
+        const payload = typeof a === "string" ? b : a;
 
-    // Fields per docs are typically: bestBid, bestAsk, lastPrice, timestamp
-    const bid =
-      data?.bestBid ?? data?.BestBid ?? data?.bid ?? data?.Bid;
-    const ask =
-      data?.bestAsk ?? data?.BestAsk ?? data?.ask ?? data?.Ask;
-    const last =
-      data?.lastPrice ?? data?.LastPrice ?? data?.last ?? data?.Last;
-    const ts =
-      data?.timestamp ?? data?.Timestamp ?? data?.ts ?? data?.Ts;
+        const bid =
+          payload?.bid ?? payload?.Bid ?? payload?.bestBid ?? payload?.BestBid;
+        const ask =
+          payload?.ask ?? payload?.Ask ?? payload?.bestAsk ?? payload?.BestAsk;
+        const last =
+          payload?.last ??
+          payload?.Last ??
+          payload?.lastPrice ??
+          payload?.LastPrice ??
+          payload?.tradePrice ??
+          payload?.TradePrice;
 
-    // Merge partial updates (keep last known values)
-    if (typeof bid === "number") this.lastBid = bid;
-    if (typeof ask === "number") this.lastAsk = ask;
-    if (typeof last === "number") this.lastLast = last;
-    if (typeof ts === "string") this.lastTs = ts;
+        const ts =
+          payload?.ts ??
+          payload?.Ts ??
+          payload?.timestamp ??
+          payload?.Timestamp ??
+          payload?.time ??
+          payload?.Time;
 
-    const merged = {
-      contractId: cid,
-      bid: this.lastBid,
-      ask: this.lastAsk,
-      last: this.lastLast,
-      ts: this.lastTs,
-    };
+        // Merge partial updates (keep last known values)
+        if (typeof bid === "number") this.lastBid = bid;
+        if (typeof ask === "number") this.lastAsk = ask;
+        if (typeof last === "number") this.lastLast = last;
+        if (typeof ts === "string") this.lastTs = ts;
 
-    console.log("[projectx-market] quote", merged);
+        const merged = {
+          contractId: cid,
+          bid: this.lastBid,
+          ask: this.lastAsk,
+          last: this.lastLast,
+          ts: this.lastTs,
+        };
 
-    if (onQuote) {
-      try {
-        await onQuote(merged);
-      } catch (e) {
-        console.error("[projectx-market] onQuote handler failed (non-fatal)", e);
-      }
+        console.log("[projectx-market] quote", merged);
+
+        // Call hook if provided (non-fatal)
+        if (onQuote) {
+          try {
+            await onQuote(merged);
+          } catch (e) {
+            console.error("[projectx-market] onQuote handler failed (non-fatal)", e);
+          }
+        }
+      });
     }
-  });
-}
 
     // TRADES
     if (trades) {
@@ -264,38 +262,6 @@ if (quotes) {
     });
 
     console.log("[projectx-market] starting connection...");
-      // DEBUG: log every incoming hub invocation so we can see the REAL event names.
-      // This is the only "wildcard" style hook that actually works with SignalR.
-      try {
-        const proto = (conn as any).connection?.features?.inherentKeepAlive
-          ? null
-          : (conn as any).protocol;
-
-        const protocol = (conn as any).protocol;
-        if (protocol && typeof protocol.parseMessages === "function") {
-          const originalParse = protocol.parseMessages.bind(protocol);
-
-          protocol.parseMessages = (input: any, logger: any) => {
-            const messages = originalParse(input, logger);
-            for (const m of messages) {
-              // Invocation messages contain the target (method/event name) + arguments
-              if (m?.type === 1 /* Invocation */) {
-                console.log("[projectx-market][debug] invocation", {
-                  target: m.target,
-                  arguments: m.arguments,
-                });
-              } else {
-                console.log("[projectx-market][debug] message", m);
-              }
-            }
-            return messages;
-          };
-        } else {
-          console.warn("[projectx-market][debug] protocol.parseMessages not available");
-        }
-      } catch (e) {
-        console.warn("[projectx-market][debug] failed to hook protocol.parseMessages", e);
-      }
 
     try {
       await conn.start();
