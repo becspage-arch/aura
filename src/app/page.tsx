@@ -5,7 +5,7 @@ export default function HomePage() {
     <main style={{ maxWidth: 760, margin: "80px auto", padding: 24 }}>
       <h1 style={{ fontSize: 34, marginBottom: 10 }}>The Aura Algo is coming soon</h1>
       <p style={{ opacity: 0.8, marginBottom: 28 }}>
-        This will become the public Aura homepage later.
+        This will become the public Aura homepage later...
       </p>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
