@@ -171,6 +171,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
         const marketHub = new ProjectXMarketHub({
           token,
           contractId,
+          raw: true,
           onQuote: async (q) => {
             // 1) Persist quote snapshot (THROTTLED)
             try {

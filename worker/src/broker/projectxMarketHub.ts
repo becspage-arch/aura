@@ -62,7 +62,7 @@ export class ProjectXMarketHub {
         transport: HttpTransportType.WebSockets,
       })
       .withAutomaticReconnect()
-      .configureLogging(LogLevel.Information)
+      .configureLogging(LogLevel.Trace)
       .build();
 
     // Prevent "Server timeout elapsed..." disconnects
