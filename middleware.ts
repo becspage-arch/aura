@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/edge";
 
 export const runtime = "edge";
 

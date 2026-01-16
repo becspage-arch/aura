@@ -71,6 +71,47 @@ export class ProjectXMarketHub {
 
     this.conn = conn;
 
+    // DEBUG: log ALL server -> client invocations so we can see the real event target names
+    (conn as any).onreceive = undefined; // (do not add this line if it exists)
+    const httpConn = (conn as any).connection;
+    if (httpConn && typeof httpConn.onreceive === "function") {
+      const orig = httpConn.onreceive.bind(httpConn);
+      httpConn.onreceive = (data: any) => {
+        try {
+          const s =
+            typeof data === "string"
+              ? data
+              : Buffer.isBuffer(data)
+              ? data.toString("utf8")
+              : JSON.stringify(data);
+
+          // SignalR JSON protocol messages are separated by 0x1e
+          const parts = String(s).split("\u001e").filter(Boolean);
+          for (const p of parts) {
+            let msg: any;
+            try {
+              msg = JSON.parse(p);
+            } catch {
+              continue;
+            }
+
+            // type 1 = Invocation (this is where server sends events)
+            if (msg?.type === 1) {
+              console.log("[projectx-market][invoke]", {
+                target: msg.target,
+                arguments: msg.arguments,
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
+        return orig(data);
+      };
+    } else {
+      console.log("[projectx-market][invoke] httpConn.onreceive not available");
+    }
+
     console.log("[projectx-market] config", {
       contractId,
       quotes,
@@ -108,58 +149,50 @@ export class ProjectXMarketHub {
     }
 
     // QUOTES
-    if (quotes) {
-      conn.on("GatewayQuote", async (a: any, b?: any) => {
-        this.lastEventAtMs = Date.now();
+    // QUOTES
+if (quotes) {
+  conn.on("GatewayQuote", async (contractIdFromEvent: any, dataFromEvent?: any) => {
+    this.lastEventAtMs = Date.now();
 
-        // ProjectX sometimes sends (contractId, payload) and sometimes (payload)
-        const cid = typeof a === "string" ? a : contractId;
-        const payload = typeof a === "string" ? b : a;
+    // Per docs: handler is (contractId, data)
+    const cid = String(contractIdFromEvent ?? contractId);
+    const data = dataFromEvent ?? {};
 
-        const bid =
-          payload?.bid ?? payload?.Bid ?? payload?.bestBid ?? payload?.BestBid;
-        const ask =
-          payload?.ask ?? payload?.Ask ?? payload?.bestAsk ?? payload?.BestAsk;
-        const last =
-          payload?.last ??
-          payload?.Last ??
-          payload?.tradePrice ??
-          payload?.TradePrice;
+    // Fields per docs are typically: bestBid, bestAsk, lastPrice, timestamp
+    const bid =
+      data?.bestBid ?? data?.BestBid ?? data?.bid ?? data?.Bid;
+    const ask =
+      data?.bestAsk ?? data?.BestAsk ?? data?.ask ?? data?.Ask;
+    const last =
+      data?.lastPrice ?? data?.LastPrice ?? data?.last ?? data?.Last;
+    const ts =
+      data?.timestamp ?? data?.Timestamp ?? data?.ts ?? data?.Ts;
 
-        const ts =
-          payload?.ts ??
-          payload?.Ts ??
-          payload?.timestamp ??
-          payload?.Timestamp ??
-          payload?.time ??
-          payload?.Time;
+    // Merge partial updates (keep last known values)
+    if (typeof bid === "number") this.lastBid = bid;
+    if (typeof ask === "number") this.lastAsk = ask;
+    if (typeof last === "number") this.lastLast = last;
+    if (typeof ts === "string") this.lastTs = ts;
 
-        // Merge partial updates (keep last known values)
-        if (typeof bid === "number") this.lastBid = bid;
-        if (typeof ask === "number") this.lastAsk = ask;
-        if (typeof last === "number") this.lastLast = last;
-        if (typeof ts === "string") this.lastTs = ts;
+    const merged = {
+      contractId: cid,
+      bid: this.lastBid,
+      ask: this.lastAsk,
+      last: this.lastLast,
+      ts: this.lastTs,
+    };
 
-        const merged = {
-          contractId: cid,
-          bid: this.lastBid,
-          ask: this.lastAsk,
-          last: this.lastLast,
-          ts: this.lastTs,
-        };
+    console.log("[projectx-market] quote", merged);
 
-        console.log("[projectx-market] quote", merged);
-
-        // Call hook if provided (non-fatal)
-        if (onQuote) {
-          try {
-            await onQuote(merged);
-          } catch (e) {
-            console.error("[projectx-market] onQuote handler failed (non-fatal)", e);
-          }
-        }
-      });
+    if (onQuote) {
+      try {
+        await onQuote(merged);
+      } catch (e) {
+        console.error("[projectx-market] onQuote handler failed (non-fatal)", e);
+      }
     }
+  });
+}
 
     // TRADES
     if (trades) {
