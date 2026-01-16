@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
+export const runtime = "edge";
+
 function isResponseLike(x: any): x is Response {
   return !!x && typeof x === "object" && x.headers && typeof x.headers.get === "function";
 }

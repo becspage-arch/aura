@@ -231,6 +231,38 @@ export class ProjectXMarketHub {
     });
 
     console.log("[projectx-market] starting connection...");
+      // DEBUG: log every incoming hub invocation so we can see the REAL event names.
+      // This is the only "wildcard" style hook that actually works with SignalR.
+      try {
+        const proto = (conn as any).connection?.features?.inherentKeepAlive
+          ? null
+          : (conn as any).protocol;
+
+        const protocol = (conn as any).protocol;
+        if (protocol && typeof protocol.parseMessages === "function") {
+          const originalParse = protocol.parseMessages.bind(protocol);
+
+          protocol.parseMessages = (input: any, logger: any) => {
+            const messages = originalParse(input, logger);
+            for (const m of messages) {
+              // Invocation messages contain the target (method/event name) + arguments
+              if (m?.type === 1 /* Invocation */) {
+                console.log("[projectx-market][debug] invocation", {
+                  target: m.target,
+                  arguments: m.arguments,
+                });
+              } else {
+                console.log("[projectx-market][debug] message", m);
+              }
+            }
+            return messages;
+          };
+        } else {
+          console.warn("[projectx-market][debug] protocol.parseMessages not available");
+        }
+      } catch (e) {
+        console.warn("[projectx-market][debug] failed to hook protocol.parseMessages", e);
+      }
 
     try {
       await conn.start();
