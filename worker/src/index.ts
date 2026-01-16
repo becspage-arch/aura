@@ -4,7 +4,8 @@ import { createAblyRealtime } from "./ably.js";
 import { getSafetyStateForUser } from "./safety.js";
 import { hasSeen, markSeen } from "./idempotency.js";
 import { logEvent } from "./audit.js";
-import { acquireLock } from "./locks.js";
+import { acquireLock, refreshLock, releaseLock } from "./locks.js";
+import { randomUUID } from "crypto";
 import { startBrokerFeed } from "./broker/startBrokerFeed.js";
 
 async function main() {
@@ -18,11 +19,36 @@ async function main() {
   console.log(`[${env.WORKER_NAME}] DB connected`);
 
   // 2) Acquire worker lock (single active worker)
-  const ok = await acquireLock(`workerLock:${env.WORKER_NAME}`, 60_000);
+  const lockKey = `workerLock:${env.WORKER_NAME}`;
+  const lockTtlMs = 60_000;
+  const lockOwnerId = randomUUID();
+
+  const ok = await acquireLock(lockKey, lockTtlMs, lockOwnerId);
   if (!ok) {
     console.log(`[${env.WORKER_NAME}] lock already held, exiting`);
     process.exit(0);
   }
+
+  // Refresh lock periodically (heartbeat)
+  const refreshEveryMs = Math.floor(lockTtlMs / 2);
+  const lockInterval = setInterval(() => {
+    void refreshLock(lockKey, lockTtlMs, lockOwnerId).catch((e) => {
+      console.warn(`[${env.WORKER_NAME}] lock refresh failed`, e);
+    });
+  }, refreshEveryMs);
+
+  // Ensure we release lock on exit
+  const cleanupLock = async () => {
+    clearInterval(lockInterval);
+    try {
+      await releaseLock(lockKey, lockOwnerId);
+    } catch (e) {
+      console.warn(`[${env.WORKER_NAME}] lock release failed`, e);
+    }
+  };
+
+  process.once("SIGINT", () => void cleanupLock().finally(() => process.exit(0)));
+  process.once("SIGTERM", () => void cleanupLock().finally(() => process.exit(0)));
 
   // 3) Connect to Ably
   const ably = createAblyRealtime();
@@ -115,6 +141,3 @@ main()
   .finally(async () => {
     await db.$disconnect();
   });
-
-process.on("SIGINT", () => process.exit(0));
-process.on("SIGTERM", () => process.exit(0));

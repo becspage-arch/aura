@@ -103,6 +103,40 @@ model Candle15s {
 
 /**
  * -----------------------------
+ * Normalized market quote storage (ProjectX + future brokers)
+ * -----------------------------
+ * One row per incoming L1 quote snapshot.
+ * - broker: "projectx" / "cqg" / etc
+ * - instrumentId: broker-specific contract id/key (e.g. "CON.F.US.MES.H26")
+ * - symbol: your internal symbol label (e.g. "MES" or "MGC") if you have it; otherwise can mirror broker symbolId
+ * - ts: the quote timestamp (from broker payload) if available
+ * - receivedAt: when OUR worker received/processed the quote
+ */
+model MarketQuote {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+
+  broker       String
+  instrumentId String
+  symbol       String?
+
+  ts         DateTime?
+  receivedAt DateTime @default(now())
+
+  last Decimal?
+  bid  Decimal?
+  ask  Decimal?
+
+  volume Decimal?
+  raw    Json?
+
+  @@index([broker, instrumentId, receivedAt])
+  @@index([symbol, receivedAt])
+  @@index([receivedAt])
+}
+
+/**
+ * -----------------------------
  * Legacy candle table (keep for now)
  * -----------------------------
  * You already have this. We leave it in place so nothing breaks.
