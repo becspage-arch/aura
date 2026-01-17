@@ -78,6 +78,75 @@ export default function SettingsPage() {
         </p>
       </section>
 
+            {/* Copy Trading */}
+      <section className="aura-card">
+        <div className="aura-row-between">
+          <div className="aura-card-title">Copy Trading</div>
+          <div className="aura-muted aura-text-xs">Multi-account routing</div>
+        </div>
+
+        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Master account</div>
+              <div className="aura-control-help">Trades originate here and are copied to followers.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">—</span>
+            </div>
+          </div>
+
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Follower accounts</div>
+              <div className="aura-control-help">Accounts that receive copied trades.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">0 connected</span>
+            </div>
+          </div>
+
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Allocation mode</div>
+              <div className="aura-control-help">How position sizing is copied per follower.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">1:1 contracts (placeholder)</span>
+            </div>
+          </div>
+
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Per-follower safety caps</div>
+              <div className="aura-control-help">Optional limits that override copied orders.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">Coming soon</span>
+            </div>
+          </div>
+
+          <div className="aura-divider" />
+
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Manage copy trading</div>
+              <div className="aura-control-help">Connect followers, set allocation, and monitor health.</div>
+            </div>
+            <div className="aura-control-right">
+              <Link href="/app/copy-trading" className="aura-link aura-pill">
+                Open
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <p className="aura-muted aura-text-xs aura-mt-10">
+          Copy Trading is account infrastructure. Strategy defines the rules; copy trading controls which
+          accounts receive the executions.
+        </p>
+      </section>
+
       {/* Account defaults */}
       <section className="aura-card">
         <div className="aura-row-between">
