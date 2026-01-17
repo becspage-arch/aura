@@ -2,8 +2,12 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
-export default function TradeDetailPage({ params }: { params: { tradeId: string } }) {
-  const tradeId = params.tradeId;
+type PageProps = {
+  params: Promise<{ tradeId: string }>;
+};
+
+export default async function TradeDetailPage({ params }: PageProps) {
+  const { tradeId } = await params;
 
   return (
     <div className="mx-auto max-w-6xl aura-page">
