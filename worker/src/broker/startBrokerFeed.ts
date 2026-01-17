@@ -5,10 +5,12 @@ import { ProjectXMarketHub } from "./projectxMarketHub.js";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Candle15sAggregator } from "../candles/candle15sAggregator.js";
+import { CorePlus315Engine, type Candle15s as StratCandle15s } from "../strategy/coreplus315Engine.js";
 
 // --- quote persist throttle (per instrument) ---
 const lastPersistAtByInstrument = new Map<string, number>();
 const PERSIST_EVERY_MS = 250;
+
 const candle15s = new Candle15sAggregator();
 
 export type BrokerEventName =
@@ -82,6 +84,66 @@ async function shutdownPrisma(): Promise<void> {
   }
 }
 
+function numOrNull(v: unknown): number | null {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Replay last N closed 15s candles from DB into the strategy engine.
+ * This is ONLY to prove wiring works on weekends / when live quotes are empty.
+ */
+async function replayRecentCandlesOnce(params: {
+  symbol: string;
+  limit: number;
+  engine: CorePlus315Engine;
+}): Promise<void> {
+  const db = getPrisma();
+
+  const rows = await db.candle15s.findMany({
+    where: { symbol: params.symbol },
+    orderBy: { time: "desc" },
+    take: params.limit,
+  });
+
+  const candlesAsc = rows
+    .slice()
+    .reverse()
+    .map(
+      (r): StratCandle15s => ({
+        symbol: r.symbol,
+        time: Number(r.time),
+        open: Number(r.open),
+        high: Number(r.high),
+        low: Number(r.low),
+        close: Number(r.close),
+        volume: r.volume == null ? null : Number(r.volume),
+      })
+    );
+
+  console.log(`[${env.WORKER_NAME}] strategy replay start`, {
+    symbol: params.symbol,
+    limit: params.limit,
+    loaded: candlesAsc.length,
+    first: candlesAsc[0]?.time ?? null,
+    last: candlesAsc[candlesAsc.length - 1]?.time ?? null,
+  });
+
+  let intents = 0;
+
+  for (const c of candlesAsc) {
+    const intent = params.engine.ingestClosed15s(c);
+    if (intent) {
+      intents++;
+      console.log(`[${env.WORKER_NAME}] TRADE_INTENT (replay)`, intent);
+    }
+  }
+
+  console.log(`[${env.WORKER_NAME}] strategy replay done`, {
+    intents,
+  });
+}
+
 export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
   const broker = createBroker();
 
@@ -134,23 +196,66 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       broker: broker.name,
     });
 
+    const status =
+      typeof (broker as any).getStatus === "function"
+        ? (broker as any).getStatus()
+        : null;
+
     await emitSafe({
       name: "broker.ready",
       ts: new Date().toISOString(),
       broker: broker.name,
-      data: broker.getStatus?.(),
+      data: status ?? undefined,
     });
+
+    // --- Strategy engine bootstrap (config single-source-of-truth) ---
+    const tickSize = numOrNull(status?.tickSize);
+    const tickValue = numOrNull(status?.tickValue);
+
+    let strategy: CorePlus315Engine | null = null;
+
+    if (tickSize && tickValue) {
+      strategy = new CorePlus315Engine({ tickSize, tickValue });
+      // v1 hard-coded overrides live here (later becomes per-user settings from DB)
+      strategy.setConfig({
+        riskUsd: 200,
+        rr: 2,
+        maxStopTicks: 45,
+        entryType: "market",
+      });
+
+      console.log(`[${env.WORKER_NAME}] strategy ready`, {
+        name: "coreplus315",
+        tickSize,
+        tickValue,
+        cfg: strategy.getConfig(),
+      });
+
+      // Weekend-proof: replay seeded candles once so we can see intents immediately
+      const symbol = (process.env.PROJECTX_SYMBOL || "").trim();
+      if (symbol) {
+        await replayRecentCandlesOnce({
+          symbol,
+          limit: 600,
+          engine: strategy,
+        });
+      } else {
+        console.warn(
+          `[${env.WORKER_NAME}] strategy replay skipped (PROJECTX_SYMBOL missing)`
+        );
+      }
+    } else {
+      console.warn(`[${env.WORKER_NAME}] strategy NOT started (missing tickSize/tickValue)`, {
+        tickSize,
+        tickValue,
+      });
+    }
 
     // --- ProjectX market hub ---
     if (broker.name === "projectx") {
       const token =
         typeof (broker as any).getAuthToken === "function"
           ? (broker as any).getAuthToken()
-          : null;
-
-      const status =
-        typeof (broker as any).getStatus === "function"
-          ? (broker as any).getStatus()
           : null;
 
       const contractId = process.env.PROJECTX_CONTRACT_ID?.trim() || null;
@@ -219,7 +324,10 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
               },
             });
 
-            // 3) Build 15s candle
+            // If we have no price, we can't build candles.
+            if (q.last == null && q.bid == null && q.ask == null) return;
+
+            // 3) Build 15s candle from quote stream
             const closed = candle15s.ingest(
               {
                 contractId: q.contractId,
@@ -256,11 +364,27 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                   close: closed.data.c,
                 },
               });
+
+              // 3b) Run strategy on closed candle (live mode)
+              if (strategy) {
+                const intent = strategy.ingestClosed15s({
+                  symbol,
+                  time,
+                  open: closed.data.o,
+                  high: closed.data.h,
+                  low: closed.data.l,
+                  close: closed.data.c,
+                });
+
+                if (intent) {
+                  console.log(`[${env.WORKER_NAME}] TRADE_INTENT (live)`, intent);
+                }
+              }
             } catch (e) {
-              console.error("[projectx-market] failed to persist Candle15s", e);
+              console.error("[projectx-market] failed to persist Candle15s / run strategy", e);
             }
 
-            // 3b) Emit candle close event
+            // 3c) Emit candle close event
             await emitSafe({
               name: "candle.15s.closed",
               ts: new Date().toISOString(),
