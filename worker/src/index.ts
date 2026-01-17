@@ -60,7 +60,6 @@ async function main() {
   });
   console.log(`[${env.WORKER_NAME}] Ably connected`);
 
-  // 4) Start broker feed (non-blocking)
   // 4) Start broker feed + emit lifecycle events to Ably
   const brokerChannel = ably.channels.get("aura:broker");
   const uiChannel = ably.channels.get("aura:ui"); // UI-facing AuraRealtimeEvent stream
@@ -100,7 +99,6 @@ async function main() {
         data: event.data ?? null,
       });
     });
-
   } catch (e) {
     console.error(`[${env.WORKER_NAME}] broker start failed`, e);
     process.exit(1);
@@ -110,7 +108,7 @@ async function main() {
   const channel = ably.channels.get("aura:exec");
 
   channel.subscribe(async (msg) => {
-    console.log("[cqg-worker] RAW MESSAGE RECEIVED", {
+    console.log(`[${env.WORKER_NAME}] RAW MESSAGE RECEIVED`, {
       msgId: msg.id,
       msgName: msg.name,
       data: msg.data,
@@ -128,11 +126,11 @@ async function main() {
 
     let safety;
     try {
-      console.log("[cqg-worker] calling getSafetyStateForUser", clerkUserId);
+      console.log(`[${env.WORKER_NAME}] calling getSafetyStateForUser`, clerkUserId);
       safety = await getSafetyStateForUser(clerkUserId);
-      console.log("[cqg-worker] safety result", safety);
+      console.log(`[${env.WORKER_NAME}] safety result`, safety);
     } catch (err) {
-      console.error("[cqg-worker] getSafetyStateForUser FAILED", err);
+      console.error(`[${env.WORKER_NAME}] getSafetyStateForUser FAILED`, err);
       return;
     }
 
@@ -147,118 +145,27 @@ async function main() {
       return;
     }
 
-// If DRY_RUN, we just log. If not, we execute via ProjectX.
-if (DRY_RUN) {
-  await logEvent({
-    level: "INFO",
-    type: "EXEC_ALLOWED",
-    message: "Dry run: would execute trade",
-    data: { payload, selectedSymbol: safety.state.selectedSymbol },
-    userId: safety.userId,
-  });
-  return;
-}
-
-const execContractId =
-  String(payload?.contractId || "").trim() ||
-  String(safety?.state?.selectedSymbol || "").trim();
-
-const execSideRaw = String(payload?.side || "").toLowerCase().trim();
-const execSide = execSideRaw === "sell" ? "sell" : "buy";
-
-const execSize = Number(payload?.size ?? payload?.qty ?? payload?.contracts ?? 1);
-const stopLossTicks = payload?.stopLossTicks != null ? Number(payload.stopLossTicks) : null;
-const takeProfitTicks =
-  payload?.takeProfitTicks != null ? Number(payload.takeProfitTicks) : null;
-
-if (!execContractId) {
-  await logEvent({
-    level: "ERROR",
-    type: "EXEC_FAILED",
-    message: "Missing contractId (payload.contractId or safety.state.selectedSymbol)",
-    data: { payload, selectedSymbol: safety?.state?.selectedSymbol ?? null },
-    userId: safety.userId,
-  });
-  return;
-}
-
-if (!Number.isFinite(execSize) || execSize <= 0) {
-  await logEvent({
-    level: "ERROR",
-    type: "EXEC_FAILED",
-    message: `Invalid size: ${String(execSize)}`,
-    data: { payload },
-    userId: safety.userId,
-  });
-  return;
-}
-
-if (typeof brokerAny?.placeOrderWithBrackets !== "function") {
-  await logEvent({
-    level: "ERROR",
-    type: "EXEC_FAILED",
-    message: "Broker does not support placeOrderWithBrackets",
-    data: { brokerName: brokerAny?.name ?? null, payload },
-    userId: safety.userId,
-  });
-  return;
-}
-
-try {
-  const res = await brokerAny.placeOrderWithBrackets({
-    contractId: execContractId,
-    side: execSide,
-    size: execSize,
-    type: "market",
-    stopLossTicks,
-    takeProfitTicks,
-    customTag: `aura-${safety.userId ?? "user"}-${Date.now()}`,
-  });
+    // NOTE:
+    // We intentionally DO NOT place live orders from index.ts yet.
+    // The broker instance currently lives inside startBrokerFeed(), not here.
+    // For now we log + persist intent; we’ll wire real execution in the module that owns the broker.
 
     await logEvent({
       level: "INFO",
-      type: "EXEC_SUBMITTED",
-      message: `Order submitted: ${res?.orderId ?? "unknown"}`,
-      data: {
-        orderId: res?.orderId ?? null,
-        contractId: execContractId,
-        side: execSide,
-        size: execSize,
-        stopLossTicks,
-        takeProfitTicks,
-        payload,
-      },
+      type: "EXEC_ALLOWED",
+      message: DRY_RUN
+        ? "Dry run: would execute bracket"
+        : "Execution queued (order routing not wired yet)",
+      data: { payload },
       userId: safety.userId,
     });
 
-    console.log("[worker] EXEC_SUBMITTED", {
-      orderId: res?.orderId ?? null,
-      contractId: execContractId,
-      side: execSide,
-      size: execSize,
-      stopLossTicks,
-      takeProfitTicks,
+    console.log(`[${env.WORKER_NAME}] EXEC_ALLOWED (no order routing yet)`, {
+      clerkUserId,
+      payload,
     });
-  } catch (err) {
-    console.error("[worker] EXEC_FAILED", err);
 
-    await logEvent({
-      level: "ERROR",
-      type: "EXEC_FAILED",
-      message: "Order submit failed",
-      data: {
-        error: err instanceof Error ? err.message : String(err),
-        contractId: execContractId,
-        side: execSide,
-        size: execSize,
-        stopLossTicks,
-        takeProfitTicks,
-        payload,
-      },
-      userId: safety.userId,
-    });
-  }
-
+    return;
   });
 
   console.log(`[${env.WORKER_NAME}] listening on Ably channel aura:exec`);
