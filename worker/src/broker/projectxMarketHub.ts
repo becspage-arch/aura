@@ -193,6 +193,12 @@ export class ProjectXMarketHub {
   const handleGatewayQuote = async (...args: any[]) => {
     this.lastEventAtMs = Date.now();
 
+    console.log("[projectx-market] GatewayQuote recv", {
+      at: new Date().toISOString(),
+      argsCount: args.length,
+      cid: args[0],
+    });
+
     // SignalR passes multiple server args as separate parameters.
     // In our case, arg0 appears to be contractId string.
     if (raw) {
