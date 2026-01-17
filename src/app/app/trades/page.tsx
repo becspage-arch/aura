@@ -1,5 +1,15 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
+
+const PLACEHOLDER_TRADES = [
+  { id: "t-0001" },
+  { id: "t-0002" },
+  { id: "t-0003" },
+  { id: "t-0004" },
+  { id: "t-0005" },
+];
+
 export default function TradesAndLogsPage() {
   return (
     <div className="mx-auto max-w-6xl aura-page">
@@ -28,7 +38,7 @@ export default function TradesAndLogsPage() {
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Trades</div>
-          <div className="aura-muted aura-text-xs">Completed & open positions</div>
+          <div className="aura-muted aura-text-xs">Click a row to view details</div>
         </div>
 
         <div className="aura-mt-12 aura-table" aria-label="Trades table placeholder">
@@ -40,20 +50,22 @@ export default function TradesAndLogsPage() {
             <div className="aura-right">Result</div>
           </div>
 
-          {/* Placeholder rows */}
-          {[...Array(5)].map((_, i) => (
-            <div className="aura-table-row" key={i}>
-              <div className="aura-skel aura-w-70" />
-              <div className="aura-skel aura-w-55" />
-              <div className="aura-skel aura-w-40" />
-              <div className="aura-skel aura-w-85 aura-hide-sm" />
-              <div className="aura-skel aura-w-55 aura-right" />
-            </div>
+          {/* Clickable placeholder rows */}
+          {PLACEHOLDER_TRADES.map((t) => (
+            <Link key={t.id} href={`/app/trades/${t.id}`} className="aura-link">
+              <div className="aura-table-row aura-row-link" role="row" aria-label={`Open trade ${t.id}`}>
+                <div className="aura-skel aura-w-70" />
+                <div className="aura-skel aura-w-55" />
+                <div className="aura-skel aura-w-40" />
+                <div className="aura-skel aura-w-85 aura-hide-sm" />
+                <div className="aura-skel aura-w-55 aura-right" />
+              </div>
+            </Link>
           ))}
         </div>
 
         <p className="aura-muted aura-text-xs aura-mt-10">
-          Each row will link to a detailed trade view with orders, fills, and chart replay.
+          Each trade will open a detail view with orders, fills, chart replay, and a full audit trail.
         </p>
       </section>
 
@@ -108,8 +120,8 @@ export default function TradesAndLogsPage() {
         </div>
 
         <p className="aura-muted aura-text-xs aura-mt-10">
-          Filters help isolate specific sessions, symbols, or periods. Export is intended for
-          journaling and external analysis.
+          Filters help isolate specific sessions, symbols, or periods. Export is intended for journaling
+          and external analysis.
         </p>
       </section>
 
