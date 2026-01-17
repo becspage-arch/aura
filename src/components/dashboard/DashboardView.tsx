@@ -174,28 +174,56 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
           <div className="aura-muted aura-text-xs">Last 5</div>
         </div>
 
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
+      <div className="aura-mt-12 aura-table" role="table" aria-label="Recent trades placeholder table">
+        <div className="aura-table-header" role="row">
+          <div role="columnheader">Time</div>
+          <div role="columnheader">Symbol</div>
+          <div role="columnheader">Side</div>
+          <div role="columnheader" className="aura-hide-sm">Setup</div>
+          <div role="columnheader" className="aura-right">Result</div>
         </div>
+
+        {/* Placeholder rows */}
+        <div className="aura-table-row" role="row">
+          <div className="aura-skel aura-w-70" />
+          <div className="aura-skel aura-w-55" />
+          <div className="aura-skel aura-w-40" />
+          <div className="aura-skel aura-w-85 aura-hide-sm" />
+          <div className="aura-skel aura-w-55 aura-right" />
+        </div>
+
+        <div className="aura-table-row" role="row">
+          <div className="aura-skel aura-w-55" />
+          <div className="aura-skel aura-w-70" />
+          <div className="aura-skel aura-w-40" />
+          <div className="aura-skel aura-w-70 aura-hide-sm" />
+          <div className="aura-skel aura-w-40 aura-right" />
+        </div>
+
+        <div className="aura-table-row" role="row">
+          <div className="aura-skel aura-w-70" />
+          <div className="aura-skel aura-w-55" />
+          <div className="aura-skel aura-w-40" />
+          <div className="aura-skel aura-w-85 aura-hide-sm" />
+          <div className="aura-skel aura-w-55 aura-right" />
+        </div>
+
+        <div className="aura-table-row" role="row">
+          <div className="aura-skel aura-w-55" />
+          <div className="aura-skel aura-w-70" />
+          <div className="aura-skel aura-w-40" />
+          <div className="aura-skel aura-w-70 aura-hide-sm" />
+          <div className="aura-skel aura-w-40 aura-right" />
+        </div>
+
+        <div className="aura-table-row" role="row">
+          <div className="aura-skel aura-w-70" />
+          <div className="aura-skel aura-w-55" />
+          <div className="aura-skel aura-w-40" />
+          <div className="aura-skel aura-w-85 aura-hide-sm" />
+          <div className="aura-skel aura-w-55 aura-right" />
+        </div>
+      </div>
 
         <p className="aura-muted aura-text-xs aura-mt-10">
           Placeholder only. The full trade log lives in Trades & Logs.

@@ -37,6 +37,34 @@ export class ProjectXMarketHub {
   private lastEventAtMs = 0;
   private heartbeatTimer: NodeJS.Timeout | null = null;
 
+  // --- quote stream watchdog (proves we are receiving updates, not just a snapshot) ---
+  private quoteCount = 0;
+  private firstQuoteAtMs: number | null = null;
+  private lastQuoteAtMs: number | null = null;
+
+  getQuoteStats() {
+    return {
+      quoteCount: this.quoteCount,
+      firstQuoteAtMs: this.firstQuoteAtMs,
+      lastQuoteAtMs: this.lastQuoteAtMs,
+    };
+  }
+
+  async waitForLiveQuotes(params: {
+    minQuotes: number;
+    withinMs: number;
+    pollMs?: number;
+  }): Promise<boolean> {
+    const pollMs = params.pollMs ?? 200;
+    const start = Date.now();
+
+    while (Date.now() - start < params.withinMs) {
+      if (this.quoteCount >= params.minQuotes) return true;
+      await new Promise((r) => setTimeout(r, pollMs));
+    }
+    return false;
+  }
+
   // merge state (ProjectX often sends partial quote updates)
   private lastBid: number | undefined;
   private lastAsk: number | undefined;
@@ -189,6 +217,12 @@ export class ProjectXMarketHub {
     // GatewayQuote(contractId: string, quoteObj: object)
     const handleGatewayQuote = async (...args: any[]) => {
       this.lastEventAtMs = Date.now();
+
+      // ✅ quote stream watchdog stats
+      const now = Date.now();
+      this.quoteCount += 1;
+      this.lastQuoteAtMs = now;
+      if (!this.firstQuoteAtMs) this.firstQuoteAtMs = now;
 
       if (debugInvocations) {
         console.log("[projectx-market] GatewayQuote recv", {
