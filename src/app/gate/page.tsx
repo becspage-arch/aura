@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 export default function GatePage() {
   const [password, setPassword] = useState("");
@@ -72,6 +73,62 @@ export default function GatePage() {
         </button>
       </form>
 
+      <div
+        style={{
+          marginTop: 24,
+          display: "flex",
+          gap: 12,
+          justifyContent: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <Link href="/sign-in">
+          <button
+            type="button"
+            style={{
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              background: "transparent",
+              cursor: "pointer",
+            }}
+          >
+            Sign in
+          </button>
+        </Link>
+
+        <Link href="/sign-up">
+          <button
+            type="button"
+            style={{
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              background: "transparent",
+              cursor: "pointer",
+            }}
+          >
+            Sign up
+          </button>
+        </Link>
+
+        <Link href="/home">
+          <button
+            type="button"
+            style={{
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid #111",
+              background: "#111",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            Dashboard
+          </button>
+        </Link>
+      </div>
+      
       {error && (
         <p style={{ color: "crimson", marginTop: 12 }}>
           {error}
