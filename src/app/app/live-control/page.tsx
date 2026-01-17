@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { currentUser } from "@clerk/nextjs/server";
 import { ensureUserProfile } from "@/lib/user-profile";
 import { TradingChart } from "@/components/charts/TradingChart";
+import { LiveControlSwitches } from "@/components/live-control/LiveControlSwitches";
 
 export default async function LiveControlPage() {
   const user = await currentUser();
@@ -13,7 +14,9 @@ export default async function LiveControlPage() {
       <div className="mx-auto max-w-6xl aura-page">
         <div>
           <h1 className="aura-page-title">Live Control</h1>
-          <p className="aura-page-subtitle">Sign in to view live controls and monitoring.</p>
+          <p className="aura-page-subtitle">
+            Sign in to view live controls and monitoring.
+          </p>
         </div>
 
         <section className="aura-card">
@@ -50,17 +53,12 @@ export default async function LiveControlPage() {
       <div>
         <h1 className="aura-page-title">Live Control</h1>
         <p className="aura-page-subtitle">
-          Chart-first live monitoring. Controls will live here.
+          Chart-first live monitoring. Controls live at the top.
         </p>
       </div>
 
-      {/* Controls placeholder (UI only for now) */}
-      <section className="aura-card">
-        <div className="aura-card-title">Controls</div>
-        <p className="aura-muted aura-text-xs aura-mt-10">
-          Account selector, symbol selector, pause, kill-switch, safety confirmations.
-        </p>
-      </section>
+      {/* Live controls (pause + kill switch with confirmation) */}
+      <LiveControlSwitches />
 
       {/* Live chart (already wired) */}
       <section className="aura-card">
