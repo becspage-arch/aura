@@ -26,9 +26,9 @@ type ProjectXMarketHubOpts = {
   depth?: boolean;
 
   // Debug
-  raw?: boolean;              // logs every parsed SignalR message object
+  raw?: boolean; // logs every parsed SignalR message object
   debugInvocations?: boolean; // logs invocation target + args
-  rtcUrl?: string;            // override hub base url if needed
+  rtcUrl?: string; // override hub base url if needed
 };
 
 export class ProjectXMarketHub {
@@ -60,6 +60,8 @@ export class ProjectXMarketHub {
     const ts =
       payload?.timestamp ??
       payload?.Timestamp ??
+      payload?.lastUpdated ??
+      payload?.LastUpdated ??
       payload?.ts ??
       payload?.Ts ??
       payload?.time ??
@@ -116,7 +118,6 @@ export class ProjectXMarketHub {
       rtcUrl,
     } = this.opts;
 
-    // Allow override because "wrong hub/env" is the #1 plausible cause right now
     const hubBase = (rtcUrl || process.env.PROJECTX_RTC_URL || "").trim();
     const base = hubBase || "https://rtc.topstepx.com";
     const url = `${base.replace(/\/$/, "")}/hubs/market?access_token=${encodeURIComponent(
@@ -153,8 +154,30 @@ export class ProjectXMarketHub {
     await conn.start();
     console.log("[projectx-market] connected");
 
-    // --- Hook the underlying transport receive to PROVE what the server is sending ---
-    // This is the key change: we will SEE invocation targets if any exist.
+    // ✅ Register actual handlers so SignalR doesn't warn + drop the event
+    // NOTE: SignalR JS lowercases method names internally, so we register both.
+    const handleGatewayQuote = async (payload: any) => {
+      this.lastEventAtMs = Date.now();
+
+      const merged = this.normalizeQuote(contractId, payload);
+
+      console.log("[projectx-market] quote", merged);
+
+      if (onQuote) {
+        try {
+          await onQuote(merged);
+        } catch (e) {
+          console.error("[projectx-market] onQuote handler failed (non-fatal)", e);
+        }
+      }
+    };
+
+    if (quotes) {
+      conn.on("GatewayQuote", handleGatewayQuote);
+      conn.on("gatewayquote", handleGatewayQuote);
+    }
+
+    // Optional: keep the raw frame hook for debugging other event names
     try {
       const httpConn = (conn as any).connection;
       const hasOnReceive = httpConn && typeof httpConn.onreceive === "function";
@@ -168,12 +191,10 @@ export class ProjectXMarketHub {
           const msgs = this.parseSignalRFrames(data);
 
           for (const msg of msgs) {
-            // raw object log (optional)
             if (raw) {
               console.log("[projectx-market] frame", msg);
             }
 
-            // type 1 = Invocation: this is where events come in
             if (msg?.type === 1) {
               this.lastEventAtMs = Date.now();
 
@@ -182,39 +203,6 @@ export class ProjectXMarketHub {
                   target: msg.target,
                   args: msg.arguments,
                 });
-              }
-
-              // Auto-detect quote-like events, regardless of the method name
-              const target = String(msg.target || "");
-              if (quotes && /quote/i.test(target)) {
-                const args = Array.isArray(msg.arguments) ? msg.arguments : [];
-
-                // Common patterns:
-                // (contractId, payload) OR (payload)
-                let cid = contractId;
-                let payload: any = null;
-
-                if (typeof args[0] === "string") {
-                  cid = args[0];
-                  payload = args[1] ?? {};
-                } else {
-                  payload = args[0] ?? {};
-                }
-
-                const merged = this.normalizeQuote(String(cid), payload);
-
-                console.log("[projectx-market] quote", merged);
-
-                if (onQuote) {
-                  try {
-                    await onQuote(merged);
-                  } catch (e) {
-                    console.error(
-                      "[projectx-market] onQuote handler failed (non-fatal)",
-                      e
-                    );
-                  }
-                }
               }
             }
           }

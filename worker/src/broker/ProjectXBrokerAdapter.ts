@@ -34,6 +34,10 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
 
   private keepAliveTimer: NodeJS.Timer | null = null;
 
+  // Contract spec (needed for sizing/risk)
+  private contractTickSize: number | null = null;
+  private contractTickValue: number | null = null;
+
   // validate no more than every 10 minutes (well within 200/60s rate limit)
   private lastValidateAtMs = 0;
 
@@ -43,6 +47,8 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       accountId: this.accountId,
       accountName: this.accountName,
       simulated: this.accountSimulated,
+      tickSize: this.contractTickSize,
+      tickValue: this.contractTickValue,
     };
   }
 
@@ -317,6 +323,15 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
 
     const c = json?.contract ?? null;
 
+    // Store contract spec for sizing/risk
+    this.contractTickSize =
+      typeof c?.tickSize === "number" ? c.tickSize : Number(c?.tickSize ?? NaN);
+    if (!Number.isFinite(this.contractTickSize as number)) this.contractTickSize = null;
+
+    this.contractTickValue =
+      typeof c?.tickValue === "number" ? c.tickValue : Number(c?.tickValue ?? NaN);
+    if (!Number.isFinite(this.contractTickValue as number)) this.contractTickValue = null;
+
     console.log("[projectx-adapter] contract searchById", {
       status: res.status,
       ok: res.ok,
@@ -331,6 +346,8 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       activeContract: c?.activeContract ?? null,
       tickSize: c?.tickSize ?? null,
       tickValue: c?.tickValue ?? null,
+      storedTickSize: this.contractTickSize,
+      storedTickValue: this.contractTickValue,
     });
   }
 
@@ -392,6 +409,8 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     this.accountId = null;
     this.accountName = null;
     this.accountSimulated = null;
+    this.contractTickSize = null;
+    this.contractTickValue = null;
     console.log("[projectx-adapter] disconnected");
   }
 }
