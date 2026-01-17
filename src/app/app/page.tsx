@@ -14,25 +14,20 @@ export default async function AppHome() {
   if (!user) {
     return (
       <main className="min-h-screen bg-zinc-50 p-6 dark:bg-black">
-        <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <header className="mx-auto flex max-w-5xl items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <Link href="/" className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
             Aura
           </Link>
-
-          <div className="flex items-center gap-4 text-sm">
-            <Link
-              href="/app/profile"
-              className="hidden text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50 sm:inline"
-            >
-              {displayName ?? email ?? ""}
+          <nav className="flex items-center gap-3 text-sm">
+            <Link href="/sign-in" className="text-zinc-700 hover:underline dark:text-zinc-200">
+              Sign in
             </Link>
-
-            <Link href="/sign-out" className="text-zinc-700 hover:underline dark:text-zinc-200">
-              Sign out
+            <Link href="/sign-up" className="text-zinc-700 hover:underline dark:text-zinc-200">
+              Sign up
             </Link>
-          </div>
+          </nav>
         </header>
-        
+
         <div className="mx-auto mt-10 max-w-5xl text-zinc-700 dark:text-zinc-200">
           <h1 className="text-2xl font-semibold">Welcome to Aura</h1>
           <p className="mt-2">Please sign in to view your dashboard.</p>
@@ -114,9 +109,15 @@ export default async function AppHome() {
       status: o.status,
       qty: typeof o.qty === "string" ? o.qty : o.qty?.toString?.() ?? String(o.qty),
       price: o.price == null ? null : typeof o.price === "string" ? o.price : o.price?.toString?.(),
-      stopPrice: o.stopPrice == null ? null : typeof o.stopPrice === "string" ? o.stopPrice : o.stopPrice?.toString?.(),
+      stopPrice:
+        o.stopPrice == null ? null : typeof o.stopPrice === "string" ? o.stopPrice : o.stopPrice?.toString?.(),
       filledQty: typeof o.filledQty === "string" ? o.filledQty : o.filledQty?.toString?.() ?? "0",
-      avgFillPrice: o.avgFillPrice == null ? null : typeof o.avgFillPrice === "string" ? o.avgFillPrice : o.avgFillPrice?.toString?.(),
+      avgFillPrice:
+        o.avgFillPrice == null
+          ? null
+          : typeof o.avgFillPrice === "string"
+            ? o.avgFillPrice
+            : o.avgFillPrice?.toString?.(),
       createdAt: o.createdAt instanceof Date ? o.createdAt.toISOString() : String(o.createdAt),
       updatedAt: o.updatedAt instanceof Date ? o.updatedAt.toISOString() : String(o.updatedAt),
     })),
@@ -156,24 +157,18 @@ export default async function AppHome() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            Aura
-          </Link>
-          <nav className="flex items-center gap-3 text-sm">
-            <Link href="/app" className="text-zinc-700 hover:underline dark:text-zinc-200">
-              Dashboard
-            </Link>
-            <Link href="/app/audit" className="text-zinc-700 hover:underline dark:text-zinc-200">
-              Audit
-            </Link>
-          </nav>
-        </div>
+        <Link href="/" className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          Aura
+        </Link>
 
-        <div className="flex items-center gap-3 text-sm">
-          <span className="hidden text-zinc-500 dark:text-zinc-400 sm:inline">
+        <div className="flex items-center gap-4 text-sm">
+          <Link
+            href="/app/profile"
+            className="hidden text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50 sm:inline"
+          >
             {displayName ?? email ?? ""}
-          </span>
+          </Link>
+
           <Link href="/sign-out" className="text-zinc-700 hover:underline dark:text-zinc-200">
             Sign out
           </Link>

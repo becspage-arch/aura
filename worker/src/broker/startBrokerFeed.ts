@@ -5,7 +5,10 @@ import { ProjectXMarketHub } from "./projectxMarketHub.js";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Candle15sAggregator } from "../candles/candle15sAggregator.js";
-import { CorePlus315Engine, type Candle15s as StratCandle15s } from "../strategy/coreplus315Engine.js";
+import {
+  CorePlus315Engine,
+  type Candle15s as StratCandle15s,
+} from "../strategy/coreplus315Engine.js";
 import { buildBracketFromIntent } from "../trading/buildBracket.js";
 
 // --- quote persist throttle (per instrument) ---
@@ -250,10 +253,13 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
         );
       }
     } else {
-      console.warn(`[${env.WORKER_NAME}] strategy NOT started (missing tickSize/tickValue)`, {
-        tickSize,
-        tickValue,
-      });
+      console.warn(
+        `[${env.WORKER_NAME}] strategy NOT started (missing tickSize/tickValue)`,
+        {
+          tickSize,
+          tickValue,
+        }
+      );
     }
 
     // --- ProjectX market hub ---
@@ -278,6 +284,84 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       }
 
       try {
+        // Shared handler: persist + strategy + emit for ANY closed 15s candle
+        const handleClosed15s = async (params: {
+          source: "rollover" | "forceClose";
+          closed: { data: any };
+        }) => {
+          const closed = params.closed;
+
+          // 3a) Persist CLOSED candle
+          try {
+            const db = getPrisma();
+            const symbol =
+              (process.env.PROJECTX_SYMBOL || "").trim() ||
+              closed.data.contractId;
+
+            const time = Math.floor(closed.data.t0 / 1000);
+
+            await db.candle15s.upsert({
+              where: { symbol_time: { symbol, time } },
+              create: {
+                symbol,
+                time,
+                open: closed.data.o,
+                high: closed.data.h,
+                low: closed.data.l,
+                close: closed.data.c,
+              },
+              update: {
+                open: closed.data.o,
+                high: closed.data.h,
+                low: closed.data.l,
+                close: closed.data.c,
+              },
+            });
+
+            // 3b) Run strategy on closed candle
+            if (strategy) {
+              const intent = strategy.ingestClosed15s({
+                symbol,
+                time,
+                open: closed.data.o,
+                high: closed.data.h,
+                low: closed.data.l,
+                close: closed.data.c,
+              });
+
+              if (intent) {
+                console.log(`[${env.WORKER_NAME}] TRADE_INTENT (live)`, intent);
+
+                const bracket = buildBracketFromIntent(intent);
+                console.log(`[${env.WORKER_NAME}] BRACKET (live)`, bracket);
+
+                await emitSafe({
+                  name: "exec.bracket",
+                  ts: new Date().toISOString(),
+                  broker: "projectx",
+                  data: {
+                    source: params.source,
+                    bracket,
+                  },
+                });
+              }
+            }
+          } catch (e) {
+            console.error(
+              "[projectx-market] failed to persist Candle15s / run strategy",
+              e
+            );
+          }
+
+          // 3c) Emit candle close event
+          await emitSafe({
+            name: "candle.15s.closed",
+            ts: new Date().toISOString(),
+            broker: "projectx",
+            data: closed.data,
+          });
+        };
+
         const marketHub = new ProjectXMarketHub({
           token,
           contractId,
@@ -344,75 +428,27 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
               Date.now()
             );
 
-            if (!closed) return;
-
-            // 3a) Persist CLOSED candle
-            try {
-              const db = getPrisma();
-              const symbol = (process.env.PROJECTX_SYMBOL || "").trim() || closed.data.contractId;
-              const time = Math.floor(closed.data.t0 / 1000);
-
-              await db.candle15s.upsert({
-                where: { symbol_time: { symbol, time } },
-                create: {
-                  symbol,
-                  time,
-                  open: closed.data.o,
-                  high: closed.data.h,
-                  low: closed.data.l,
-                  close: closed.data.c,
-                },
-                update: {
-                  open: closed.data.o,
-                  high: closed.data.h,
-                  low: closed.data.l,
-                  close: closed.data.c,
-                },
-              });
-
-              // 3b) Run strategy on closed candle (live mode)
-              if (strategy) {
-                const intent = strategy.ingestClosed15s({
-                  symbol,
-                  time,
-                  open: closed.data.o,
-                  high: closed.data.h,
-                  low: closed.data.l,
-                  close: closed.data.c,
-                });
-
-                if (intent) {
-                  console.log(`[${env.WORKER_NAME}] TRADE_INTENT (live)`, intent);
-
-                  const bracket = buildBracketFromIntent(intent);
-                  console.log(`[${env.WORKER_NAME}] BRACKET (live)`, bracket);
-
-                  await emitSafe({
-                    name: "exec.bracket",
-                    ts: new Date().toISOString(),
-                    broker: "projectx",
-                    data: {
-                      source: "live",
-                      bracket,
-                    },
-                  });
-                }
-              }
-            } catch (e) {
-              console.error("[projectx-market] failed to persist Candle15s / run strategy", e);
+            if (closed) {
+              await handleClosed15s({ source: "rollover", closed });
             }
-
-            // 3c) Emit candle close event
-            await emitSafe({
-              name: "candle.15s.closed",
-              ts: new Date().toISOString(),
-              broker: "projectx",
-              data: closed.data,
-            });
           },
         });
 
         await marketHub.start();
+
+        // Weekend/quiet-market: force-close 15s candles on schedule even if no new quotes arrive
+        setInterval(() => {
+          void (async () => {
+            try {
+              const forced = candle15s.forceCloseIfDue(Date.now());
+              if (!forced) return;
+
+              await handleClosed15s({ source: "forceClose", closed: forced });
+            } catch (e) {
+              console.error("[projectx-market] forceClose tick failed", e);
+            }
+          })();
+        }, 1000);
 
         console.log("[projectx-market] started", {
           accountId: status?.accountId ?? null,
