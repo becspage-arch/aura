@@ -52,8 +52,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
 
   async connect(): Promise<void> {
     const hasKey = Boolean(
-      process.env.PROJECTX_API_KEY &&
-        process.env.PROJECTX_API_KEY !== "PASTE-HERE"
+      process.env.PROJECTX_API_KEY && process.env.PROJECTX_API_KEY !== "PASTE-HERE"
     );
     console.log("[projectx-adapter] connect", { hasKey });
   }
@@ -180,9 +179,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
         ? accounts.find((a) => a.id === preferredId)
         : null;
 
-    const preferredByName = preferredName
-      ? accounts.find((a) => a.name === preferredName)
-      : null;
+    const preferredByName = preferredName ? accounts.find((a) => a.name === preferredName) : null;
 
     const selected =
       preferredById ??
@@ -222,10 +219,127 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     }
   }
 
+  // Proves market-data entitlement + whether "live" vs "sim" matters for your token.
+  // This is the fastest way to stop guessing why SignalR is silent.
+  private async testHistoryBars(): Promise<void> {
+    if (!this.token) return;
+
+    const contractId = process.env.PROJECTX_CONTRACT_ID?.trim();
+    if (!contractId) {
+      console.log("[projectx-adapter] history test skipped (no PROJECTX_CONTRACT_ID)");
+      return;
+    }
+
+    const end = new Date();
+    const start = new Date(end.getTime() - 10 * 60 * 1000); // last 10 minutes
+
+    const run = async (live: boolean) => {
+      const body = {
+        contractId,
+        live,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        unit: 1, // Second
+        unitNumber: 15, // 15-second bars
+        limit: 20,
+        includePartialBar: true,
+      };
+
+      const res = await fetch("https://api.topstepx.com/api/History/retrieveBars", {
+        method: "POST",
+        headers: {
+          accept: "text/plain",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.token}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const text = await res.text();
+
+      let json: any = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = null;
+      }
+
+      const bars = Array.isArray(json?.bars) ? json.bars : [];
+      const firstT = bars[0]?.t ?? null;
+      const lastT = bars[bars.length - 1]?.t ?? null;
+
+      console.log("[projectx-adapter] history test", {
+        live,
+        status: res.status,
+        ok: res.ok,
+        success: json?.success,
+        errorCode: json?.errorCode,
+        errorMessage: json?.errorMessage ?? null,
+        barsCount: bars.length,
+        firstT,
+        lastT,
+      });
+    };
+
+    await run(false);
+    await run(true);
+  }
+
+  // Proves whether the contractId exists / is accessible for your token.
+  // If this fails, your SignalR "SubscribeContractQuotes" will also be effectively silent.
+  private async testContractAccess(): Promise<void> {
+    if (!this.token) return;
+
+    const contractId = process.env.PROJECTX_CONTRACT_ID?.trim();
+    if (!contractId) {
+      console.log("[projectx-adapter] contract test skipped (no PROJECTX_CONTRACT_ID)");
+      return;
+    }
+
+    const res = await fetch("https://api.topstepx.com/api/Contract/searchById", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ contractId }),
+    });
+
+    const text = await res.text();
+
+    let json: any = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = null;
+    }
+
+    const c = json?.contract ?? null;
+
+    console.log("[projectx-adapter] contract searchById", {
+      status: res.status,
+      ok: res.ok,
+      success: json?.success,
+      errorCode: json?.errorCode,
+      errorMessage: json?.errorMessage ?? null,
+      contractFound: Boolean(c),
+      id: c?.id ?? null,
+      name: c?.name ?? null,
+      description: c?.description ?? null,
+      symbolId: c?.symbolId ?? null,
+      activeContract: c?.activeContract ?? null,
+      tickSize: c?.tickSize ?? null,
+      tickValue: c?.tickValue ?? null,
+    });
+  }
+
   async warmup(): Promise<void> {
     // Runs before broker.ready is emitted (called by startBrokerFeed if present)
     await this.validateToken();
     await this.fetchActiveAccounts();
+    await this.testHistoryBars();
+    await this.testContractAccess();
   }
 
   startKeepAlive(): void {

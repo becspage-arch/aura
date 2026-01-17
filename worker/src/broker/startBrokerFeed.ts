@@ -172,6 +172,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
           token,
           contractId,
           raw: true,
+          debugInvocations: true,
           onQuote: async (q) => {
             // 1) Persist quote snapshot (THROTTLED)
             try {
@@ -235,7 +236,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
             // 3a) Persist CLOSED candle
             try {
               const db = getPrisma();
-              const symbol = closed.data.contractId;
+              const symbol = (process.env.PROJECTX_SYMBOL || "").trim() || closed.data.contractId;
               const time = Math.floor(closed.data.t0 / 1000);
 
               await db.candle15s.upsert({
