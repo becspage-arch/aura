@@ -112,7 +112,7 @@ export default function GatePage() {
           </button>
         </Link>
 
-        <Link href="/home">
+        <Link href="/app">
           <button
             type="button"
             style={{
@@ -128,7 +128,7 @@ export default function GatePage() {
           </button>
         </Link>
       </div>
-      
+
       {error && (
         <p style={{ color: "crimson", marginTop: 12 }}>
           {error}
