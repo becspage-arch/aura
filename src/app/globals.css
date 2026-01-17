@@ -1,26 +1,112 @@
 @import "tailwindcss";
 
+/* ----------------------------------------------
+   AURA GLOBAL THEME (single source of truth)
+   Dark mode default
+   Controlled by html.dark / html.light
+   ---------------------------------------------- */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+
+  /* ---------- Aura brand palette ---------- */
+  --aura-obsidian: #0e1116;
+  --aura-offwhite: #e6e9ef;
+  --aura-text-2: #b6bcc8;
+  --aura-text-3: #8a919e;
+
+  --aura-gold-1: #d6c28f;
+  --aura-gold-2: #c8b277;
+  --aura-gold-3: #a9996a;
+
+  --aura-success: #7fa8a1;
+  --aura-warning: #c4a25e;
+  --aura-error: #b07a7a;
+
+  --radius: 14px;
+
+  /* ---------- Semantic tokens (DARK DEFAULT) ---------- */
+  --background: var(--aura-obsidian);
+  --foreground: var(--aura-offwhite);
+
+  --card: #1f2630;
+  --card-foreground: var(--aura-offwhite);
+
+  --popover: #1f2630;
+  --popover-foreground: var(--aura-offwhite);
+
+  --muted: #151a21;
+  --muted-foreground: var(--aura-text-2);
+
+  --border: #2b3441;
+  --input: #2b3441;
+
+  --primary: var(--aura-gold-1);
+  --primary-foreground: var(--aura-obsidian);
+
+  --secondary: #151a21;
+  --secondary-foreground: var(--aura-offwhite);
+
+  --accent: var(--aura-gold-2);
+  --accent-foreground: var(--aura-obsidian);
+
+  --destructive: var(--aura-error);
+  --destructive-foreground: #ffffff;
+
+  --ring: rgba(214, 194, 143, 0.55);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ---------- LIGHT MODE ---------- */
+html.light {
+  color-scheme: light;
+
+  --background: #f4f6f8;
+  --foreground: #1a1f26;
+
+  --card: #ffffff;
+  --card-foreground: #1a1f26;
+
+  --popover: #ffffff;
+  --popover-foreground: #1a1f26;
+
+  --muted: #eef1f4;
+  --muted-foreground: #5c6672;
+
+  --border: #e2e6ec;
+  --input: #e2e6ec;
+
+  --primary: var(--aura-gold-1);
+  --primary-foreground: #0e1116;
+
+  --secondary: #e2e6ec;
+  --secondary-foreground: #1a1f26;
+
+  --accent: var(--aura-gold-2);
+  --accent-foreground: #0e1116;
+
+  --destructive: var(--aura-error);
+  --destructive-foreground: #ffffff;
+
+  --ring: rgba(214, 194, 143, 0.45);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ---------- BASE STYLES ---------- */
+html,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+* {
+  border-color: var(--border);
+}
+
+::selection {
+  background: rgba(214, 194, 143, 0.25);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
