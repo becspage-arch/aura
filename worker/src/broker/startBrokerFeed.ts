@@ -224,6 +224,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
 
     if (tickSize && tickValue) {
       strategy = new CorePlus315Engine({ tickSize, tickValue });
+
       // v1 hard-coded overrides live here (later becomes per-user settings from DB)
       strategy.setConfig({
         riskUsd: 200,
@@ -354,6 +355,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                 const bracket = buildBracketFromIntent(intent);
                 console.log(`[${env.WORKER_NAME}] BRACKET (live)`, bracket);
 
+                // Emit bracket intent (UI / audit)
                 await emitSafe({
                   name: "exec.bracket",
                   ts: new Date().toISOString(),
@@ -363,6 +365,106 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                     bracket,
                   },
                 });
+
+                // ✅ EXECUTION (only when DRY_RUN=false and only on real rollover candles)
+                try {
+                  if (!env.DRY_RUN && params.source === "rollover") {
+                    const placeFn = (broker as any).placeOrderWithBrackets;
+
+                    if (typeof placeFn !== "function") {
+                      console.warn("[exec] broker missing placeOrderWithBrackets");
+                    } else {
+                      const contractIdFromBracket = String(
+                        (bracket as any).contractId ||
+                          (bracket as any).symbol ||
+                          ""
+                      ).trim();
+
+                      const side =
+                        String((bracket as any).side || "").toLowerCase() ===
+                        "sell"
+                          ? "sell"
+                          : "buy";
+
+                      const size = Number((bracket as any).qty ?? 1);
+
+                      const stopLossTicks =
+                        (bracket as any)?.meta?.stopTicks != null
+                          ? Number((bracket as any).meta.stopTicks)
+                          : null;
+
+                      const takeProfitTicks =
+                        (bracket as any)?.meta?.tpTicks != null
+                          ? Number((bracket as any).meta.tpTicks)
+                          : null;
+
+                      if (!contractIdFromBracket) {
+                        console.warn("[exec] missing contractId on bracket", bracket);
+                      } else {
+                        const res = await placeFn.call(broker, {
+                          contractId: contractIdFromBracket,
+                          side,
+                          size,
+                          type: "market",
+                          stopLossTicks,
+                          takeProfitTicks,
+                          customTag: `aura-coreplus315-${Date.now()}`,
+                        });
+
+                        console.log("[exec] ORDER_SUBMITTED", {
+                          orderId: res?.orderId ?? null,
+                          contractId: contractIdFromBracket,
+                          side,
+                          size,
+                          stopLossTicks,
+                          takeProfitTicks,
+                        });
+
+                        // Persist exec audit trail
+                        try {
+                          await db.eventLog.create({
+                            data: {
+                              type: "exec.submitted",
+                              level: "info",
+                              message: "Order submitted via ProjectX",
+                              data: {
+                                orderId: res?.orderId ?? null,
+                                contractId: contractIdFromBracket,
+                                side,
+                                size,
+                                stopLossTicks,
+                                takeProfitTicks,
+                                bracket,
+                              },
+                            },
+                          });
+                        } catch (e) {
+                          console.warn(
+                            "[exec] failed to write exec.submitted eventLog",
+                            e
+                          );
+                        }
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.error("[exec] placeOrderWithBrackets failed", e);
+                  try {
+                    await db.eventLog.create({
+                      data: {
+                        type: "exec.failed",
+                        level: "error",
+                        message: "placeOrderWithBrackets failed",
+                        data: {
+                          error: e instanceof Error ? e.message : String(e),
+                          bracket,
+                        },
+                      },
+                    });
+                  } catch {
+                    // ignore
+                  }
+                }
               }
             }
           } catch (e) {

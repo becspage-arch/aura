@@ -235,3 +235,57 @@ body {
   background: rgba(214, 194, 143, 0.35);
   border: 1px solid rgba(214, 194, 143, 0.25);
 }
+
+/* --------------------------------------------------
+   Aura utility helpers (no inline styles)
+-------------------------------------------------- */
+
+.aura-text-xs {
+  font-size: 12px;
+}
+
+.aura-font-semibold {
+  font-weight: 600;
+}
+
+.aura-mt-6 {
+  margin-top: 6px;
+}
+
+.aura-mt-10 {
+  margin-top: 10px;
+}
+
+.aura-mt-12 {
+  margin-top: 12px;
+}
+
+.aura-mt-14 {
+  margin-top: 14px;
+}
+
+.aura-grid-gap-10 {
+  display: grid;
+  gap: 10px;
+}
+
+.aura-grid-gap-12 {
+  display: grid;
+  gap: 12px;
+}
+
+/* Chart placeholder helpers */
+.aura-bar-35 { height: 35%; }
+.aura-bar-40 { height: 40%; }
+.aura-bar-42 { height: 42%; }
+.aura-bar-55 { height: 55%; }
+.aura-bar-60 { height: 60%; }
+.aura-bar-68 { height: 68%; }
+.aura-bar-72 { height: 72%; }
+.aura-bar-78 { height: 78%; }
+.aura-bar-82 { height: 82%; }
+.aura-bar-88 { height: 88%; }
+.aura-bar-92 { height: 92%; }
+.aura-bar-96 { height: 96%; }
+.aura-bar-98 { height: 98%; }
+.aura-bar-100 { height: 100%; }

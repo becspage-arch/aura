@@ -70,12 +70,12 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">System Status</div>
-          <div className="aura-muted" style={{ fontSize: 12 }}>
+          <div className="aura-muted aura-text-xs">
             Channel: {channelName ?? "—"}
           </div>
         </div>
 
-        <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+        <div className="aura-mt-14 aura-grid-gap-10">
           <div className="aura-row-between">
             <span className="aura-muted">Strategy</span>
             <span>{strategyStatus}</span>
@@ -112,32 +112,30 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Cumulative P&L (Daily)</div>
-          <div className="aura-muted" style={{ fontSize: 12 }}>
-            Last 14 days
-          </div>
+          <div className="aura-muted aura-text-xs">Last 14 days</div>
         </div>
 
         <div
           className="aura-chart-placeholder"
           aria-label="Cumulative P&L placeholder chart"
         >
-          <div className="aura-bar" style={{ height: "35%" }} />
-          <div className="aura-bar" style={{ height: "42%" }} />
-          <div className="aura-bar" style={{ height: "40%" }} />
-          <div className="aura-bar" style={{ height: "55%" }} />
-          <div className="aura-bar" style={{ height: "60%" }} />
-          <div className="aura-bar" style={{ height: "68%" }} />
-          <div className="aura-bar" style={{ height: "72%" }} />
-          <div className="aura-bar" style={{ height: "78%" }} />
-          <div className="aura-bar" style={{ height: "82%" }} />
-          <div className="aura-bar" style={{ height: "88%" }} />
-          <div className="aura-bar" style={{ height: "92%" }} />
-          <div className="aura-bar" style={{ height: "96%" }} />
-          <div className="aura-bar" style={{ height: "100%" }} />
-          <div className="aura-bar" style={{ height: "98%" }} />
+          <div className="aura-bar aura-bar-35" />
+          <div className="aura-bar aura-bar-42" />
+          <div className="aura-bar aura-bar-40" />
+          <div className="aura-bar aura-bar-55" />
+          <div className="aura-bar aura-bar-60" />
+          <div className="aura-bar aura-bar-68" />
+          <div className="aura-bar aura-bar-72" />
+          <div className="aura-bar aura-bar-78" />
+          <div className="aura-bar aura-bar-82" />
+          <div className="aura-bar aura-bar-88" />
+          <div className="aura-bar aura-bar-92" />
+          <div className="aura-bar aura-bar-96" />
+          <div className="aura-bar aura-bar-100" />
+          <div className="aura-bar aura-bar-98" />
         </div>
 
-        <p className="aura-muted" style={{ marginTop: 10, fontSize: 12 }}>
+        <p className="aura-muted aura-text-xs aura-mt-10">
           Placeholder only. We’ll wire real daily P&L later.
         </p>
       </section>
@@ -173,35 +171,33 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Recent Trades</div>
-          <div className="aura-muted" style={{ fontSize: 12 }}>
-            Last 5
+          <div className="aura-muted aura-text-xs">Last 5</div>
+        </div>
+
+        <div className="aura-mt-12 aura-grid-gap-10">
+          <div className="aura-card-muted aura-row-between">
+            <span className="aura-muted">—</span>
+            <span>—</span>
+          </div>
+          <div className="aura-card-muted aura-row-between">
+            <span className="aura-muted">—</span>
+            <span>—</span>
+          </div>
+          <div className="aura-card-muted aura-row-between">
+            <span className="aura-muted">—</span>
+            <span>—</span>
+          </div>
+          <div className="aura-card-muted aura-row-between">
+            <span className="aura-muted">—</span>
+            <span>—</span>
+          </div>
+          <div className="aura-card-muted aura-row-between">
+            <span className="aura-muted">—</span>
+            <span>—</span>
           </div>
         </div>
 
-        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
-          <div className="aura-card-muted aura-row-between">
-            <span className="aura-muted">—</span>
-            <span>—</span>
-          </div>
-        </div>
-
-        <p className="aura-muted" style={{ marginTop: 10, fontSize: 12 }}>
+        <p className="aura-muted aura-text-xs aura-mt-10">
           Placeholder only. The full trade log lives in Trades & Logs.
         </p>
       </section>
@@ -210,20 +206,19 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Aura Network</div>
-          <div className="aura-muted" style={{ fontSize: 12 }}>
+          <div className="aura-muted aura-text-xs">
             Platform-wide (placeholder)
           </div>
         </div>
 
-        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+        <div className="aura-mt-12 aura-grid-gap-10">
           <div className="aura-row-between">
             <span className="aura-muted">Aura Profit (All Users)</span>
-            <span style={{ fontWeight: 600 }}>{allUsersProfit}</span>
+            <span className="aura-font-semibold">{allUsersProfit}</span>
           </div>
 
-          <p className="aura-muted" style={{ marginTop: 6, fontSize: 12 }}>
-            This is intentionally placed lower - it’s interesting, but not the
-            user’s primary “what do I need to do right now?” metric.
+          <p className="aura-muted aura-text-xs aura-mt-6">
+            To add any other site wide metrics or status info we want to share here
           </p>
         </div>
       </section>
