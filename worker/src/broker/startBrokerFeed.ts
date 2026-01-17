@@ -6,6 +6,7 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Candle15sAggregator } from "../candles/candle15sAggregator.js";
 import { CorePlus315Engine, type Candle15s as StratCandle15s } from "../strategy/coreplus315Engine.js";
+import { buildBracketFromIntent } from "../trading/buildBracket.js";
 
 // --- quote persist throttle (per instrument) ---
 const lastPersistAtByInstrument = new Map<string, number>();
@@ -19,7 +20,8 @@ export type BrokerEventName =
   | "broker.ready"
   | "broker.error"
   | "broker.market.quote"
-  | "candle.15s.closed";
+  | "candle.15s.closed"
+  | "exec.bracket";
 
 export type BrokerEvent = {
   name: BrokerEventName;
@@ -136,6 +138,9 @@ async function replayRecentCandlesOnce(params: {
     if (intent) {
       intents++;
       console.log(`[${env.WORKER_NAME}] TRADE_INTENT (replay)`, intent);
+
+      const bracket = buildBracketFromIntent(intent);
+      console.log(`[${env.WORKER_NAME}] BRACKET (replay)`, bracket);
     }
   }
 
@@ -378,6 +383,19 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
 
                 if (intent) {
                   console.log(`[${env.WORKER_NAME}] TRADE_INTENT (live)`, intent);
+
+                  const bracket = buildBracketFromIntent(intent);
+                  console.log(`[${env.WORKER_NAME}] BRACKET (live)`, bracket);
+
+                  await emitSafe({
+                    name: "exec.bracket",
+                    ts: new Date().toISOString(),
+                    broker: "projectx",
+                    data: {
+                      source: "live",
+                      bracket,
+                    },
+                  });
                 }
               }
             } catch (e) {

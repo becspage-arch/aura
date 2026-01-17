@@ -49,10 +49,22 @@ function pickPrice(t: QuoteTick): number | null {
 export class Candle15sAggregator {
   private current: Candle15s | null = null;
 
-  // Returns a closed candle event when rollover happens, otherwise null.
-  ingest(tick: QuoteTick, arrivalEpochMs: number = Date.now()): CandleClosedEvent | null {
+  // Keep the last known price so we can force-close on quiet markets.
+  private lastKnownPrice: number | null = null;
+  private lastKnownContractId: string | null = null;
+
+  /**
+   * Ingest a tick. Returns a closed candle event when rollover happens, otherwise null.
+   */
+  ingest(
+    tick: QuoteTick,
+    arrivalEpochMs: number = Date.now()
+  ): CandleClosedEvent | null {
     const price = pickPrice(tick);
     if (price === null) return null;
+
+    this.lastKnownPrice = price;
+    this.lastKnownContractId = tick.contractId;
 
     const bucketStart = floorTo15sBucketStartMs(arrivalEpochMs);
 
@@ -89,6 +101,7 @@ export class Candle15sAggregator {
         l: closed.l,
         c: closed.c,
         ticks: closed.ticks,
+        reason: "rollover",
       });
 
       // Start the next candle with this tick as the first tick
@@ -122,5 +135,67 @@ export class Candle15sAggregator {
     this.current.ticks += 1;
 
     return null;
+  }
+
+  /**
+   * Weekend/quiet-market proofing:
+   * If a candle is open and its 15s window has elapsed, close it using the last known price.
+   * Returns a closed candle event if it closed something, otherwise null.
+   */
+  forceCloseIfDue(nowEpochMs: number = Date.now()): CandleClosedEvent | null {
+    if (!this.current) return null;
+
+    const bucketMs = 15_000;
+    const closeAt = this.current.t0 + bucketMs;
+
+    if (nowEpochMs < closeAt) return null;
+
+    // If we have no last known price, we can't safely fabricate a close.
+    if (this.lastKnownPrice == null) return null;
+
+    // Close current candle (using last known price as c; keep o/h/l as-is)
+    const closed: Candle15s = {
+      ...this.current,
+      c: this.lastKnownPrice,
+      // Do NOT increment ticks here; it's not a real tick.
+    };
+
+    console.log("[candle15s] close", {
+      contractId: closed.contractId,
+      t0: closed.t0,
+      o: closed.o,
+      h: closed.h,
+      l: closed.l,
+      c: closed.c,
+      ticks: closed.ticks,
+      reason: "forceClose",
+    });
+
+    // Open the next candle bucket aligned to *now*
+    const nextBucketStart = floorTo15sBucketStartMs(nowEpochMs);
+    const nextContractId = this.lastKnownContractId || closed.contractId;
+
+    this.current = {
+      contractId: nextContractId,
+      t0: nextBucketStart,
+      o: this.lastKnownPrice,
+      h: this.lastKnownPrice,
+      l: this.lastKnownPrice,
+      c: this.lastKnownPrice,
+      ticks: 0, // important: no real ticks yet
+    };
+
+    console.log("[candle15s] open", {
+      contractId: this.current.contractId,
+      t0: this.current.t0,
+      o: this.current.o,
+      reason: "forceClose",
+    });
+
+    return {
+      name: "candle.15s.closed",
+      ts: new Date().toISOString(),
+      data: closed,
+    };
   }
 }
