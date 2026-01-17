@@ -666,3 +666,42 @@ html.light .aura-row-link:hover {
   margin-top: 12px;
   margin-bottom: 12px;
 }
+
+/* --------------------------------------------------
+   Aura buttons / CTAs
+-------------------------------------------------- */
+
+.aura-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(214, 194, 143, 0.35);
+  background: rgba(214, 194, 143, 0.14);
+  color: var(--foreground);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.aura-btn:hover {
+  background: rgba(214, 194, 143, 0.22);
+  border-color: rgba(214, 194, 143, 0.55);
+}
+
+.aura-btn:active {
+  transform: translateY(1px);
+}
+
+.aura-btn-subtle {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+}
+
+.aura-btn-subtle:hover {
+  background: rgba(214, 194, 143, 0.08);
+}
