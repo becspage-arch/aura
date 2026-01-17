@@ -13,23 +13,35 @@ export default async function AppHome() {
   // If someone hits /app unauthenticated, give them a way out
   if (!user) {
     return (
-      <main className="min-h-screen bg-zinc-50 p-6 dark:bg-black">
-        <header className="mx-auto flex max-w-5xl items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
-          <Link href="/" className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+      <main
+        className="min-h-screen p-6"
+        style={{ background: "var(--background)", color: "var(--foreground)" }}
+      >
+        <header
+          className="mx-auto flex max-w-5xl items-center justify-between rounded-xl px-4 py-3"
+          style={{
+            border: "1px solid var(--border)",
+            background: "var(--card)",
+            color: "var(--card-foreground)",
+          }}
+        >
+          <Link href="/" className="text-sm font-medium">
             Aura
           </Link>
           <nav className="flex items-center gap-3 text-sm">
-            <Link href="/sign-in" className="text-zinc-700 hover:underline dark:text-zinc-200">
+            <Link href="/sign-in" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
               Sign in
             </Link>
-            <Link href="/sign-up" className="text-zinc-700 hover:underline dark:text-zinc-200">
+            <Link href="/sign-up" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
               Sign up
             </Link>
           </nav>
         </header>
 
-        <div className="mx-auto mt-10 max-w-5xl text-zinc-700 dark:text-zinc-200">
-          <h1 className="text-2xl font-semibold">Welcome to Aura</h1>
+        <div className="mx-auto mt-10 max-w-5xl" style={{ color: "var(--muted-foreground)" }}>
+          <h1 className="text-2xl font-semibold" style={{ color: "var(--foreground)" }}>
+            Welcome to Aura
+          </h1>
           <p className="mt-2">Please sign in to view your dashboard.</p>
         </div>
       </main>
@@ -56,28 +68,49 @@ export default async function AppHome() {
     initialDb = await getDashboardInitialData(user.id);
   } catch (e) {
     return (
-      <main className="min-h-screen bg-zinc-50 p-6 dark:bg-black">
-        <header className="mx-auto flex max-w-5xl items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
-          <Link href="/" className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+      <main
+        className="min-h-screen p-6"
+        style={{ background: "var(--background)", color: "var(--foreground)" }}
+      >
+        <header
+          className="mx-auto flex max-w-5xl items-center justify-between rounded-xl px-4 py-3"
+          style={{
+            border: "1px solid var(--border)",
+            background: "var(--card)",
+            color: "var(--card-foreground)",
+          }}
+        >
+          <Link href="/" className="text-sm font-medium">
             Aura
           </Link>
           <nav className="flex items-center gap-3 text-sm">
-            <Link href="/app" className="text-zinc-700 hover:underline dark:text-zinc-200">
+            <Link href="/app" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
               Dashboard
             </Link>
-            <Link href="/app/audit" className="text-zinc-700 hover:underline dark:text-zinc-200">
+            <Link href="/app/audit" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
               Audit
             </Link>
-            <Link href="/sign-out" className="text-zinc-700 hover:underline dark:text-zinc-200">
+            <Link href="/sign-out" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
               Sign out
             </Link>
           </nav>
         </header>
 
         <div className="mx-auto mt-10 max-w-5xl">
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Welcome to Aura</h1>
-          <p className="mt-2 text-zinc-700 dark:text-zinc-200">Could not load dashboard data.</p>
-          <pre className="mt-4 overflow-auto rounded-lg border border-zinc-200 bg-white p-4 text-xs text-zinc-800 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
+          <h1 className="text-2xl font-semibold" style={{ color: "var(--foreground)" }}>
+            Welcome to Aura
+          </h1>
+          <p className="mt-2" style={{ color: "var(--muted-foreground)" }}>
+            Could not load dashboard data.
+          </p>
+          <pre
+            className="mt-4 overflow-auto rounded-lg p-4 text-xs"
+            style={{
+              border: "1px solid var(--border)",
+              background: "var(--card)",
+              color: "var(--card-foreground)",
+            }}
+          >
             {e instanceof Error ? e.message : "Unknown error"}
           </pre>
         </div>
@@ -155,21 +188,22 @@ export default async function AppHome() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black">
+    <div style={{ background: "var(--background)", color: "var(--foreground)", minHeight: "100vh" }}>
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link href="/" className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <Link href="/" className="text-sm font-semibold">
           Aura
         </Link>
 
         <div className="flex items-center gap-4 text-sm">
           <Link
             href="/app/profile"
-            className="hidden text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50 sm:inline"
+            className="hidden hover:underline sm:inline"
+            style={{ color: "var(--muted-foreground)" }}
           >
             {displayName ?? email ?? ""}
           </Link>
 
-          <Link href="/sign-out" className="text-zinc-700 hover:underline dark:text-zinc-200">
+          <Link href="/sign-out" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
             Sign out
           </Link>
         </div>

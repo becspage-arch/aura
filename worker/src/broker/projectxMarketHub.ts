@@ -51,14 +51,9 @@ export class ProjectXMarketHub {
   }
 
   private unwrapPayload(payload: any): any {
-    // SignalR handlers sometimes pass:
-    // - an object
-    // - an array with 1 object
-    // - an envelope like { data: {...} } or { quote: {...} } etc
     const p = Array.isArray(payload) ? payload[0] : payload;
     if (!p) return p;
 
-    // common wrappers
     if (p.data && typeof p.data === "object") return p.data;
     if (p.quote && typeof p.quote === "object") return p.quote;
     if (p.payload && typeof p.payload === "object") return p.payload;
@@ -69,7 +64,6 @@ export class ProjectXMarketHub {
   private normalizeQuote(cid: string, rawPayload: any): Quote {
     const payload = this.unwrapPayload(rawPayload);
 
-    // Try a wider set of field names
     const bidRaw =
       payload?.bestBid ??
       payload?.BestBid ??
@@ -196,42 +190,58 @@ export class ProjectXMarketHub {
     await conn.start();
     console.log("[projectx-market] connected");
 
-    const handleGatewayQuote = async (payload: any) => {
-      this.lastEventAtMs = Date.now();
+  const handleGatewayQuote = async (...args: any[]) => {
+    this.lastEventAtMs = Date.now();
 
-      // Helpful: if raw mode is on, log the incoming payload once per event
-      // If the hub callback gives us ONLY the contractId string, it's not the payload.
-      // The real payload will come via the invocation frames we route below.
-      if (typeof payload === "string") {
-        if (raw) console.log("[projectx-market] quote(rawPayload:stringOnly)", payload);
-        return;
+    // SignalR passes multiple server args as separate parameters.
+    // In our case, arg0 appears to be contractId string.
+    if (raw) {
+      console.log("[projectx-market] GatewayQuote args", {
+        count: args.length,
+        types: args.map((a) => typeof a),
+        head: args.slice(0, 3),
+      });
+    }
+
+    // If the server sends (contractId, payloadObj) or (contractId, bid, ask, last, ts...)
+    // we want everything AFTER arg0 if arg0 is the contractId string.
+    const payload =
+      args.length === 1
+        ? args[0]
+        : typeof args[0] === "string"
+        ? args.slice(1)
+        : args;
+
+    // If we still only got a string, it's not usable as a quote payload.
+    if (typeof payload === "string") {
+      if (raw) console.log("[projectx-market] quote(rawPayload:stringOnly)", payload);
+      return;
+    }
+
+    if (raw) {
+      console.log("[projectx-market] quote(rawPayload)", payload);
+    }
+
+    const merged = this.normalizeQuote(contractId, payload);
+    merged.contractId = contractId;
+
+    console.log("[projectx-market] quote", merged);
+
+    if (onQuote) {
+      try {
+        await onQuote(merged);
+      } catch (e) {
+        console.error("[projectx-market] onQuote handler failed (non-fatal)", e);
       }
-
-      if (raw) {
-        console.log("[projectx-market] quote(rawPayload)", payload);
-      }
-
-      // Normalize but FORCE the subscribed contractId (don’t trust payload’s id)
-      const merged = this.normalizeQuote(contractId, payload);
-      merged.contractId = contractId;
-
-      console.log("[projectx-market] quote", merged);
-
-      if (onQuote) {
-        try {
-          await onQuote(merged);
-        } catch (e) {
-          console.error("[projectx-market] onQuote handler failed (non-fatal)", e);
-        }
-      }
-    };
+    }
+  };
 
     if (quotes) {
       conn.on("GatewayQuote", handleGatewayQuote);
       conn.on("gatewayquote", handleGatewayQuote);
     }
 
-    // Keep the raw frame hook for debugging invocation targets/args
+    // Hook raw frames for debugging + to catch gatewayquote invocations
     try {
       const httpConn = (conn as any).connection;
       const hasOnReceive = httpConn && typeof httpConn.onreceive === "function";
@@ -242,41 +252,67 @@ export class ProjectXMarketHub {
         const orig = httpConn.onreceive.bind(httpConn);
 
         httpConn.onreceive = async (data: any) => {
-          const msgs = this.parseSignalRFrames(data);
+          // ALWAYS let SignalR process the message first
+          const ret = orig(data);
 
-          for (const msg of msgs) {
-            if (raw) {
-              console.log("[projectx-market] frame", msg);
+          try {
+            const t = typeof data;
+            const len =
+              t === "string"
+                ? data.length
+                : data?.byteLength ?? data?.length ?? null;
+
+            console.log("[projectx-market][onreceive]", { type: t, len });
+
+            if (t === "string") {
+              console.log(
+                "[projectx-market][onreceive:string]",
+                data.slice(0, 200)
+              );
             }
+          } catch {}
 
-            if (msg?.type === 1) {
-              this.lastEventAtMs = Date.now();
+          try {
+            const msgs = this.parseSignalRFrames(data);
 
-              const target = String(msg.target || "");
-              const targetLc = target.toLowerCase();
-
-              if (debugInvocations) {
-                console.log("[projectx-market][invoke]", {
-                  target,
-                  args: msg.arguments,
-                });
+            for (const msg of msgs) {
+              if (raw) {
+                console.log("[projectx-market] frame", msg);
               }
 
-              // IMPORTANT:
-              // Some ProjectX feeds don't populate conn.on("GatewayQuote") with the payload.
-              // Instead, the payload arrives as a SignalR invocation frame.
-              if (targetLc === "gatewayquote" || targetLc === "gatewayquotes") {
-                try {
-                  // msg.arguments is typically an array. Pass the args through so unwrapPayload() can handle it.
-                  await handleGatewayQuote(msg.arguments);
-                } catch (e) {
-                  console.error("[projectx-market] gatewayquote frame handling failed", e);
+              // Invocation frame
+              if (msg?.type === 1) {
+                this.lastEventAtMs = Date.now();
+
+                const target = String(msg.target || "");
+                const targetLc = target.toLowerCase();
+
+                if (debugInvocations) {
+                  console.log("[projectx-market][invoke]", {
+                    target,
+                    args: msg.arguments,
+                  });
+                }
+
+                // Some feeds deliver the quote ONLY via invocation frames
+                if (targetLc === "gatewayquote" || targetLc === "gatewayquotes") {
+                  try {
+                    // pass args through (unwrapPayload handles arrays)
+                    await handleGatewayQuote(msg.arguments);
+                  } catch (e) {
+                    console.error(
+                      "[projectx-market] gatewayquote frame handling failed",
+                      e
+                    );
+                  }
                 }
               }
             }
+          } catch {
+            // ignore parsing errors
           }
 
-          return orig(data);
+          return ret;
         };
       }
     } catch (e) {
@@ -310,7 +346,10 @@ export class ProjectXMarketHub {
     if (!this.heartbeatTimer) {
       this.heartbeatTimer = setInterval(() => {
         const ageMs = this.lastEventAtMs ? Date.now() - this.lastEventAtMs : null;
-        console.log("[projectx-market] heartbeat", { contractId, lastEventAgeMs: ageMs });
+        console.log("[projectx-market] heartbeat", {
+          contractId,
+          lastEventAgeMs: ageMs,
+        });
       }, 10_000);
     }
   }
