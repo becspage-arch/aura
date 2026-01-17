@@ -9,22 +9,23 @@ export default function SettingsPage() {
       <div>
         <h1 className="aura-page-title">Settings</h1>
         <p className="aura-page-subtitle">
-          Manage broker connections, notifications, safety caps, and account preferences.
+          Manage broker connections, notifications, safety caps, and preferences.
         </p>
       </div>
 
-      {/* Read-only / UI-only notice */}
+      {/* UI-only notice */}
       <section className="aura-card-muted">
         <div className="aura-row-between">
           <span className="aura-card-title">UI only</span>
           <span className="aura-muted aura-text-xs">Not wired yet</span>
         </div>
+
         <p className="aura-muted aura-text-xs aura-mt-6">
-          These settings are placeholders for now. Strategy configuration lives in{" "}
+          Strategy configuration lives in{" "}
           <Link className="aura-link aura-pill" href="/app/strategy">
             Strategy
           </Link>{" "}
-          and live controls + charts live in{" "}
+          and live execution + chart monitoring lives in{" "}
           <Link className="aura-link aura-pill" href="/app/live-control">
             Live Control
           </Link>
@@ -39,61 +40,81 @@ export default function SettingsPage() {
           <div className="aura-muted aura-text-xs">Account access</div>
         </div>
 
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Connected Broker</span>
-            <span className="aura-muted">—</span>
+        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Connection status</div>
+              <div className="aura-control-help">Shows whether Aura can reach your broker.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">Disconnected</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Connection Status</span>
-            <span className="aura-muted">Disconnected (placeholder)</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Environment</div>
+              <div className="aura-control-help">Demo / Live will be selectable once wired.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">Demo (placeholder)</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Environment</span>
-            <span className="aura-muted">Demo / Live (placeholder)</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Manage connection</div>
+              <div className="aura-control-help">Connect, re-auth, and view linked accounts.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">Coming soon</span>
+            </div>
           </div>
-
-          <div className="aura-card-muted aura-row-between">
-            <span>Connect / Manage</span>
-            <span className="aura-muted">Coming soon</span>
-          </div>
-
-          <p className="aura-muted aura-text-xs">
-            Broker connections control where Aura can place orders. Strategy settings cannot override
-            broker-level restrictions.
-          </p>
         </div>
+
+        <p className="aura-muted aura-text-xs aura-mt-10">
+          Broker connections control where Aura can place orders. Strategy settings cannot override
+          broker-level restrictions.
+        </p>
       </section>
 
-      {/* Default account */}
+      {/* Account defaults */}
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Account Defaults</div>
           <div className="aura-muted aura-text-xs">Applies across Aura</div>
         </div>
 
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Default Broker Account</span>
-            <span className="aura-muted">—</span>
+        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Default broker account</div>
+              <div className="aura-control-help">Used when Live Control hasn’t selected an account.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">—</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Default Symbol</span>
-            <span className="aura-muted">MGC (placeholder)</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Default symbol</div>
+              <div className="aura-control-help">Pre-selected for Strategy and Live Control.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">MGC</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Default Session</span>
-            <span className="aura-muted">New York (placeholder)</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Default session</div>
+              <div className="aura-control-help">Used for session-based filters and defaults.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">New York</span>
+            </div>
           </div>
-
-          <p className="aura-muted aura-text-xs">
-            Defaults are used when Aura starts running and no override has been selected in Live
-            Control.
-          </p>
         </div>
       </section>
 
@@ -104,71 +125,128 @@ export default function SettingsPage() {
           <div className="aura-muted aura-text-xs">Awareness without noise</div>
         </div>
 
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Trade opened</span>
-            <span className="aura-muted">—</span>
+        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Trade opened</div>
+              <div className="aura-control-help">Notify when Aura enters a position.</div>
+            </div>
+            <div className="aura-control-right">
+              <div className="aura-toggle" aria-label="Trade opened notifications (disabled)" />
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Trade closed</span>
-            <span className="aura-muted">—</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Trade closed</div>
+              <div className="aura-control-help">Notify when a position exits.</div>
+            </div>
+            <div className="aura-control-right">
+              <div className="aura-toggle aura-toggle-on" aria-label="Trade closed notifications (disabled)" />
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Paused / resumed</span>
-            <span className="aura-muted">—</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Paused / resumed</div>
+              <div className="aura-control-help">Notify when Aura changes run state.</div>
+            </div>
+            <div className="aura-control-right">
+              <div className="aura-toggle" aria-label="Paused/resumed notifications (disabled)" />
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Kill switch activated</span>
-            <span className="aura-muted">—</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Kill switch activated</div>
+              <div className="aura-control-help">High priority notification.</div>
+            </div>
+            <div className="aura-control-right">
+              <div className="aura-toggle aura-toggle-on" aria-label="Kill switch notifications (disabled)" />
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>System errors</span>
-            <span className="aura-muted">—</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">System errors</div>
+              <div className="aura-control-help">Notify when execution is blocked or degraded.</div>
+            </div>
+            <div className="aura-control-right">
+              <div className="aura-toggle aura-toggle-on" aria-label="System error notifications (disabled)" />
+            </div>
           </div>
 
-          <p className="aura-muted aura-text-xs">
-            Notifications are designed to keep you informed without requiring constant monitoring.
-          </p>
+          <div className="aura-divider" />
+
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Notification channel</div>
+              <div className="aura-control-help">Email / push / SMS (future).</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">Email (placeholder)</span>
+            </div>
+          </div>
         </div>
+
+        <p className="aura-muted aura-text-xs aura-mt-10">
+          Notifications are designed to keep you informed without requiring constant monitoring.
+        </p>
       </section>
 
-      {/* Safety caps (account-level overrides) */}
+      {/* Safety caps */}
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Safety Caps</div>
           <div className="aura-muted aura-text-xs">Hard limits</div>
         </div>
 
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Max daily loss (hard cap)</span>
-            <span className="aura-muted">—</span>
+        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Max daily loss (hard cap)</div>
+              <div className="aura-control-help">If reached, Aura pauses and requires intervention.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">—</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Max weekly loss (hard cap)</span>
-            <span className="aura-muted">—</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Max weekly loss (hard cap)</div>
+              <div className="aura-control-help">Longer horizon protection.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">—</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Max open risk at once</span>
-            <span className="aura-muted">—</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Max open risk at once</div>
+              <div className="aura-control-help">Caps combined exposure across open positions.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">—</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Max consecutive losses</span>
-            <span className="aura-muted">—</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Max consecutive losses</div>
+              <div className="aura-control-help">Auto-pause after repeated losses.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">—</span>
+            </div>
           </div>
-
-          <p className="aura-muted aura-text-xs">
-            Safety caps override strategy-level settings. If a cap is reached, Aura will pause and
-            require manual intervention in Live Control.
-          </p>
         </div>
+
+        <p className="aura-muted aura-text-xs aura-mt-10">
+          Safety caps override strategy-level settings. If a cap is reached, Aura will pause and
+          require manual intervention in Live Control.
+        </p>
       </section>
 
       {/* Preferences */}
@@ -178,79 +256,80 @@ export default function SettingsPage() {
           <div className="aura-muted aura-text-xs">Personalise your view</div>
         </div>
 
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Timezone</span>
-            <span className="aura-muted">Europe/London (placeholder)</span>
+        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Timezone</div>
+              <div className="aura-control-help">Used for sessions, charts, and reporting.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">Europe/London</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Currency display</span>
-            <span className="aura-muted">GBP (placeholder)</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Currency display</div>
+              <div className="aura-control-help">How profits and risk appear across Aura.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">GBP</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Session labels</span>
-            <span className="aura-muted">Asian / London / New York</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Session labels</div>
+              <div className="aura-control-help">Shown on Strategy, Performance, and filters.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">Asia / London / NY</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Theme</span>
-            <span className="aura-muted">Use Profile toggle</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Theme</div>
+              <div className="aura-control-help">Theme toggle lives in Profile.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">Profile</span>
+            </div>
           </div>
-
-          <p className="aura-muted aura-text-xs">
-            These settings affect how Aura presents information, not how trades are executed.
-          </p>
         </div>
+
+        <p className="aura-muted aura-text-xs aura-mt-10">
+          Preferences affect how Aura presents information, not how trades are executed.
+        </p>
       </section>
 
-      {/* Data & exports */}
+      {/* Data & Export */}
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Data & Export</div>
           <div className="aura-muted aura-text-xs">Portability</div>
         </div>
 
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Export trades</span>
-            <span className="aura-muted">CSV (placeholder)</span>
+        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Export trades</div>
+              <div className="aura-control-help">For journaling and external analysis.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">CSV (placeholder)</span>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Export system logs</span>
-            <span className="aura-muted">JSON (placeholder)</span>
+          <div className="aura-card-muted aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Export system logs</div>
+              <div className="aura-control-help">For diagnostics and audit trail.</div>
+            </div>
+            <div className="aura-control-right">
+              <span className="aura-select-pill">JSON (placeholder)</span>
+            </div>
           </div>
-
-          <p className="aura-muted aura-text-xs">
-            Export is intended for journaling, tax prep, and external analysis tools.
-          </p>
-        </div>
-      </section>
-
-      {/* Security */}
-      <section className="aura-card">
-        <div className="aura-row-between">
-          <div className="aura-card-title">Security</div>
-          <div className="aura-muted aura-text-xs">Account protection</div>
-        </div>
-
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Two-factor authentication</span>
-            <span className="aura-muted">Managed by Clerk (placeholder)</span>
-          </div>
-
-          <div className="aura-card-muted aura-row-between">
-            <span>Active sessions</span>
-            <span className="aura-muted">Coming soon</span>
-          </div>
-
-          <p className="aura-muted aura-text-xs">
-            Aura will provide additional security tools over time, including session visibility and
-            login alerts.
-          </p>
         </div>
       </section>
 

@@ -75,6 +75,32 @@ let cachedUserTradingState:
 let lastUserTradingStateCheck = 0;
 const USER_STATE_REFRESH_MS = 5_000;
 
+// --- debug: log pause/kill changes even when markets are closed ---
+// (safe: read-only, no trading impact)
+let lastLoggedUserState: { isPaused: boolean; isKillSwitched: boolean } | null = null;
+
+setInterval(() => {
+  void (async () => {
+    try {
+      // Only run when we're configured for a specific user
+      if (!process.env.AURA_CLERK_USER_ID) return;
+
+      const s = await getUserTradingState();
+
+      if (
+        !lastLoggedUserState ||
+        s.isPaused !== lastLoggedUserState.isPaused ||
+        s.isKillSwitched !== lastLoggedUserState.isKillSwitched
+      ) {
+        console.log(`[${env.WORKER_NAME}] user trading state`, s);
+        lastLoggedUserState = s;
+      }
+    } catch (e) {
+      console.warn(`[${env.WORKER_NAME}] user state watcher failed`, e);
+    }
+  })();
+}, 5_000);
+
 async function getUserTradingState(): Promise<{
   isPaused: boolean;
   isKillSwitched: boolean;

@@ -576,3 +576,93 @@ html.light .aura-float {
 html.light .aura-row-link:hover {
   background: rgba(0, 0, 0, 0.04);
 }
+
+/* --------------------------------------------------
+   Aura controls (UI-only placeholders)
+-------------------------------------------------- */
+
+.aura-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aura-control-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.aura-control-title {
+  font-weight: 600;
+}
+
+.aura-control-help {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.aura-control-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.aura-select-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.aura-toggle {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  flex: 0 0 auto;
+}
+
+.aura-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  transition: transform 120ms ease;
+}
+
+.aura-toggle-on {
+  background: rgba(214, 194, 143, 0.18);
+  border-color: rgba(214, 194, 143, 0.28);
+}
+
+.aura-toggle-on::after {
+  transform: translateX(18px);
+}
+
+.aura-disabled {
+  opacity: 0.6;
+  filter: grayscale(0.15);
+}
+
+.aura-disabled * {
+  cursor: not-allowed;
+}
+
+.aura-divider {
+  height: 1px;
+  background: var(--border);
+  opacity: 0.6;
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
