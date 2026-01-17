@@ -2,24 +2,28 @@ export const dynamic = "force-dynamic";
 
 export default function LiveControlPage() {
   return (
-    <div className="grid gap-6">
+    <div className="mx-auto grid max-w-6xl gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Live Control
-        </h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+        <h1 style={{ fontSize: 28, fontWeight: 700 }}>Live Control</h1>
+        <p style={{ marginTop: 6, color: "var(--muted-foreground)" }}>
           This page will be where users pause, kill-switch, select account, and manage live running.
           (UI only for now - we’ll wire it later.)
         </p>
       </div>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Coming soon
-        </h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <section
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 16,
+          padding: 16,
+          background: "var(--card)",
+          color: "var(--card-foreground)",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Coming soon</div>
+        <div style={{ color: "var(--muted-foreground)" }}>
           Controls, account selector, symbol selector, safety confirmations.
-        </p>
+        </div>
       </section>
     </div>
   );
