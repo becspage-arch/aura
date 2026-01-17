@@ -31,20 +31,6 @@ type ProjectXMarketHubOpts = {
   rtcUrl?: string; // override hub base url if needed
 };
 
-function toNum(v: unknown): number | undefined {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string") {
-    const n = Number(v);
-    if (Number.isFinite(n)) return n;
-  }
-  return undefined;
-}
-
-function toStr(v: unknown): string | undefined {
-  if (typeof v === "string" && v.trim()) return v;
-  return undefined;
-}
-
 export class ProjectXMarketHub {
   private conn: HubConnection | null = null;
   private lastEventAtMs = 0;
@@ -58,38 +44,28 @@ export class ProjectXMarketHub {
 
   constructor(private opts: ProjectXMarketHubOpts) {}
 
-  private normalizeQuote(cid: string, payloadRaw: any): Quote {
-    // Some servers send arrays or wrap the payload.
-    const payload =
-      Array.isArray(payloadRaw) && payloadRaw.length > 0 ? payloadRaw[0] : payloadRaw;
-
-    const bid = toNum(
-      payload?.bestBid ?? payload?.BestBid ?? payload?.bid ?? payload?.Bid
-    );
-
-    const ask = toNum(
-      payload?.bestAsk ?? payload?.BestAsk ?? payload?.ask ?? payload?.Ask
-    );
-
-    const last = toNum(
+  private normalizeQuote(cid: string, payload: any): Quote {
+    const bid =
+      payload?.bestBid ?? payload?.BestBid ?? payload?.bid ?? payload?.Bid;
+    const ask =
+      payload?.bestAsk ?? payload?.BestAsk ?? payload?.ask ?? payload?.Ask;
+    const last =
       payload?.lastPrice ??
-        payload?.LastPrice ??
-        payload?.last ??
-        payload?.Last ??
-        payload?.tradePrice ??
-        payload?.TradePrice
-    );
+      payload?.LastPrice ??
+      payload?.last ??
+      payload?.Last ??
+      payload?.tradePrice ??
+      payload?.TradePrice;
 
-    const ts = toStr(
+    const ts =
       payload?.timestamp ??
-        payload?.Timestamp ??
-        payload?.lastUpdated ??
-        payload?.LastUpdated ??
-        payload?.ts ??
-        payload?.Ts ??
-        payload?.time ??
-        payload?.Time
-    );
+      payload?.Timestamp ??
+      payload?.lastUpdated ??
+      payload?.LastUpdated ??
+      payload?.ts ??
+      payload?.Ts ??
+      payload?.time ??
+      payload?.Time;
 
     // Merge partial updates (keep last known values)
     if (typeof bid === "number") this.lastBid = bid;
@@ -132,7 +108,7 @@ export class ProjectXMarketHub {
   async start(): Promise<void> {
     const {
       token,
-      contractId: defaultContractId,
+      contractId,
       onQuote,
       quotes = true,
       trades = false,
@@ -165,7 +141,7 @@ export class ProjectXMarketHub {
 
     console.log("[projectx-market] config", {
       urlBase: base,
-      contractId: defaultContractId,
+      contractId,
       quotes,
       trades,
       depth,
@@ -178,71 +154,17 @@ export class ProjectXMarketHub {
     await conn.start();
     console.log("[projectx-market] connected");
 
-    // Quote handler: be tolerant to signature differences:
-    // - GatewayQuote(payload)
-    // - GatewayQuote(contractId, payload)
-    // - GatewayQuote(payloadArray)
-    const handleGatewayQuote = async (...args: any[]) => {
+    // ✅ Register actual handlers so SignalR doesn't warn + drop the event
+    // NOTE: SignalR JS lowercases method names internally, so we register both.
+    const handleGatewayQuote = async (payload: any) => {
       this.lastEventAtMs = Date.now();
 
-      let cid: string = defaultContractId;
-      let payload: any = args[0];
+      // Normalize but FORCE the contractId we subscribed to.
+      // ProjectX sometimes sends symbolId (e.g. F.US.MGC) in the payload.
+      const merged = this.normalizeQuote(contractId, payload);
+      merged.contractId = contractId;
 
-      if (args.length >= 2) {
-        const maybeCid = args[0];
-        const maybePayload = args[1];
-
-        if (typeof maybeCid === "string" && maybeCid.trim()) {
-          cid = maybeCid;
-          payload = maybePayload;
-        } else {
-          // sometimes first arg is payload, second is meta; prefer object payload
-          payload = maybePayload ?? maybeCid;
-        }
-      }
-
-      // If server sends a payload that itself contains contractId, prefer it
-      if (payload && typeof payload === "object") {
-        const embeddedCid =
-          payload.contractId ??
-          payload.ContractId ??
-          payload.id ??
-          payload.Id ??
-          payload.symbol ??
-          payload.Symbol ??
-          payload.symbolId ??
-          payload.SymbolId;
-
-        if (typeof embeddedCid === "string" && embeddedCid.trim()) {
-          cid = embeddedCid;
-        }
-      }
-
-      // If we're still not getting prices, log shape so we can map it precisely
-      const merged = this.normalizeQuote(cid, payload);
-
-      const hasAny =
-        typeof merged.bid === "number" ||
-        typeof merged.ask === "number" ||
-        typeof merged.last === "number";
-
-      if (!hasAny) {
-        const keys =
-          payload && typeof payload === "object" ? Object.keys(payload).slice(0, 30) : null;
-
-        console.log("[projectx-market] quote (no prices yet)", {
-          cid,
-          argsCount: args.length,
-          payloadType: Array.isArray(payload) ? "array" : typeof payload,
-          keys,
-          payloadPreview:
-            payload && typeof payload === "object"
-              ? JSON.stringify(payload).slice(0, 400)
-              : String(payload).slice(0, 200),
-        });
-      } else {
-        console.log("[projectx-market] quote", merged);
-      }
+      console.log("[projectx-market] quote", merged);
 
       if (onQuote) {
         try {
@@ -276,35 +198,13 @@ export class ProjectXMarketHub {
               console.log("[projectx-market] frame", msg);
             }
 
-            // Track any inbound message as "activity"
-            if (msg?.type != null) {
+            if (msg?.type === 1) {
               this.lastEventAtMs = Date.now();
-            }
 
-            // Log ALL invocation messages (type 1) and also completions (type 3) when debugging
-            if (debugInvocations) {
-              if (msg?.type === 1) {
+              if (debugInvocations) {
                 console.log("[projectx-market][invoke]", {
                   target: msg.target,
                   args: msg.arguments,
-                });
-              } else if (msg?.type === 3) {
-                console.log("[projectx-market][completion]", {
-                  invocationId: msg.invocationId,
-                  error: msg.error ?? null,
-                  result: msg.result ?? null,
-                });
-              } else if (msg?.type === 2) {
-                console.log("[projectx-market][streamItem]", {
-                  invocationId: msg.invocationId,
-                  itemPreview: msg.item
-                    ? JSON.stringify(msg.item).slice(0, 400)
-                    : null,
-                });
-              } else {
-                console.log("[projectx-market][frame]", {
-                  type: msg?.type,
-                  keys: msg && typeof msg === "object" ? Object.keys(msg) : null,
                 });
               }
             }
@@ -318,37 +218,29 @@ export class ProjectXMarketHub {
     }
 
     // --- Subscribe ---
-    console.log("[projectx-market] subscribing", {
-      contractId: defaultContractId,
-      quotes,
-      trades,
-      depth,
-    });
+    console.log("[projectx-market] subscribing", { contractId, quotes, trades, depth });
 
     if (quotes) {
-      const res = await conn.invoke("SubscribeContractQuotes", defaultContractId);
-      console.log("[projectx-market] subscribed quotes", { contractId: defaultContractId, res });
+      const res = await conn.invoke("SubscribeContractQuotes", contractId);
+      console.log("[projectx-market] subscribed quotes", { contractId, res });
     }
 
     if (trades) {
-      const res = await conn.invoke("SubscribeContractTrades", defaultContractId);
-      console.log("[projectx-market] subscribed trades", { contractId: defaultContractId, res });
+      const res = await conn.invoke("SubscribeContractTrades", contractId);
+      console.log("[projectx-market] subscribed trades", { contractId, res });
     }
 
     if (depth) {
-      const res = await conn.invoke("SubscribeContractMarketDepth", defaultContractId);
-      console.log("[projectx-market] subscribed depth", { contractId: defaultContractId, res });
+      const res = await conn.invoke("SubscribeContractMarketDepth", contractId);
+      console.log("[projectx-market] subscribed depth", { contractId, res });
     }
 
-    console.log("[projectx-market] subscribed", { contractId: defaultContractId });
+    console.log("[projectx-market] subscribed", { contractId });
 
     if (!this.heartbeatTimer) {
       this.heartbeatTimer = setInterval(() => {
         const ageMs = this.lastEventAtMs ? Date.now() - this.lastEventAtMs : null;
-        console.log("[projectx-market] heartbeat", {
-          contractId: defaultContractId,
-          lastEventAgeMs: ageMs,
-        });
+        console.log("[projectx-market] heartbeat", { contractId, lastEventAgeMs: ageMs });
       }, 10_000);
     }
   }
