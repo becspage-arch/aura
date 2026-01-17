@@ -222,9 +222,7 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         seriesRef.current.setData(cached.map(toSeries));
 
         const to = floorToTf(Math.floor(Date.now() / 1000), nextTf);
-        const url = `/api/charts/candles?symbol=${encodeURIComponent(
-          symbol
-        )}&tf=${nextTf}&to=${to}&limit=800&fill=1`;
+        const url = `/api/charts/candles?symbol=${encodeURIComponent(symbol)}&tf=${nextTf}&to=${to}&limit=800&fill=1`;
 
         const res = await fetch(url, { signal: ac.signal });
         if (!res.ok) throw new Error(`Failed to load candles (${res.status})`);
@@ -292,9 +290,7 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
   const requestOlderPage = useCallback(
     async (nextTf: Timeframe, toParam: number) => {
-      const url = `/api/charts/candles?symbol=${encodeURIComponent(
-        symbol
-      )}&tf=${nextTf}&to=${toParam}&limit=800&fill=1`;
+      const url = `/api/charts/candles?symbol=${encodeURIComponent(symbol)}&tf=${nextTf}&to=${toParam}&limit=800&fill=1`;
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return null;
       const json = (await res.json()) as ApiResponse;
@@ -416,7 +412,7 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
       } finally {
         isPagingRef.current = false;
 
-        // ✅ If user dragged super fast and we queued another page, run it immediately
+        // If user dragged super fast and we queued another page, run it immediately
         if (pendingPageRef.current) {
           pendingPageRef.current = false;
 
@@ -437,9 +433,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     loadOlderRef.current = loadOlderCandles;
   }, [loadOlderCandles]);
 
-  // ✅ Recommended settings for smoothness
-  // - trigger earlier so we load before the user hits the wall
-  // - shorter cooldown so fast dragging still pages
   const pagingCooldownAtRef = useRef(0);
   const pagingCooldownMs = 350;
   const leftEdgeThresholdBars = 300;
@@ -491,15 +484,12 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     const onLogicalRange = (range: LogicalRange | null) => {
       if (!range) return;
 
-      // record latest position for queue logic
       lastRangeFromRef.current = range.from;
 
-      // only act when near left edge
       if (range.from > leftEdgeThresholdBars) return;
 
       bumpPagingDebug({ triggers: pagingDebugRef.current.triggers + 1 });
 
-      // ✅ If a load is already happening, queue ONE more and exit
       if (isPagingRef.current) {
         pendingPageRef.current = true;
         return;
@@ -673,20 +663,20 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
   const tfButtons = useMemo(
     () => (
-      <div className="flex gap-2">
+      <div className="aura-btn-group">
         <button
-          className={`px-3 py-1 rounded ${tf === "15s" ? "bg-white/10" : "bg-white/5"}`}
+          className={`aura-btn ${tf === "15s" ? "aura-btn-active" : ""}`}
           onClick={() => setTf("15s")}
           type="button"
         >
-          15s (DBG)
+          15s
         </button>
         <button
-          className={`px-3 py-1 rounded ${tf === "3m" ? "bg-white/10" : "bg-white/5"}`}
+          className={`aura-btn ${tf === "3m" ? "aura-btn-active" : ""}`}
           onClick={() => setTf("3m")}
           type="button"
         >
-          3m (DBG)
+          3m
         </button>
       </div>
     ),
@@ -696,48 +686,44 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
   const markerClass = (kind: ChartMarker["kind"]) => {
     switch (kind) {
       case "order_buy":
-        return "bg-emerald-600/90 text-white";
+        return "aura-marker aura-marker-buy";
       case "order_sell":
-        return "bg-rose-600/90 text-white";
+        return "aura-marker aura-marker-sell";
       case "fill_buy_full":
       case "fill_sell_full":
-        return "bg-blue-600/90 text-white";
-      case "fill_sell_full":
-        return "bg-blue-600/90 text-white";
+        return "aura-marker aura-marker-fill";
       case "order_cancelled":
-        return "bg-zinc-600/90 text-white";
+        return "aura-marker aura-marker-cancel";
       default:
-        return "bg-white/10 text-white";
+        return "aura-marker";
     }
   };
 
   return (
     <div className="w-full">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <div className="text-sm text-black">{symbol}</div>
-          <div className="text-[11px] text-black">
-            markers: {debugMarkerStats.shown}/{debugMarkerStats.total}
+      <div className="aura-chart-top aura-mt-6">
+        <div className="aura-chart-meta">
+          <div className="aura-chart-meta-title">{symbol}</div>
+          <div className="aura-chart-meta-line">
+            Markers: {debugMarkerStats.shown}/{debugMarkerStats.total}
           </div>
-          <div className="text-[11px] text-black">
-            paging: triggers {debugPaging.triggers} - loads {debugPaging.loads} - older(raw) {debugPaging.lastOlderCount}{" "}
-            - grew {debugPaging.grew} - cursor {debugPaging.cursor ?? "null"} - cache {debugPaging.cacheLen} - oldest{" "}
-            {debugPaging.oldest ?? "null"} - newest {debugPaging.newest ?? "null"}
+          <div className="aura-chart-meta-line">
+            Paging: triggers {debugPaging.triggers} - loads {debugPaging.loads} - older(raw){" "}
+            {debugPaging.lastOlderCount} - grew {debugPaging.grew} - cursor {debugPaging.cursor ?? "null"} - cache{" "}
+            {debugPaging.cacheLen} - oldest {debugPaging.oldest ?? "null"} - newest {debugPaging.newest ?? "null"}
           </div>
         </div>
         {tfButtons}
       </div>
 
-      <div className="relative">
-        <div ref={containerRef} className="w-full rounded-lg overflow-hidden border border-white/10" />
+      <div className="aura-chart-frame">
+        <div ref={containerRef} className="aura-chart-surface" />
 
-        <div ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ top: 0, left: 0 }}>
+        <div ref={overlayRef} className="aura-chart-overlay">
           {markerPositions.map((m) => (
             <div
               key={m.id}
-              className={`pointer-events-none absolute top-3 -translate-x-1/2 px-2 py-1 rounded text-[11px] ${markerClass(
-                m.kind
-              )}`}
+              className={markerClass(m.kind)}
               style={{ left: `${m.x}px` }}
               title={`${m.kind}${m.price != null ? ` @ ${m.price}` : ""}`}
             >
@@ -746,18 +732,12 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
           ))}
         </div>
 
-        {isLoading && (
-          <div className="absolute top-2 right-2 text-xs text-white/70 bg-black/40 px-2 py-1 rounded">Loading…</div>
-        )}
+        {isLoading && <div className="aura-float aura-float-top-right">Loading…</div>}
 
-        {error && (
-          <div className="absolute bottom-2 left-2 text-xs text-red-200 bg-red-900/30 px-2 py-1 rounded">{error}</div>
-        )}
+        {error && <div className="aura-float aura-float-bottom-left">{error}</div>}
 
         {!isLoading && !error && cacheRef.current[tf].length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-white/50">
-            No candles yet (waiting for data)
-          </div>
+          <div className="aura-float aura-float-center">No candles yet (waiting for data)</div>
         )}
       </div>
     </div>

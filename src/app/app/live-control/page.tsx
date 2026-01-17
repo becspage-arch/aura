@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { currentUser } from "@clerk/nextjs/server";
 import { ensureUserProfile } from "@/lib/user-profile";
-import { TradingChart } from "@/app/components/charts/TradingChart";
+import { TradingChart } from "../../components/charts/TradingChart";
 
 export default async function LiveControlPage() {
   const user = await currentUser();

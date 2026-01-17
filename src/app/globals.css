@@ -415,3 +415,142 @@ html.light .aura-table-header {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* --------------------------------------------------
+   Aura chart UI (TradingChart chrome)
+-------------------------------------------------- */
+
+.aura-chart-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aura-chart-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.aura-chart-meta-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--card-foreground);
+}
+
+.aura-chart-meta-line {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.aura-btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+.aura-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--card-foreground);
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.aura-btn:hover {
+  background: rgba(214, 194, 143, 0.10);
+}
+
+.aura-btn-active {
+  background: rgba(214, 194, 143, 0.20);
+  border-color: rgba(214, 194, 143, 0.35);
+}
+
+.aura-chart-frame {
+  position: relative;
+}
+
+.aura-chart-surface {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+
+.aura-chart-overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+}
+
+.aura-float {
+  position: absolute;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--foreground);
+}
+
+html.light .aura-float {
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--foreground);
+}
+
+.aura-float-top-right {
+  top: 10px;
+  right: 10px;
+}
+
+.aura-float-bottom-left {
+  bottom: 10px;
+  left: 10px;
+}
+
+.aura-float-center {
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* Marker pill styles */
+.aura-marker {
+  pointer-events: none;
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  background: rgba(214, 194, 143, 0.12);
+}
+
+.aura-marker-buy {
+  background: rgba(127, 168, 161, 0.25); /* success */
+  border-color: rgba(127, 168, 161, 0.35);
+}
+
+.aura-marker-sell {
+  background: rgba(176, 122, 122, 0.25); /* error */
+  border-color: rgba(176, 122, 122, 0.35);
+}
+
+.aura-marker-fill {
+  background: rgba(214, 194, 143, 0.22); /* gold */
+  border-color: rgba(214, 194, 143, 0.35);
+}
+
+.aura-marker-cancel {
+  background: rgba(138, 145, 158, 0.22); /* text-3-ish neutral */
+  border-color: rgba(138, 145, 158, 0.35);
+}
