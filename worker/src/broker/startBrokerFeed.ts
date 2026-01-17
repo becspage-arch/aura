@@ -286,6 +286,9 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       }
 
       try {
+        // Gate forceClose so it only runs when we are actually seeing live quotes
+        let lastLiveQuoteAtMs = 0;
+
         // Shared handler: persist + strategy + emit for ANY closed 15s candle
         const handleClosed15s = async (params: {
           source: "rollover" | "forceClose";
@@ -384,6 +387,9 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
           raw: true,
           debugInvocations: true,
           onQuote: async (q) => {
+            // Used to gate forceClose so we never fabricate candles when the market is closed
+            lastLiveQuoteAtMs = Date.now();
+
             // 1) Persist quote snapshot (THROTTLED)
             try {
               const instrumentKey = q.contractId;
@@ -452,16 +458,25 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
 
         await marketHub.start();
 
-        // Weekend/quiet-market: force-close 15s candles on schedule even if no new quotes arrive
+        // Weekend/quiet-market:
+        // Only force-close if we have seen a quote recently.
+        // This prevents “one stale snapshot then endless fabricated candles”.
         setInterval(() => {
           void (async () => {
             try {
-              const forced = candle15s.forceCloseIfDue(Date.now());
+              const now = Date.now();
+              const activeWindowMs = 30_000;
+
+              if (!lastLiveQuoteAtMs || now - lastLiveQuoteAtMs > activeWindowMs) {
+                return;
+              }
+
+              const forced = candle15s.forceCloseIfDue(now);
               if (!forced) return;
 
               await handleClosed15s({ source: "forceClose", closed: forced });
             } catch (e) {
-              console.error("[projectx-market] forceClose tick failed", e);
+              console.error("[projectx-market] forceCloseIfDue failed", e);
             }
           })();
         }, 1000);
