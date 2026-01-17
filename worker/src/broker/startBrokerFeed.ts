@@ -84,6 +84,7 @@ setInterval(() => {
     try {
       // Only run when we're configured for a specific user
       if (!process.env.AURA_CLERK_USER_ID) return;
+      if (process.env.DEBUG_USER_STATE !== "1") return;
 
       const s = await getUserTradingState();
 
