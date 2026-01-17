@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "./db.js";
 
 export async function getSafetyStateForUser(clerkUserId: string) {
   const user = await db.userProfile.findUnique({

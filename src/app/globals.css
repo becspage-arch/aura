@@ -110,3 +110,128 @@ body {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+
+/* ----------------------------------------------
+   Aura UI primitives (layout & components)
+   Keep colours token-driven via CSS variables.
+   ---------------------------------------------- */
+
+.aura-page {
+  display: grid;
+  gap: 24px;
+}
+
+.aura-page-title {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.aura-page-subtitle {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+}
+
+.aura-grid-4 {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .aura-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .aura-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.aura-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.aura-card-muted {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--muted);
+  color: var(--card-foreground);
+}
+
+.aura-card-title {
+  font-weight: 700;
+}
+
+.aura-muted {
+  color: var(--muted-foreground);
+}
+
+.aura-stat-label {
+  font-size: 12px;
+  letter-spacing: 0.2px;
+  color: var(--muted-foreground);
+}
+
+.aura-stat-value {
+  margin-top: 8px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.aura-stat-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.aura-mini-value {
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.aura-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  line-height: 1;
+  color: var(--card-foreground);
+  background: transparent;
+}
+
+.aura-pill-active {
+  background: rgba(214, 194, 143, 0.25);
+}
+
+.aura-row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.aura-chart-placeholder {
+  margin-top: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  padding: 12px;
+  height: 220px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.aura-bar {
+  flex: 1;
+  border-radius: 10px;
+  background: rgba(214, 194, 143, 0.35);
+  border: 1px solid rgba(214, 194, 143, 0.25);
+}

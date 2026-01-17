@@ -193,9 +193,6 @@ if (!Number.isFinite(execSize) || execSize <= 0) {
   return;
 }
 
-// NOTE: this assumes you have a `broker` object in scope in index.ts (you do, since you start it above).
-const brokerAny = broker as any;
-
 if (typeof brokerAny?.placeOrderWithBrackets !== "function") {
   await logEvent({
     level: "ERROR",

@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "./db.js";
 
 export async function hasSeen(key: string): Promise<boolean> {
   const row = await db.systemState.findUnique({ where: { key } });

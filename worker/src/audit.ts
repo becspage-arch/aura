@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "./db.js";
 
 export async function logEvent(params: {
   level: "INFO" | "WARN" | "ERROR";
