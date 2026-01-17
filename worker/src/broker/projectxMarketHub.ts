@@ -35,7 +35,7 @@ type ProjectXMarketHubOpts = {
 export class ProjectXMarketHub {
   private conn: HubConnection | null = null;
   private lastEventAtMs = 0;
-  private heartbeatTimer: NodeJS.Timer | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   // merge state (ProjectX often sends partial quote updates)
   private lastBid: number | undefined;
@@ -147,7 +147,7 @@ export class ProjectXMarketHub {
       raw = false,
       debugInvocations = false,
       rtcUrl,
-      maxQuoteAgeMs = 30_000,
+      maxQuoteAgeMs = 2 * 60 * 60_000, // 2 hours (practice snapshots can lag)
     } = this.opts;
 
     const hubBase = (rtcUrl || process.env.PROJECTX_RTC_URL || "").trim();

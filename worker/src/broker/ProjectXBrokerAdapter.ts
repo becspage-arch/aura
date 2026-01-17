@@ -23,6 +23,25 @@ type AccountSearchResponse = {
   errorMessage?: string | null;
 };
 
+type PlaceOrderResponse = {
+  orderId?: number;
+  success?: boolean;
+  errorCode?: number;
+  errorMessage?: string | null;
+};
+
+type PlaceOrderWithBracketsInput = {
+  contractId: string;
+  side: "buy" | "sell";
+  size: number;
+  type: "market" | "limit" | "stop";
+  limitPrice?: number | null;
+  stopPrice?: number | null;
+  stopLossTicks?: number | null;
+  takeProfitTicks?: number | null;
+  customTag?: string | null;
+};
+
 export class ProjectXBrokerAdapter implements IBrokerAdapter {
   readonly name = "projectx" as const;
 
@@ -32,7 +51,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   private accountName: string | null = null;
   private accountSimulated: boolean | null = null;
 
-  private keepAliveTimer: NodeJS.Timer | null = null;
+  private keepAliveTimer: NodeJS.Timeout | null = null;
 
   // Contract spec (needed for sizing/risk)
   private contractTickSize: number | null = null;
@@ -185,7 +204,9 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
         ? accounts.find((a) => a.id === preferredId)
         : null;
 
-    const preferredByName = preferredName ? accounts.find((a) => a.name === preferredName) : null;
+    const preferredByName = preferredName
+      ? accounts.find((a) => a.name === preferredName)
+      : null;
 
     const selected =
       preferredById ??
@@ -226,7 +247,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   }
 
   // Proves market-data entitlement + whether "live" vs "sim" matters for your token.
-  // This is the fastest way to stop guessing why SignalR is silent.
   private async testHistoryBars(): Promise<void> {
     if (!this.token) return;
 
@@ -292,7 +312,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   }
 
   // Proves whether the contractId exists / is accessible for your token.
-  // If this fails, your SignalR "SubscribeContractQuotes" will also be effectively silent.
   private async testContractAccess(): Promise<void> {
     if (!this.token) return;
 
@@ -357,6 +376,117 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     await this.fetchActiveAccounts();
     await this.testHistoryBars();
     await this.testContractAccess();
+  }
+
+  /**
+   * Places a MARKET/LIMIT/STOP order with optional stop-loss and take-profit brackets (ticks).
+   * Uses: POST https://api.topstepx.com/api/Order/place
+   */
+  async placeOrderWithBrackets(input: PlaceOrderWithBracketsInput): Promise<{
+    orderId: number;
+    raw: PlaceOrderResponse;
+  }> {
+    if (!this.token) throw new Error("Cannot place order without ProjectX token");
+    if (!this.accountId) throw new Error("Cannot place order without selected ProjectX account");
+
+    const contractId = String(input.contractId || "").trim();
+    if (!contractId) throw new Error("placeOrderWithBrackets: contractId missing");
+
+    const size = Number(input.size);
+    if (!Number.isFinite(size) || size <= 0) {
+      throw new Error(`placeOrderWithBrackets: invalid size ${String(input.size)}`);
+    }
+
+    // OrderType enum: 1=Limit, 2=Market, 4=Stop
+    const orderType =
+      input.type === "limit" ? 1 : input.type === "stop" ? 4 : 2;
+
+    // OrderSide enum: 0=Bid(buy), 1=Ask(sell)
+    const side = input.side === "sell" ? 1 : 0;
+
+    const stopLossTicks =
+      input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
+    const takeProfitTicks =
+      input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+
+    const body: any = {
+      accountId: this.accountId,
+      contractId,
+      type: orderType,
+      side,
+      size,
+      limitPrice: input.limitPrice ?? null,
+      stopPrice: input.stopPrice ?? null,
+      trailPrice: null,
+      customTag: input.customTag ?? null,
+    };
+
+    // Brackets are configured in ticks; type uses the same OrderType enum.
+    // Sensible defaults:
+    // - Stop loss = Stop (4)
+    // - Take profit = Limit (1)
+    if (Number.isFinite(stopLossTicks as number) && (stopLossTicks as number) > 0) {
+      body.stopLossBracket = {
+        ticks: Math.floor(stopLossTicks as number),
+        type: 4,
+      };
+    }
+
+    if (Number.isFinite(takeProfitTicks as number) && (takeProfitTicks as number) > 0) {
+      body.takeProfitBracket = {
+        ticks: Math.floor(takeProfitTicks as number),
+        type: 1,
+      };
+    }
+
+    console.log("[projectx-adapter] order.place request", {
+      accountId: this.accountId,
+      contractId,
+      type: body.type,
+      side: body.side,
+      size: body.size,
+      hasSL: Boolean(body.stopLossBracket),
+      hasTP: Boolean(body.takeProfitBracket),
+      customTag: body.customTag ?? null,
+    });
+
+    const res = await fetch("https://api.topstepx.com/api/Order/place", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const text = await res.text();
+
+    let json: PlaceOrderResponse | null = null;
+    try {
+      json = text ? (JSON.parse(text) as PlaceOrderResponse) : null;
+    } catch {
+      json = null;
+    }
+
+    console.log("[projectx-adapter] order.place response", {
+      status: res.status,
+      ok: res.ok,
+      success: json?.success,
+      errorCode: json?.errorCode,
+      errorMessage: json?.errorMessage ?? null,
+      orderId: json?.orderId ?? null,
+    });
+
+    if (!res.ok || !json?.success || !json?.orderId) {
+      throw new Error(
+        `ProjectX Order/place failed (HTTP ${res.status})${
+          json?.errorCode != null ? ` code=${json.errorCode}` : ""
+        }${json?.errorMessage ? ` msg=${json.errorMessage}` : ""}`
+      );
+    }
+
+    return { orderId: json.orderId, raw: json };
   }
 
   startKeepAlive(): void {

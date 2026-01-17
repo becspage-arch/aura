@@ -147,15 +147,121 @@ async function main() {
       return;
     }
 
+// If DRY_RUN, we just log. If not, we execute via ProjectX.
+if (DRY_RUN) {
+  await logEvent({
+    level: "INFO",
+    type: "EXEC_ALLOWED",
+    message: "Dry run: would execute trade",
+    data: { payload, selectedSymbol: safety.state.selectedSymbol },
+    userId: safety.userId,
+  });
+  return;
+}
+
+const execContractId =
+  String(payload?.contractId || "").trim() ||
+  String(safety?.state?.selectedSymbol || "").trim();
+
+const execSideRaw = String(payload?.side || "").toLowerCase().trim();
+const execSide = execSideRaw === "sell" ? "sell" : "buy";
+
+const execSize = Number(payload?.size ?? payload?.qty ?? payload?.contracts ?? 1);
+const stopLossTicks = payload?.stopLossTicks != null ? Number(payload.stopLossTicks) : null;
+const takeProfitTicks =
+  payload?.takeProfitTicks != null ? Number(payload.takeProfitTicks) : null;
+
+if (!execContractId) {
+  await logEvent({
+    level: "ERROR",
+    type: "EXEC_FAILED",
+    message: "Missing contractId (payload.contractId or safety.state.selectedSymbol)",
+    data: { payload, selectedSymbol: safety?.state?.selectedSymbol ?? null },
+    userId: safety.userId,
+  });
+  return;
+}
+
+if (!Number.isFinite(execSize) || execSize <= 0) {
+  await logEvent({
+    level: "ERROR",
+    type: "EXEC_FAILED",
+    message: `Invalid size: ${String(execSize)}`,
+    data: { payload },
+    userId: safety.userId,
+  });
+  return;
+}
+
+// NOTE: this assumes you have a `broker` object in scope in index.ts (you do, since you start it above).
+const brokerAny = broker as any;
+
+if (typeof brokerAny?.placeOrderWithBrackets !== "function") {
+  await logEvent({
+    level: "ERROR",
+    type: "EXEC_FAILED",
+    message: "Broker does not support placeOrderWithBrackets",
+    data: { brokerName: brokerAny?.name ?? null, payload },
+    userId: safety.userId,
+  });
+  return;
+}
+
+try {
+  const res = await brokerAny.placeOrderWithBrackets({
+    contractId: execContractId,
+    side: execSide,
+    size: execSize,
+    type: "market",
+    stopLossTicks,
+    takeProfitTicks,
+    customTag: `aura-${safety.userId ?? "user"}-${Date.now()}`,
+  });
+
     await logEvent({
       level: "INFO",
-      type: "EXEC_ALLOWED",
-      message: DRY_RUN
-        ? "Dry run: would execute trade"
-        : "Would execute trade (not implemented yet)",
-      data: { payload, selectedSymbol: safety.state.selectedSymbol },
+      type: "EXEC_SUBMITTED",
+      message: `Order submitted: ${res?.orderId ?? "unknown"}`,
+      data: {
+        orderId: res?.orderId ?? null,
+        contractId: execContractId,
+        side: execSide,
+        size: execSize,
+        stopLossTicks,
+        takeProfitTicks,
+        payload,
+      },
       userId: safety.userId,
     });
+
+    console.log("[worker] EXEC_SUBMITTED", {
+      orderId: res?.orderId ?? null,
+      contractId: execContractId,
+      side: execSide,
+      size: execSize,
+      stopLossTicks,
+      takeProfitTicks,
+    });
+  } catch (err) {
+    console.error("[worker] EXEC_FAILED", err);
+
+    await logEvent({
+      level: "ERROR",
+      type: "EXEC_FAILED",
+      message: "Order submit failed",
+      data: {
+        error: err instanceof Error ? err.message : String(err),
+        contractId: execContractId,
+        side: execSide,
+        size: execSize,
+        stopLossTicks,
+        takeProfitTicks,
+        payload,
+      },
+      userId: safety.userId,
+    });
+  }
+
   });
 
   console.log(`[${env.WORKER_NAME}] listening on Ably channel aura:exec`);
