@@ -272,7 +272,9 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       const contractId = process.env.PROJECTX_CONTRACT_ID?.trim() || null;
 
       if (!token) {
-        console.warn("[projectx-market] no token available, market hub not started");
+        console.warn(
+          "[projectx-market] no token available, market hub not started"
+        );
         return;
       }
 
@@ -290,6 +292,20 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
           closed: { data: any };
         }) => {
           const closed = params.closed;
+
+          // ✅ IMPORTANT (WEEKEND SAFETY):
+          // Do NOT persist or trade on force-closed candles (or super-low tick candles).
+          // These are synthetic "keep UI alive" candles and should not pollute Candle15s.
+          const ticks = Number(closed?.data?.ticks ?? 0);
+          if (params.source === "forceClose" || ticks <= 1) {
+            await emitSafe({
+              name: "candle.15s.closed",
+              ts: new Date().toISOString(),
+              broker: "projectx",
+              data: closed.data,
+            });
+            return;
+          }
 
           // 3a) Persist CLOSED candle
           try {
