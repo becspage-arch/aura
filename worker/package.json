@@ -23,5 +23,9 @@
     "@types/node": "^25.0.8",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
-  }
+  },
+  "scripts": {
+  "...": "...",
+  "verify:projectx:60s": "tsx scripts/verifyProjectXLive60s.ts"
+}
 }
