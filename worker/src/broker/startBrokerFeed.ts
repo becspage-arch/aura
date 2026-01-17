@@ -67,6 +67,49 @@ function getPrisma(): PrismaClient {
   return prisma;
 }
 
+// --- user trading state guard (pause / kill switch) ---
+let cachedUserTradingState:
+  | { isPaused: boolean; isKillSwitched: boolean }
+  | null = null;
+
+let lastUserTradingStateCheck = 0;
+const USER_STATE_REFRESH_MS = 5_000;
+
+async function getUserTradingState(): Promise<{
+  isPaused: boolean;
+  isKillSwitched: boolean;
+}> {
+  const clerkUserId = process.env.AURA_CLERK_USER_ID;
+  if (!clerkUserId) {
+    return { isPaused: false, isKillSwitched: false };
+  }
+
+  const now = Date.now();
+  if (
+    cachedUserTradingState &&
+    now - lastUserTradingStateCheck < USER_STATE_REFRESH_MS
+  ) {
+    return cachedUserTradingState;
+  }
+
+  const db = getPrisma();
+
+  const user = await db.userProfile.findUnique({
+    where: { clerkUserId },
+    include: { userState: true },
+  });
+
+  const state = {
+    isPaused: Boolean(user?.userState?.isPaused),
+    isKillSwitched: Boolean(user?.userState?.isKillSwitched),
+  };
+
+  cachedUserTradingState = state;
+  lastUserTradingStateCheck = now;
+
+  return state;
+}
+
 async function getStrategyEnabledForAccount(params: {
   brokerName: string;
   externalAccountId: string;
@@ -365,10 +408,21 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
               },
             });
 
-            // 3b) Run strategy on closed candle (ONLY if enabled)
+            // 3b) Run strategy on closed candle (ONLY if enabled, and obey pause/kill switch)
             if (strategyEnabled && strategy) {
-              const intent = strategy.ingestClosed15s({
+              const { isPaused, isKillSwitched } = await getUserTradingState();
 
+              if (isKillSwitched) {
+                console.warn(`[${env.WORKER_NAME}] KILL SWITCH ACTIVE - trading blocked`);
+                return;
+              }
+
+              if (isPaused) {
+                console.log(`[${env.WORKER_NAME}] Trading paused - skipping strategy`);
+                return;
+              }
+
+              const intent = strategy.ingestClosed15s({
                 symbol,
                 time,
                 open: closed.data.o,

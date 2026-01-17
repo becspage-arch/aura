@@ -178,6 +178,38 @@ export default function StrategyPage() {
         </div>
       </section>
 
+            {/* Position Sizing */}
+      <section className="aura-card">
+        <div className="aura-card-title">Position Sizing</div>
+
+        <div className="aura-mt-12 aura-grid-gap-10">
+          <div className="aura-card-muted aura-row-between">
+            <span>Sizing Mode</span>
+            <span className="aura-muted">—</span>
+          </div>
+
+          <div className="aura-card-muted aura-row-between">
+            <span>Fixed lots / contracts</span>
+            <span className="aura-muted">—</span>
+          </div>
+
+          <div className="aura-card-muted aura-row-between">
+            <span>% risk (per trade)</span>
+            <span className="aura-muted">—</span>
+          </div>
+
+          <div className="aura-card-muted aura-row-between">
+            <span>Fixed £ risk (per trade)</span>
+            <span className="aura-muted">—</span>
+          </div>
+
+          <p className="aura-muted aura-text-xs">
+            Choose how Aura sizes positions. Risk-based sizing uses the trade stop distance to
+            calculate contracts automatically.
+          </p>
+        </div>
+      </section>
+
       {/* 315 CorePlus Options (user-tunable guardrails + filters) */}
       <section className="aura-card">
         <div className="aura-card-title">315 CorePlus Options</div>
