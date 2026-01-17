@@ -67,6 +67,25 @@ function getPrisma(): PrismaClient {
   return prisma;
 }
 
+async function getStrategyEnabledForAccount(params: {
+  brokerName: string;
+  externalAccountId: string;
+}): Promise<boolean> {
+  const db = getPrisma();
+  const key = `strategy.enabled:${params.brokerName}:${params.externalAccountId}`;
+
+  const row = await db.systemState.findUnique({ where: { key } });
+
+  // Default = enabled (backwards compatible)
+  if (!row) return true;
+
+  const v: any = row.value;
+  if (typeof v === "boolean") return v;
+  if (v && typeof v.enabled === "boolean") return v.enabled;
+
+  return true;
+}
+
 async function shutdownPrisma(): Promise<void> {
   try {
     if (prisma) {
@@ -289,6 +308,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       try {
         // Gate forceClose so it only runs when we are actually seeing live quotes
         let lastLiveQuoteAtMs = 0;
+        let rolloverOkLogged = false;
 
         // Shared handler: persist + strategy + emit for ANY closed 15s candle
         const handleClosed15s = async (params: {
@@ -301,6 +321,13 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
           // Do NOT persist or trade on force-closed candles (or super-low tick candles).
           // These are synthetic "keep UI alive" candles and should not pollute Candle15s.
           const ticks = Number(closed?.data?.ticks ?? 0);
+          // Sunday proof: confirm we are getting REAL rollovers with movement
+          if (!rolloverOkLogged && params.source === "rollover" && ticks > 1) {
+            rolloverOkLogged = true;
+            console.log(
+              `[candle15s] ROLLOVER_OK t0=${closed.data.t0} ticks=${ticks} o=${closed.data.o} h=${closed.data.h} l=${closed.data.l} c=${closed.data.c}`
+            );
+          }
           if (params.source === "forceClose" || ticks <= 1) {
             await emitSafe({
               name: "candle.15s.closed",
@@ -338,9 +365,10 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
               },
             });
 
-            // 3b) Run strategy on closed candle
-            if (strategy) {
+            // 3b) Run strategy on closed candle (ONLY if enabled)
+            if (strategyEnabled && strategy) {
               const intent = strategy.ingestClosed15s({
+
                 symbol,
                 time,
                 open: closed.data.o,
@@ -483,6 +511,22 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
           });
         };
 
+        const externalAccountId = String(status?.accountId ?? "");
+        const strategyEnabled = externalAccountId
+          ? await getStrategyEnabledForAccount({
+              brokerName: "projectx",
+              externalAccountId,
+            })
+          : true;
+
+        console.log(`[${env.WORKER_NAME}] strategy toggle`, {
+          broker: "projectx",
+          externalAccountId: externalAccountId || null,
+          enabled: strategyEnabled,
+          note:
+            "Set SystemState key strategy.enabled:projectx:<accountId> to false to disable.",
+        });
+
         const marketHub = new ProjectXMarketHub({
           token,
           contractId,
@@ -490,7 +534,16 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
           debugInvocations: true,
           onQuote: async (q) => {
             // Used to gate forceClose so we never fabricate candles when the market is closed
-            lastLiveQuoteAtMs = Date.now();
+            // IMPORTANT: only treat quotes as "live" if they are fresh (not old snapshot data).
+            const tsMs = q.ts ? Date.parse(q.ts) : NaN;
+            const ageMs = Number.isFinite(tsMs) ? Date.now() - tsMs : null;
+
+            // If ts is missing, don't assume it's live.
+            // If ts exists, require it to be reasonably fresh.
+            const LIVE_QUOTE_MAX_AGE_MS = 15_000; // 15s (safe for 15s candle building)
+            if (ageMs !== null && ageMs <= LIVE_QUOTE_MAX_AGE_MS) {
+              lastLiveQuoteAtMs = Date.now();
+            }
 
             // 1) Persist quote snapshot (THROTTLED)
             try {
@@ -559,6 +612,25 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
         });
 
         await marketHub.start();
+
+        // --- quote stream watchdog (prove we're truly live, not just a snapshot) ---
+        try {
+          const live = await marketHub.waitForLiveQuotes({ minQuotes: 5, withinMs: 10_000 });
+
+          const s = marketHub.getQuoteStats();
+
+          if (live) {
+            console.log(
+              `[quotes] QUOTE_STREAM_OK count=${s.quoteCount} firstAt=${s.firstQuoteAtMs} lastAt=${s.lastQuoteAtMs}`
+            );
+          } else {
+            console.warn(
+              `[quotes] QUOTE_STREAM_NOT_LIVE count=${s.quoteCount} (snapshot only? market closed? connection issue)`
+            );
+          }
+        } catch (e) {
+          console.warn("[quotes] watchdog failed (non-fatal)", e);
+        }
 
         // Weekend/quiet-market:
         // Only force-close if we have seen a quote recently.

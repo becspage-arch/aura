@@ -371,3 +371,47 @@ html.light .aura-table-header {
 .aura-w-85 {
   width: 85%;
 }
+
+/* --------------------------------------------------
+   Aura health strip (System Status)
+-------------------------------------------------- */
+
+.aura-health {
+  display: grid;
+  gap: 10px;
+}
+
+.aura-health-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.aura-health-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.aura-health-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--card-foreground);
+  line-height: 1;
+}
+
+.aura-health-key {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.aura-health-val {
+  font-size: 12px;
+  font-weight: 600;
+}

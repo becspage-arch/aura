@@ -66,44 +66,42 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
         </div>
       </section>
 
-      {/* Section 2: System status (read-only) */}
-      <section className="aura-card">
-        <div className="aura-row-between">
+      {/* Section 2: System status (calm health strip) */}
+      <section className="aura-card aura-health">
+        <div className="aura-health-top">
           <div className="aura-card-title">System Status</div>
-          <div className="aura-muted aura-text-xs">
-            Channel: {channelName ?? "—"}
-          </div>
+          <div className="aura-muted aura-text-xs">Channel: {channelName ?? "—"}</div>
         </div>
 
-        <div className="aura-mt-14 aura-grid-gap-10">
-          <div className="aura-row-between">
-            <span className="aura-muted">Strategy</span>
-            <span>{strategyStatus}</span>
+        <div className="aura-health-strip" aria-label="System status">
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Strategy</span>
+            <span className="aura-health-val">{strategyStatus}</span>
           </div>
 
-          <div className="aura-row-between">
-            <span className="aura-muted">Trading</span>
-            <span>{tradingStatus}</span>
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Trading</span>
+            <span className="aura-health-val">{tradingStatus}</span>
           </div>
 
-          <div className="aura-row-between">
-            <span className="aura-muted">Broker</span>
-            <span>{brokerStatus}</span>
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Broker</span>
+            <span className="aura-health-val">{brokerStatus}</span>
           </div>
 
-          <div className="aura-row-between">
-            <span className="aura-muted">Symbol</span>
-            <span>{symbol}</span>
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Symbol</span>
+            <span className="aura-health-val">{symbol}</span>
           </div>
 
-          <div className="aura-row-between">
-            <span className="aura-muted">Risk Mode</span>
-            <span>{riskMode}</span>
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Risk</span>
+            <span className="aura-health-val">{riskMode}</span>
           </div>
 
-          <div className="aura-row-between">
-            <span className="aura-muted">Last trade</span>
-            <span>{lastTrade}</span>
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Last trade</span>
+            <span className="aura-health-val">{lastTrade}</span>
           </div>
         </div>
       </section>
