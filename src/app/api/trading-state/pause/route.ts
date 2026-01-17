@@ -4,6 +4,30 @@ import { ensureUserProfile } from "@/lib/user-profile";
 import { publishToUser } from "@/lib/ably/server";
 import { writeAuditLog, writeEventLog } from "@/lib/logging/server";
 
+export async function GET() {
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
+
+  const user = await ensureUserProfile({
+    clerkUserId,
+    email: null,
+    displayName: null,
+  });
+
+  const state = await db.userTradingState.upsert({
+    where: { userId: user.id },
+    update: {},
+    create: { userId: user.id, isPaused: false },
+  });
+
+  return Response.json({
+    ok: true,
+    isPaused: state.isPaused,
+    isKillSwitched: state.isKillSwitched,
+    killSwitchedAt: state.killSwitchedAt,
+  });
+}
+
 export async function POST(req: Request) {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
