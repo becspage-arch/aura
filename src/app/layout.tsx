@@ -28,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${geistMono.variable} antialiased`}>
-        <ClerkProvider>
+        <ClerkProvider afterSignInUrl="/app" afterSignUpUrl="/app">
           <ThemeProvider>{children}</ThemeProvider>
         </ClerkProvider>
       </body>
