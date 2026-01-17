@@ -119,6 +119,7 @@ export class Candle15sAggregator {
         contractId: this.current.contractId,
         t0: this.current.t0,
         o: this.current.o,
+        reason: "rollover",
       });
 
       return {
@@ -149,6 +150,20 @@ export class Candle15sAggregator {
     const closeAt = this.current.t0 + bucketMs;
 
     if (nowEpochMs < closeAt) return null;
+
+    // IMPORTANT: if there have been NO real ticks in this candle, do not fabricate candles forever.
+    // This is the weekend spam fix.
+    if (this.current.ticks <= 0) {
+      // Still advance the candle window so we don't keep evaluating the same expired bucket.
+      const nextBucketStart = floorTo15sBucketStartMs(nowEpochMs);
+
+      // If nextBucketStart equals current.t0 (edge case), push forward one bucket.
+      const advancedT0 =
+        nextBucketStart === this.current.t0 ? this.current.t0 + bucketMs : nextBucketStart;
+
+      this.current.t0 = advancedT0;
+      return null;
+    }
 
     // If we have no last known price, we can't safely fabricate a close.
     if (this.lastKnownPrice == null) return null;
