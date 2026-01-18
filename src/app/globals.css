@@ -846,3 +846,48 @@ html.light .aura-row-link:hover {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Aura segmented toggle pills */
+.aura-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.aura-pill-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 78%, var(--background));
+  color: var(--foreground);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.aura-pill-toggle:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--border) 60%, var(--aura-gold-2));
+}
+
+.aura-pill-toggle[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--aura-gold-2) 80%, var(--border));
+  background: color-mix(in srgb, var(--card) 70%, var(--aura-gold-1));
+}
+
+.aura-pill-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  flex: 0 0 auto;
+}
+
+.aura-pill-toggle[aria-pressed="true"] .aura-pill-indicator {
+  border-color: color-mix(in srgb, var(--aura-gold-2) 90%, var(--border));
+  background: var(--aura-gold-2);
+}
