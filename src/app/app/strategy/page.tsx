@@ -64,14 +64,6 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function patchStrategySettings(patch: Record<string, unknown>) {
-  // Adjust the URL if your API route differs
-  return fetchJSON("/api/strategy/settings", {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
-}
-
 function toNumberOrNull(v: string): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -199,6 +191,29 @@ export default function StrategyPage() {
       });
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+    const patchStrategySettings = async (patch: Partial<StrategySettings>) => {
+    try {
+      setSaving(true);
+      setErr(null);
+
+      const res = await fetchJSON<StrategyPostResponse>(
+        "/api/trading-state/strategy-settings",
+        {
+          method: "POST",
+          body: JSON.stringify(patch),
+        }
+      );
+
+      setCurrent(res.strategySettings);
+      return res.strategySettings;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      throw e;
     } finally {
       setSaving(false);
     }
@@ -634,14 +649,12 @@ export default function StrategyPage() {
               Position Sizing
             </div>
             <div className="aura-muted aura-mt-6">
-              Choose how Aura sizes positions. Risk-based uses stop distance. Fixed
-              contracts uses a fixed contract count per trade.
+              Choose how Aura sizes positions.
             </div>
           </div>
 
           <div className="aura-right">
-            <div className="aura-stat-label">Current:</div>
-            <div className="aura-mini-value">
+            <div className="aura-stat-label">
               {(() => {
                 const mode = current?.sizing?.mode ?? "risk_based";
                 const fc = current?.sizing?.fixedContracts;
@@ -671,13 +684,13 @@ export default function StrategyPage() {
             const saveFixedContracts = async () => {
               if (!current) return;
 
-              // empty means "do nothing" (keeps last saved)
+              // empty means "do nothing"
               if (!fixedContractsDraft.trim()) return;
 
               const n = Number(fixedContractsDraft);
               if (!Number.isFinite(n)) return;
 
-              const asInt = Math.max(1, Math.floor(n)); // minimum 1, integer only
+              const asInt = Math.max(1, Math.floor(n));
 
               await patchStrategySettings({
                 sizing: {
@@ -687,78 +700,110 @@ export default function StrategyPage() {
               });
             };
 
+            const isDisabled = !current || saving;
+
             return (
               <div className="aura-grid-gap-12">
-                <div className="aura-pill-group">
-                  <button
-                    type="button"
-                    className="aura-pill-toggle"
+                <div className="aura-select-grid" role="group" aria-label="Position sizing">
+                  {/* Risk-based */}
+                  <div
+                    className="aura-select-card"
+                    role="button"
+                    tabIndex={0}
                     aria-pressed={mode === "risk_based"}
-                    disabled={!current || saving}
-                    onClick={() => setMode("risk_based")}
+                    aria-disabled={isDisabled}
+                    onClick={() => {
+                      if (isDisabled) return;
+                      setMode("risk_based");
+                    }}
+                    onKeyDown={(e) => {
+                      if (isDisabled) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setMode("risk_based");
+                      }
+                    }}
                   >
-                    <span className="aura-pill-indicator" />
-                    <span className="aura-pill-toggle__stack">
-                      <span>Risk-based</span>
-                      <span className="aura-pill-toggle__sublabel">
-                        Uses stop distance (USD risk)
-                      </span>
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="aura-pill-toggle"
-                    aria-pressed={mode === "fixed_contracts"}
-                    disabled={!current || saving}
-                    onClick={() => setMode("fixed_contracts")}
-                  >
-                    <span className="aura-pill-indicator" />
-                    <span className="aura-pill-toggle__stack">
-                      <span>Fixed contracts</span>
-                      <span className="aura-pill-toggle__sublabel">
-                        Uses a fixed contract count
-                      </span>
-                    </span>
-                  </button>
-                </div>
-
-                <div className={mode === "fixed_contracts" ? "" : "aura-disabled"}>
-                  <div className="aura-control-row">
-                    <div className="aura-control-meta">
-                      <div className="aura-control-title">Contracts per trade</div>
-                      <div className="aura-control-help">
-                        Only used when Fixed contracts is enabled.
+                    <div className="aura-select-card__top">
+                      <div>
+                        <div className="aura-select-card__title">Risk-based</div>
+                        <div className="aura-select-card__desc">
+                          Uses stop distance to size the position so your USD risk stays
+                          consistent.
+                        </div>
                       </div>
+                      <span className="aura-select-card__dot" />
+                    </div>
+                  </div>
+
+                  {/* Fixed contracts */}
+                  <div
+                    className="aura-select-card"
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={mode === "fixed_contracts"}
+                    aria-disabled={isDisabled}
+                    onClick={() => {
+                      if (isDisabled) return;
+                      setMode("fixed_contracts");
+                    }}
+                    onKeyDown={(e) => {
+                      if (isDisabled) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setMode("fixed_contracts");
+                      }
+                    }}
+                  >
+                    <div className="aura-select-card__top">
+                      <div>
+                        <div className="aura-select-card__title">Fixed contracts</div>
+                        <div className="aura-select-card__desc">
+                          Uses a fixed contract count per trade. Useful for testing and
+                          simple rule sets.
+                        </div>
+                      </div>
+                      <span className="aura-select-card__dot" />
                     </div>
 
-                    <div className="aura-control-right" style={{ minWidth: 160 }}>
-                      <input
-                        className="aura-input"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="e.g. 1"
-                        value={fixedContractsDraft}
-                        disabled={!current || saving || mode !== "fixed_contracts"}
-                        onChange={(e) => {
-                          // allow empty + digits only
-                          const v = e.target.value;
-                          if (v === "" || /^[0-9]+$/.test(v)) setFixedContractsDraft(v);
-                        }}
-                        onBlur={saveFixedContracts}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                      />
-                    </div>
+                    {mode === "fixed_contracts" ? (
+                      <div className="aura-select-card__content">
+                        <div className="aura-control-row">
+                          <div className="aura-control-meta">
+                            <div className="aura-control-title">Contracts per trade</div>
+                            <div className="aura-control-help">
+                              Minimum 1. Saved when you click away or press Enter.
+                            </div>
+                          </div>
+
+                          <div className="aura-control-right" style={{ minWidth: 160 }}>
+                            <input
+                              className="aura-input"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              placeholder="e.g. 1"
+                              value={fixedContractsDraft}
+                              disabled={isDisabled}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === "" || /^[0-9]+$/.test(v)) setFixedContractsDraft(v);
+                              }}
+                              onBlur={saveFixedContracts}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  (e.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
                 <div className="aura-muted aura-text-xs">
-                  Tip: Risk-based sizing is recommended for consistent USD risk. Fixed
-                  contracts is useful for testing and simple rules.
+                  Tip: Risk-based sizing is recommended for consistent USD risk.
                 </div>
               </div>
             );

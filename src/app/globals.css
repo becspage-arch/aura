@@ -909,3 +909,84 @@ html.light .aura-row-link:hover {
   color: var(--muted-foreground);
   font-weight: 500;
 }
+
+/* --------------------------------------------------
+   Aura Select Cards (reusable)
+-------------------------------------------------- */
+
+.aura-select-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 640px) {
+  .aura-select-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.aura-select-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--card) 86%, var(--background));
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.aura-select-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--border) 60%, var(--aura-gold-2));
+}
+
+.aura-select-card[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--aura-gold-2) 80%, var(--border));
+  background: color-mix(in srgb, var(--card) 70%, var(--aura-gold-1));
+}
+
+.aura-select-card[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.aura-select-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.aura-select-card__title {
+  font-weight: 700;
+}
+
+.aura-select-card__desc {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.35;
+}
+
+.aura-select-card__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.aura-select-card[aria-pressed="true"] .aura-select-card__dot {
+  border-color: color-mix(in srgb, var(--aura-gold-2) 90%, var(--border));
+  background: var(--aura-gold-2);
+}
+
+.aura-select-card__content {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
