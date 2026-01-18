@@ -12,13 +12,13 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
   );
 
   // Placeholder values for now (wire later)
-  const totalProfit = "£—";
-  const todayPnl = "£—";
-  const monthPnl = "£—";
+  const totalProfit = "$—";
+  const todayPnl = "$—";
+  const monthPnl = "$—";
 
   // “Account” placeholders (still UI-only)
-  const accountEquity = "£—";
-  const allUsersProfit = "£—";
+  const accountEquity = "$—";
+  const allUsersProfit = "$—";
 
   const strategyStatus = state.tradingState?.isPaused ? "Paused" : "Active";
   const tradingStatus = state.tradingState?.isKillSwitched ? "Stopped" : "Live";
