@@ -199,7 +199,7 @@ export function RiskSettingsCard() {
         <div className="aura-form-2col">
           {/* Risk USD */}
           <div>
-            <div className="aura-muted aura-text-xs">Risk (USD)</div>
+            <div className="aura-muted aura-text-xs">Max Risk (USD)</div>
             <input
               className="aura-input aura-mt-10"
               inputMode="decimal"
