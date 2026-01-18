@@ -75,6 +75,66 @@ let cachedUserTradingState:
 let lastUserTradingStateCheck = 0;
 const USER_STATE_REFRESH_MS = 5_000;
 
+// --- per-user risk settings (DB-backed) ---
+type RiskSettings = {
+  riskUsd: number;
+  rr: number;
+  maxStopTicks: number;
+  entryType: "market";
+};
+
+const RISK_DEFAULTS: RiskSettings = {
+  riskUsd: 50,
+  rr: 2,
+  maxStopTicks: 50,
+  entryType: "market",
+};
+
+let cachedRiskSettings: RiskSettings | null = null;
+let lastRiskSettingsCheck = 0;
+const RISK_SETTINGS_REFRESH_MS = 5_000;
+
+function clampNumber(v: unknown, min: number, max: number, fallback: number) {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function normalizeRiskSettings(input: unknown): RiskSettings {
+  const obj = (input ?? {}) as Partial<RiskSettings>;
+
+  return {
+    riskUsd: clampNumber(obj.riskUsd, 1, 5000, RISK_DEFAULTS.riskUsd),
+    rr: clampNumber(obj.rr, 0.5, 10, RISK_DEFAULTS.rr),
+    maxStopTicks: clampNumber(obj.maxStopTicks, 1, 500, RISK_DEFAULTS.maxStopTicks),
+    entryType: "market", // v1 only
+  };
+}
+
+async function getRiskSettings(): Promise<RiskSettings> {
+  const clerkUserId = process.env.AURA_CLERK_USER_ID;
+  if (!clerkUserId) return RISK_DEFAULTS;
+
+  const now = Date.now();
+  if (cachedRiskSettings && now - lastRiskSettingsCheck < RISK_SETTINGS_REFRESH_MS) {
+    return cachedRiskSettings;
+  }
+
+  const db = getPrisma();
+
+  const user = await db.userProfile.findUnique({
+    where: { clerkUserId },
+    include: { userState: true },
+  });
+
+  const riskSettings = normalizeRiskSettings(user?.userState?.riskSettings);
+
+  cachedRiskSettings = riskSettings;
+  lastRiskSettingsCheck = now;
+
+  return riskSettings;
+}
+
 // --- debug: log pause/kill changes even when markets are closed ---
 // (safe: read-only, no trading impact)
 let lastLoggedUserState: { isPaused: boolean; isKillSwitched: boolean } | null = null;
@@ -314,13 +374,16 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
     if (tickSize && tickValue) {
       strategy = new CorePlus315Engine({ tickSize, tickValue });
 
-      // v1 hard-coded overrides live here (later becomes per-user settings from DB)
+      const rs = await getRiskSettings();
+
       strategy.setConfig({
-        riskUsd: 200,
-        rr: 2,
-        maxStopTicks: 45,
-        entryType: "market",
+        riskUsd: rs.riskUsd,
+        rr: rs.rr,
+        maxStopTicks: rs.maxStopTicks,
+        entryType: rs.entryType,
       });
+
+      console.log(`[${env.WORKER_NAME}] riskSettings loaded`, rs);
 
       console.log(`[${env.WORKER_NAME}] strategy ready`, {
         name: "coreplus315",
@@ -328,6 +391,52 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
         tickValue,
         cfg: strategy.getConfig(),
       });
+
+      // Hot-reload per-user risk settings (every few seconds)
+      setInterval(() => {
+        void (async () => {
+          try {
+            const rs2 = await getRiskSettings();
+            const current = strategy!.getConfig();
+
+            const changed =
+              current.riskUsd !== rs2.riskUsd ||
+              current.rr !== rs2.rr ||
+              current.maxStopTicks !== rs2.maxStopTicks ||
+              current.entryType !== rs2.entryType;
+
+            if (changed) {
+              strategy!.setConfig({
+                riskUsd: rs2.riskUsd,
+                rr: rs2.rr,
+                maxStopTicks: rs2.maxStopTicks,
+                entryType: rs2.entryType,
+              });
+
+              console.log(`[${env.WORKER_NAME}] riskSettings applied`, rs2);
+
+              try {
+                const db = getPrisma();
+                await db.eventLog.create({
+                  data: {
+                    type: "config.applied",
+                    level: "info",
+                    message: "Worker applied updated risk settings",
+                    data: rs2,
+                  },
+                });
+              } catch {
+                // ignore logging failure
+              }
+            }
+          } catch (e) {
+            console.warn(
+              `[${env.WORKER_NAME}] riskSettings hot-reload failed`,
+              e
+            );
+          }
+        })();
+      }, 5_000);
 
       // Weekend-proof: replay seeded candles once so we can see intents immediately
       const symbol = (process.env.PROJECTX_SYMBOL || "").trim();

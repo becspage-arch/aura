@@ -66,10 +66,7 @@ export function LiveControlSwitches() {
         setLoading(true);
         setErr(null);
 
-        // We use the pause GET as the single source of truth for initial state
-        // (it returns isPaused + isKillSwitched + killSwitchedAt).
         const res = await fetchJSON<PauseGetResponse>("/api/trading-state/pause");
-
         if (cancelled) return;
 
         setState({
@@ -78,8 +75,7 @@ export function LiveControlSwitches() {
           killSwitchedAt: res.killSwitchedAt ?? null,
         });
       } catch (e) {
-        if (cancelled) return;
-        setErr(e instanceof Error ? e.message : String(e));
+        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -170,47 +166,19 @@ export function LiveControlSwitches() {
       </div>
 
       {err ? (
-        <div className="aura-mt-12" style={{ color: "var(--destructive)" }}>
+        <div className="aura-mt-12">
           <div className="aura-text-xs">Error</div>
           <div className="aura-text-xs">{err}</div>
         </div>
       ) : null}
 
-      <div className="aura-mt-12" style={{ display: "grid", gap: 12 }}>
-        {/* Kill Switch */}
+      {/* Pills row */}
+      <div className="aura-mt-12" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+        {/* Pause pill */}
         <div
           style={{
             border: "1px solid var(--border)",
-            borderRadius: 12,
-            padding: 12,
-            background: "var(--card)",
-          }}
-        >
-          <div className="aura-row-between">
-            <div>
-              <div style={{ fontWeight: 600 }}>{killLabel}</div>
-              <div className="aura-muted aura-text-xs aura-mt-10">
-                Emergency stop for trading actions. Requires confirmation.
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={toggleKill}
-              disabled={loading || saving !== null}
-              className="aura-btn"
-              style={{ opacity: loading || saving !== null ? 0.6 : 1 }}
-            >
-              {saving === "kill" ? "Saving…" : state.isKillSwitched ? "Turn OFF" : "Turn ON"}
-            </button>
-          </div>
-        </div>
-
-        {/* Pause Strategy */}
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 12,
+            borderRadius: 999,
             padding: 12,
             background: "var(--card)",
           }}
@@ -221,7 +189,7 @@ export function LiveControlSwitches() {
                 {state.isPaused ? "Strategy is PAUSED" : "Strategy is RUNNING"}
               </div>
               <div className="aura-muted aura-text-xs aura-mt-10">
-                Pausing keeps data collection running, but prevents new trades.
+                Prevents new trades. Data still runs.
               </div>
             </div>
 
@@ -230,9 +198,38 @@ export function LiveControlSwitches() {
               onClick={togglePause}
               disabled={loading || saving !== null}
               className="aura-btn"
-              style={{ opacity: loading || saving !== null ? 0.6 : 1 }}
+              style={{ opacity: loading || saving !== null ? 0.6 : 1, borderRadius: 999 }}
             >
               {saving === "pause" ? "Saving…" : state.isPaused ? "Unpause" : "Pause"}
+            </button>
+          </div>
+        </div>
+
+        {/* Kill pill */}
+        <div
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 999,
+            padding: 12,
+            background: "var(--card)",
+          }}
+        >
+          <div className="aura-row-between">
+            <div>
+              <div style={{ fontWeight: 600 }}>{killLabel}</div>
+              <div className="aura-muted aura-text-xs aura-mt-10">
+                Emergency stop for trading actions.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleKill}
+              disabled={loading || saving !== null}
+              className="aura-btn"
+              style={{ opacity: loading || saving !== null ? 0.6 : 1, borderRadius: 999 }}
+            >
+              {saving === "kill" ? "Saving…" : state.isKillSwitched ? "Turn OFF" : "Turn ON"}
             </button>
           </div>
         </div>
