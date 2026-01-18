@@ -189,25 +189,6 @@ export default async function AppHome() {
 
   return (
     <div style={{ background: "var(--background)", color: "var(--foreground)", minHeight: "100vh" }}>
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link href="/" className="text-sm font-semibold">
-          Aura
-        </Link>
-
-        <div className="flex items-center gap-4 text-sm">
-          <Link
-            href="/app/profile"
-            className="hidden hover:underline sm:inline"
-            style={{ color: "var(--muted-foreground)" }}
-          >
-            {displayName ?? email ?? ""}
-          </Link>
-
-          <Link href="/sign-out" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
-            Sign out
-          </Link>
-        </div>
-      </header>
 
       <div className="mx-auto max-w-6xl px-6 pb-10">
         <DashboardProvider initial={initial as any}>

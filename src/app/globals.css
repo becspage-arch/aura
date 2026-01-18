@@ -1278,29 +1278,31 @@ html.light .aura-row-link:hover {
   margin-top: 0;
 }
 
-/* --------------------------------------------------
-   Aura top bar (page header)
--------------------------------------------------- */
+/* -----------------------------
+   Top bar (clean, no pill background)
+----------------------------- */
 
 .aura-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
 
-  padding: 18px 24px 12px;
-  background: transparent;
-  border-bottom: 0;
-}
+  height: 56px;
+  padding: 0 18px;
 
-.aura-topbar__title {
-  font-size: 38px;
-  font-weight: 800;
-  letter-spacing: 0.2px;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
   color: var(--foreground);
 }
 
+.aura-topbar__pageTitle {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
 .aura-topbar__right {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 12px;
 }
@@ -1308,18 +1310,30 @@ html.light .aura-row-link:hover {
 .aura-topbar__state {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-
-  padding: 8px 12px;
-  border-radius: 999px;
   border: 1px solid var(--border);
   background: transparent;
-  white-space: nowrap;
+  color: var(--foreground);
+
+  border-radius: 999px;
+  padding: 8px 12px;
+
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  text-transform: uppercase;
+
+  cursor: pointer;
+  user-select: none;
+}
+
+.aura-topbar__state:hover {
+  background: rgba(214, 194, 143, 0.08);
+}
+
+html.light .aura-topbar__state:hover {
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .aura-topbar__stateIcon {
@@ -1332,17 +1346,13 @@ html.light .aura-row-link:hover {
 
 .aura-topbar__state--gold {
   color: var(--aura-gold-1);
-  border-color: color-mix(in srgb, var(--aura-gold-2) 55%, var(--border));
 }
 
 .aura-topbar__state--danger {
   color: var(--aura-error);
-  border-color: color-mix(in srgb, var(--aura-error) 55%, var(--border));
 }
 
-.aura-clerk-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
+.aura-topbar__user {
+  display: flex;
+  align-items: center;
 }

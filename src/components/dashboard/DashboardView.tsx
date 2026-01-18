@@ -32,7 +32,6 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       {/* Header */}
       <div className="aura-row-between">
         <div>
-          <h1 className="aura-page-title">Dashboard</h1>
           <p className="aura-page-subtitle">
             Profit-first overview. Calm, clear, in control.
           </p>
