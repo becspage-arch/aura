@@ -7,9 +7,10 @@ export type AuraRealtimeEventType =
   | "position_opened"
   | "position_closed"
   | "status_update"
+  | "risk_settings_update"
+  | "strategy_settings_update"
   | "error"
-  | "candle_closed"
-  | "risk_settings_update";
+  | "candle_closed";
 
 export type AuraBaseEvent<TType extends AuraRealtimeEventType, TData> = {
   type: TType;
@@ -83,17 +84,12 @@ export type StatusUpdateData = {
   killSwitchedAt?: string | null;
 };
 
-/* -----------------------------
-   Config events
------------------------------- */
-
 export type RiskSettingsUpdateData = {
-  riskSettings: {
-    riskUsd: number;
-    rr: number;
-    maxStopTicks: number;
-    entryType: "market" | "limit";
-  };
+  riskSettings: Record<string, unknown>;
+};
+
+export type StrategySettingsUpdateData = {
+  strategySettings: Record<string, unknown>;
 };
 
 /* -----------------------------
@@ -118,6 +114,7 @@ export type AuraRealtimeEvent =
   | AuraBaseEvent<"position_opened", PositionOpenedData>
   | AuraBaseEvent<"position_closed", PositionClosedData>
   | AuraBaseEvent<"status_update", StatusUpdateData>
+  | AuraBaseEvent<"risk_settings_update", RiskSettingsUpdateData>
+  | AuraBaseEvent<"strategy_settings_update", StrategySettingsUpdateData>
   | AuraBaseEvent<"error", ErrorData>
-  | AuraBaseEvent<"candle_closed", CandleClosedData>
-  | AuraBaseEvent<"risk_settings_update", RiskSettingsUpdateData>;
+  | AuraBaseEvent<"candle_closed", CandleClosedData>;

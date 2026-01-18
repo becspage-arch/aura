@@ -199,6 +199,7 @@ model UserTradingState {
   selectedBrokerAccountId String?
   selectedSymbol          String?
   riskSettings            Json?
+  strategySettings Json?
 
   isPaused       Boolean   @default(false)
   isKillSwitched Boolean   @default(false)

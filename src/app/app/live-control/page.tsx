@@ -4,7 +4,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { ensureUserProfile } from "@/lib/user-profile";
 import { TradingChart } from "@/components/charts/TradingChart";
 import { LiveControlSwitches } from "@/components/live-control/LiveControlSwitches";
-import { RiskSettingsCard } from "@/components/live-control/RiskSettingsCard";
+import { StrategyConfigSummaryCard } from "@/components/live-control/StrategyConfigSummaryCard";
 
 export default async function LiveControlPage() {
   const user = await currentUser();
@@ -61,8 +61,8 @@ export default async function LiveControlPage() {
       {/* Live controls FIRST (pills + actions only) */}
       <LiveControlSwitches />
 
-      {/* Risk settings BELOW controls (single source of truth in UI) */}
-      <RiskSettingsCard />
+      {/* Config summary BELOW controls (read-only) */}
+      <StrategyConfigSummaryCard />
 
       {/* Live chart (already wired) */}
       <section className="aura-card">
