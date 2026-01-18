@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,11 @@ function toNumberOrNull(v: string): number | null {
 }
 
 export default function StrategyPage() {
+  const router = useRouter();
+
+  // This should be true when Aura is actively running / trading for the user.
+  const [isTrading, setIsTrading] = useState<boolean>(false);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -86,6 +92,12 @@ export default function StrategyPage() {
 
   const [maxTradesDraft, setMaxTradesDraft] = useState<string>("");
 
+  // Safety drafts
+  const [maxDailyLossDraft, setMaxDailyLossDraft] = useState<string>("");
+  const [maxConsecutiveLossesDraft, setMaxConsecutiveLossesDraft] =
+    useState<string>("");
+  const [autoPauseDraft, setAutoPauseDraft] = useState<boolean>(false);
+
   const [riskForm, setRiskForm] = useState<{
     riskUsd: string;
     rr: string;
@@ -97,6 +109,29 @@ export default function StrategyPage() {
     maxStopTicks: "",
     entryType: "market",
   });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        // TODO: Replace this with your real endpoint
+        // Expected response shape: { ok: true, isTrading: boolean }
+        const res = await fetchJSON<{ ok: true; isTrading: boolean }>(
+          "/api/trading-state/runtime"
+        );
+        if (cancelled) return;
+        setIsTrading(!!res.isTrading);
+      } catch {
+        // If runtime state isn't available yet, default to editable.
+        if (!cancelled) setIsTrading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +203,20 @@ export default function StrategyPage() {
     current?.coreplus315?.emaFilterEnabled,
     current?.coreplus315?.entryTiming,
     current?.coreplus315?.maxTradesPerSession,
+  ]);
+
+  useEffect(() => {
+    const mdl = current?.safety?.maxDailyLossUsd;
+    const mcl = current?.safety?.maxConsecutiveLosses;
+    const ap = current?.safety?.autoPauseEnabled;
+
+    setMaxDailyLossDraft(typeof mdl === "number" ? String(mdl) : "");
+    setMaxConsecutiveLossesDraft(typeof mcl === "number" ? String(mcl) : "");
+    setAutoPauseDraft(!!ap);
+  }, [
+    current?.safety?.maxDailyLossUsd,
+    current?.safety?.maxConsecutiveLosses,
+    current?.safety?.autoPauseEnabled,
   ]);
 
   const disabled = loading || saving;
@@ -262,68 +311,64 @@ export default function StrategyPage() {
         </p>
       </div>
 
-      {/* Strategy Status (mini dashboard overview) */}
-      <section className="aura-card">
-        <div className="aura-row-between">
-          <div className="aura-card-title">Strategy Status</div>
-          <div className="aura-muted aura-text-xs">
-            {loading ? "Loading…" : "Overview"}
+    {/* Strategy Summary (read-only strip) */}
+    <div className="aura-summary-strip" aria-label="Strategy summary">
+      <div className="aura-row-between">
+        <div>
+          <div className="aura-summary-title">Summary</div>
+          <div className="aura-muted aura-text-xs aura-mt-6">
+            Read-only snapshot of the key settings on this page.
           </div>
         </div>
+        <div className="aura-muted aura-text-xs">{loading ? "Loading…" : "Overview"}</div>
+      </div>
 
-        <div
-          className="aura-mt-12 aura-health-strip"
-          aria-label="Strategy status overview"
-        >
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Mode</span>
-            <span className="aura-health-val">{current?.mode ?? "—"}</span>
-          </div>
-
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Strategy</span>
-            <span className="aura-health-val">315 CorePlus</span>
-          </div>
-
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Symbol(s)</span>
-            <span className="aura-health-val">
-              {current?.symbols?.length ? current.symbols.join(", ") : "—"}
-            </span>
-          </div>
-
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Sessions</span>
-            <span className="aura-health-val">
-              {current
-                ? [
-                    current.sessions.asia ? "Asia" : null,
-                    current.sessions.london ? "London" : null,
-                    current.sessions.ny ? "NY" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(", ") || "—"
-                : "—"}
-            </span>
-          </div>
-
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Risk</span>
-            <span className="aura-health-val">
-              {current ? `$${current.riskUsd} • RR ${current.rr}` : "—"}
-            </span>
-          </div>
-
-          <div className="aura-health-pill">
-            <span className="aura-health-key">State</span>
-            <span className="aura-health-val">—</span>
-          </div>
+      <div className="aura-mt-12 aura-health-strip">
+        <div className="aura-health-pill aura-health-pill--static">
+          <span className="aura-health-key">Mode</span>
+          <span className="aura-health-val">{current?.mode ?? "—"}</span>
         </div>
 
-        <p className="aura-muted aura-text-xs aura-mt-10">
-          This summary reflects the current configuration Aura would run with.
-        </p>
-      </section>
+        <div className="aura-health-pill aura-health-pill--static">
+          <span className="aura-health-key">Strategy</span>
+          <span className="aura-health-val">315 CorePlus</span>
+        </div>
+
+        <div className="aura-health-pill aura-health-pill--static">
+          <span className="aura-health-key">Symbol(s)</span>
+          <span className="aura-health-val">
+            {current?.symbols?.length ? current.symbols.join(", ") : "—"}
+          </span>
+        </div>
+
+        <div className="aura-health-pill aura-health-pill--static">
+          <span className="aura-health-key">Sessions</span>
+          <span className="aura-health-val">
+            {current
+              ? [
+                  current.sessions.asia ? "Asia" : null,
+                  current.sessions.london ? "London" : null,
+                  current.sessions.ny ? "NY" : null,
+                ]
+                  .filter(Boolean)
+                  .join(", ") || "—"
+              : "—"}
+          </span>
+        </div>
+
+        <div className="aura-health-pill aura-health-pill--static">
+          <span className="aura-health-key">Risk</span>
+          <span className="aura-health-val">
+            {current ? `$${current.riskUsd} • RR ${current.rr}` : "—"}
+          </span>
+        </div>
+
+        <div className="aura-health-pill aura-health-pill--static">
+          <span className="aura-health-key">State</span>
+          <span className="aura-health-val">—</span>
+        </div>
+      </div>
+    </div>
 
       {err ? (
         <section className="aura-card">
@@ -332,18 +377,47 @@ export default function StrategyPage() {
         </section>
       ) : null}
 
-      {/* Strategy lock notice */}
-      <section className="aura-card-muted">
-        <div className="aura-row-between">
-          <span className="aura-card-title">Strategy Locked</span>
-          <span className="aura-muted aura-text-xs">Read-only</span>
+      {/* Strategy lock header + locked content wrapper */}
+      <div className="aura-lock-section">
+      <div className="aura-row-between aura-mt-24">
+        <div>
+          <div className="aura-summary-title">
+            {isTrading ? "Strategy Locked" : "Strategy Editable"}
+          </div>
+          <div className="aura-muted aura-text-xs aura-mt-6">
+            {isTrading
+              ? "Strategy settings are locked while Aura is trading. Pause Aura to edit."
+              : "Strategy settings are currently editable. When you are happy with your settings, start Aura from the Live Control page."}
+          </div>
         </div>
 
-        <p className="aura-muted aura-text-xs aura-mt-6">
-          Strategy settings are locked while Live Control is running. To make
-          changes, pause or stop Aura from the Live Control page.
-        </p>
-      </section>
+        <div
+          className={`aura-lock-badge ${
+            isTrading ? "aura-lock-badge--locked" : "aura-lock-badge--editable"
+          }`}
+        >
+          <span className="aura-lock-dot" />
+          <span>{isTrading ? "Read-only" : "Editable"}</span>
+        </div>
+      </div>
+
+        <div className="aura-lock-wrap">
+          {/* If locked, show overlay that catches ALL interaction */}
+          {isTrading ? (
+            <div
+              className="aura-lock-overlay"
+              onClick={() => {
+                const ok = window.confirm(
+                  "Strategy settings are locked while Aura is trading.\n\nPause Aura to edit.\n\nGo to Live Control now?"
+                );
+                if (ok) router.push("/app/live-control");
+              }}
+            />
+          ) : null}
+
+          {/* Everything below this point is considered the "locked area" */}
+          <div className={`aura-section-stack ${isTrading ? "aura-locked" : ""}`}>
+
 
       {/* Strategy Mode */}
       <section className="aura-card">
@@ -396,7 +470,7 @@ export default function StrategyPage() {
       <section className="aura-card">
         <div className="aura-row-between">
           <div>
-            <div className="aura-card-title" style={{ fontSize: 18 }}>
+            <div className="aura-card-title">
               Tradable Symbols
             </div>
             <div className="aura-muted aura-mt-6">
@@ -678,7 +752,7 @@ export default function StrategyPage() {
       <section className="aura-card">
         <div className="aura-row-between">
           <div>
-            <div className="aura-card-title" style={{ fontSize: 18 }}>
+            <div className="aura-card-title">
               Position Sizing
             </div>
             <div className="aura-muted aura-mt-6">
@@ -921,7 +995,7 @@ export default function StrategyPage() {
                 <div className={isDisabled ? "aura-disabled" : ""}>
                   <div className="aura-control-row">
                     <div className="aura-control-meta">
-                      <div className="aura-control-title">
+                      <div className="aura-group-title">
                         Max stop-outs per session
                       </div>
                       <div className="aura-control-help">
@@ -956,7 +1030,7 @@ export default function StrategyPage() {
 
                   <div className="aura-control-row">
                     <div className="aura-control-meta">
-                      <div className="aura-control-title">
+                      <div className="aura-group-title">
                         Cooldown after stop-out (minutes)
                       </div>
                       <div className="aura-control-help">
@@ -1045,7 +1119,7 @@ export default function StrategyPage() {
                   {/* Body dominance */}
                   <div className="aura-control-row">
                     <div className="aura-control-meta">
-                      <div className="aura-control-title">Require candle body dominance (%)</div>
+                      <div className="aura-group-title">Require candle body dominance (%)</div>
                       <div className="aura-control-help">
                         Minimum % of the candle body that must be on one side of the EMA to qualify.
                         (Recommended: 90)
@@ -1079,7 +1153,7 @@ export default function StrategyPage() {
                   {/* EMA filter toggle (cards) */}
                   <div className="aura-control-row">
                     <div className="aura-control-meta">
-                      <div className="aura-control-title">Expansion candle EMA filter</div>
+                      <div className="aura-group-title">Expansion candle EMA filter</div>
                       <div className="aura-control-help">
                         When enabled, Aura requires additional EMA confirmation before allowing entries.
                       </div>
@@ -1149,7 +1223,7 @@ export default function StrategyPage() {
                   {/* Entry timing (cards) */}
                   <div className="aura-control-row">
                     <div className="aura-control-meta">
-                      <div className="aura-control-title">Entry timing window</div>
+                      <div className="aura-group-title">Entry timing window</div>
                       <div className="aura-control-help">
                         Immediate enters on signal. Wait-for-confirm delays entry until confirmation.
                       </div>
@@ -1218,59 +1292,205 @@ export default function StrategyPage() {
             })()}
           </div>
 
-          {/* Group 3: Trade Frequency (BOUND) */}
-          <div className="aura-card-muted">
+ 
+        </div>
+      </section>
 
+      {/* Execution Preferences */}
+      <section className="aura-card">
+        <div className="aura-row-between">
+          <div>
+            <div className="aura-card-title">Execution Preferences</div>
+            <div className="aura-muted aura-text-xs aura-mt-10">
+              Controls how often Aura is allowed to act. These settings don’t change
+              the strategy logic - only the execution guardrails.
+            </div>
+          </div>
+
+          <div className="aura-right">
+            <div className="aura-stat-label">
+              {saving
+                ? "Saving…"
+                : current
+                ? [
+                    current.execution.allowMultipleTradesPerSession
+                      ? "Multi-trade"
+                      : "Single-trade",
+                    current.execution.allowTradeStacking ? "Stacking" : "No stacking",
+                    current.execution.requireFlatBeforeNewEntry ? "Flat first" : "Can re-enter",
+                  ].join(" • ")
+                : "—"}
+            </div>
+          </div>
+        </div>
+
+        <div className="aura-mt-12 aura-grid-gap-10">
+          {/* Max trades per session (moved here) */}
+          {(() => {
+            const isDisabled = !current || saving;
+
+            const saveMaxTrades = async () => {
+              if (!current) return;
+              if (!maxTradesDraft.trim()) return;
+
+              const n = Number(maxTradesDraft);
+              if (!Number.isFinite(n)) return;
+
+              const asInt = Math.max(0, Math.floor(n)); // 0 disables
+
+              await patchStrategySettings({
+                coreplus315: {
+                  ...current.coreplus315,
+                  maxTradesPerSession: asInt,
+                },
+              });
+            };
+
+            return (
+              <div className={`aura-card-muted ${isDisabled ? "aura-disabled" : ""}`}>
+                <div className="aura-control-row">
+                  <div className="aura-control-meta">
+                    <div className="aura-group-title">Max trades per session</div>
+                    <div className="aura-control-help">
+                      Caps the number of trades Aura can take in a session. 0 disables.
+                    </div>
+                  </div>
+
+                  <div className="aura-control-right" style={{ minWidth: 180 }}>
+                    <input
+                      className="aura-input"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="e.g. 1"
+                      value={maxTradesDraft}
+                      disabled={isDisabled}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "" || /^[0-9]+$/.test(v)) setMaxTradesDraft(v);
+                      }}
+                      onBlur={saveMaxTrades}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Execution rules (row-based, consistent with Trading Options) */}
+          <div className="aura-card-muted">
             {(() => {
               const isDisabled = !current || saving;
 
-              const saveMaxTrades = async () => {
+              const setExec = async (
+                key:
+                  | "allowMultipleTradesPerSession"
+                  | "allowTradeStacking"
+                  | "requireFlatBeforeNewEntry",
+                value: boolean
+              ) => {
                 if (!current) return;
-                if (!maxTradesDraft.trim()) return;
 
-                const n = Number(maxTradesDraft);
-                if (!Number.isFinite(n)) return;
+                const prev = current;
+                const nextLocal = {
+                  ...current,
+                  execution: { ...current.execution, [key]: value },
+                };
+                setCurrent(nextLocal);
 
-                const asInt = Math.max(0, Math.floor(n)); // 0 disables
-                await patchStrategySettings({
-                  coreplus315: {
-                    ...current.coreplus315,
-                    maxTradesPerSession: asInt,
-                  },
-                });
+                try {
+                  await patchStrategySettings({
+                    execution: { [key]: value } as any,
+                  });
+                } catch (e) {
+                  setCurrent(prev);
+                  throw e;
+                }
               };
+
+              const rows: Array<{
+                key:
+                  | "allowMultipleTradesPerSession"
+                  | "allowTradeStacking"
+                  | "requireFlatBeforeNewEntry";
+                title: string;
+                help: string;
+              }> = [
+                {
+                  key: "allowMultipleTradesPerSession",
+                  title: "Allow multiple trades per session",
+                  help: "If disabled, Aura will only take one trade per session.",
+                },
+                {
+                  key: "allowTradeStacking",
+                  title: "Allow trade stacking",
+                  help: "If enabled, Aura may add positions when new valid setups appear.",
+                },
+                {
+                  key: "requireFlatBeforeNewEntry",
+                  title: "Require flat before new entry",
+                  help: "If enabled, Aura won’t enter a new trade until the prior position is flat.",
+                },
+              ];
 
               return (
                 <div className={isDisabled ? "aura-disabled" : ""}>
-                  <div className="aura-control-row">
-                    <div className="aura-control-meta">
-                      <div className="aura-control-title">Max trades per session</div>
-                      <div className="aura-control-help">
-                        Caps the number of trades Aura can take in a session. 0 disables.
-                      </div>
-                    </div>
+                  {rows.map((row, idx) => {
+                    const on = !!current?.execution?.[row.key];
 
-                    <div className="aura-control-right" style={{ minWidth: 140 }}>
-                      <input
-                        className="aura-input"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="e.g. 1"
-                        value={maxTradesDraft}
-                        disabled={isDisabled}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === "" || /^[0-9]+$/.test(v)) setMaxTradesDraft(v);
-                        }}
-                        onBlur={saveMaxTrades}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
+                    return (
+                      <div key={row.key}>
+                        <div className="aura-control-row">
+                          <div className="aura-control-meta">
+                            <div className="aura-group-title">{row.title}</div>
+                            <div className="aura-control-help">{row.help}</div>
+                          </div>
+
+                          <div className="aura-control-right" style={{ minWidth: 260 }}>
+                            <div
+                              className="aura-pill-group"
+                              role="group"
+                              aria-label={row.title}
+                            >
+                              <button
+                                type="button"
+                                className="aura-pill-toggle"
+                                aria-pressed={on}
+                                disabled={isDisabled}
+                                onClick={() => {
+                                  if (isDisabled) return;
+                                  setExec(row.key, true);
+                                }}
+                              >
+                                <span className="aura-pill-indicator" />
+                                <span>Enabled</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="aura-pill-toggle"
+                                aria-pressed={!on}
+                                disabled={isDisabled}
+                                onClick={() => {
+                                  if (isDisabled) return;
+                                  setExec(row.key, false);
+                                }}
+                              >
+                                <span className="aura-pill-indicator" />
+                                <span>Disabled</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {idx < rows.length - 1 && <div className="aura-divider" />}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()}
@@ -1278,58 +1498,194 @@ export default function StrategyPage() {
         </div>
       </section>
 
-      {/* Execution Preferences */}
+      {/* Safety & Limits (BOUND) */}
       <section className="aura-card">
-        <div className="aura-card-title">Execution Preferences</div>
-
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Allow multiple trades per session</span>
-            <span className="aura-muted">—</span>
+        <div className="aura-row-between">
+          <div>
+            <div className="aura-card-title">Safety & Limits</div>
+            <div className="aura-muted aura-text-xs aura-mt-10">
+              System-level guardrails. 0 disables numeric limits.
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Allow trade stacking</span>
-            <span className="aura-muted">—</span>
+          <div className="aura-right">
+            <div className="aura-stat-label">
+              {saving
+                ? "Saving…"
+                : current
+                ? `${current.safety.maxDailyLossUsd ? `$${current.safety.maxDailyLossUsd}/day` : "Daily off"} • ${
+                    current.safety.maxConsecutiveLosses
+                      ? `${current.safety.maxConsecutiveLosses} losses`
+                      : "Streak off"
+                  } • ${current.safety.autoPauseEnabled ? "Auto-pause on" : "Auto-pause off"}`
+                : "—"}
+            </div>
           </div>
-
-          <div className="aura-card-muted aura-row-between">
-            <span>Require flat before new entry</span>
-            <span className="aura-muted">—</span>
-          </div>
-
-          <p className="aura-muted aura-text-xs">
-            These controls affect how often Aura is allowed to act. The underlying
-            strategy logic remains unchanged.
-          </p>
         </div>
-      </section>
 
-      {/* Safety */}
-      <section className="aura-card">
-        <div className="aura-card-title">Safety & Limits</div>
+        <div className="aura-mt-12">
+          {(() => {
+            const isDisabled = !current || saving;
 
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Max daily loss</span>
-            <span className="aura-muted">—</span>
-          </div>
+            const saveMaxDailyLoss = async () => {
+              if (!current) return;
+              if (!maxDailyLossDraft.trim()) return; // empty = do nothing
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Max consecutive losses</span>
-            <span className="aura-muted">—</span>
-          </div>
+              const n = Number(maxDailyLossDraft);
+              if (!Number.isFinite(n)) return;
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Auto-pause conditions</span>
-            <span className="aura-muted">Enabled (placeholder)</span>
-          </div>
+              const asInt = Math.max(0, Math.floor(n)); // USD whole dollars; 0 disables
 
-          <p className="aura-muted aura-text-xs">
-            Aura includes system-level safety checks such as loss thresholds and
-            automatic pause conditions. Some safeguards cannot be disabled.
-          </p>
+              await patchStrategySettings({
+                safety: { maxDailyLossUsd: asInt } as any,
+              });
+            };
+
+            const saveMaxConsecutiveLosses = async () => {
+              if (!current) return;
+              if (!maxConsecutiveLossesDraft.trim()) return; // empty = do nothing
+
+              const n = Number(maxConsecutiveLossesDraft);
+              if (!Number.isFinite(n)) return;
+
+              const asInt = Math.max(0, Math.floor(n)); // 0 disables
+
+              await patchStrategySettings({
+                safety: { maxConsecutiveLosses: asInt } as any,
+              });
+            };
+
+            const setAutoPause = async (next: boolean) => {
+              if (!current) return;
+
+              const prev = autoPauseDraft;
+              setAutoPauseDraft(next);
+
+              try {
+                await patchStrategySettings({
+                  safety: { autoPauseEnabled: next } as any,
+                });
+              } catch (e) {
+                setAutoPauseDraft(prev);
+                throw e;
+              }
+            };
+
+            return (
+              <div className={`aura-card-muted ${isDisabled ? "aura-disabled" : ""}`}>
+                {/* Max daily loss */}
+                <div className="aura-control-row">
+                  <div className="aura-control-meta">
+                    <div className="aura-group-title">Max daily loss (USD)</div>
+                    <div className="aura-control-help">
+                      If reached, Aura will stop trading for the day. 0 disables.
+                    </div>
+                  </div>
+
+                  <div className="aura-control-right" style={{ minWidth: 180 }}>
+                    <input
+                      className="aura-input"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="e.g. 300"
+                      value={maxDailyLossDraft}
+                      disabled={isDisabled}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "" || /^[0-9]+$/.test(v)) setMaxDailyLossDraft(v);
+                      }}
+                      onBlur={saveMaxDailyLoss}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="aura-divider" />
+
+                {/* Max consecutive losses */}
+                <div className="aura-control-row">
+                  <div className="aura-control-meta">
+                    <div className="aura-group-title">Max consecutive losses</div>
+                    <div className="aura-control-help">
+                      If hit, Aura will pause trading until the next session. 0 disables.
+                    </div>
+                  </div>
+
+                  <div className="aura-control-right" style={{ minWidth: 180 }}>
+                    <input
+                      className="aura-input"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="e.g. 3"
+                      value={maxConsecutiveLossesDraft}
+                      disabled={isDisabled}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "" || /^[0-9]+$/.test(v))
+                          setMaxConsecutiveLossesDraft(v);
+                      }}
+                      onBlur={saveMaxConsecutiveLosses}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="aura-divider" />
+
+                {/* Auto-pause */}
+                <div className="aura-control-row">
+                  <div className="aura-control-meta">
+                    <div className="aura-group-title">Auto-pause</div>
+                    <div className="aura-control-help">
+                      When enabled, Aura can pause itself after safety triggers.
+                    </div>
+                  </div>
+
+                  <div className="aura-control-right" style={{ minWidth: 260 }}>
+                    <div className="aura-pill-group" role="group" aria-label="Auto-pause">
+                      <button
+                        type="button"
+                        className="aura-pill-toggle"
+                        aria-pressed={autoPauseDraft === true}
+                        disabled={isDisabled}
+                        onClick={() => {
+                          if (isDisabled) return;
+                          setAutoPause(true);
+                        }}
+                      >
+                        <span className="aura-pill-indicator" />
+                        <span>Enabled</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="aura-pill-toggle"
+                        aria-pressed={autoPauseDraft === false}
+                        disabled={isDisabled}
+                        onClick={() => {
+                          if (isDisabled) return;
+                          setAutoPause(false);
+                        }}
+                      >
+                        <span className="aura-pill-indicator" />
+                        <span>Disabled</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
+
+        <p className="aura-muted aura-text-xs aura-mt-10">
+          Some safeguards are always enforced at the system level, even if you disable
+          these thresholds.
+        </p>
       </section>
 
       {/* Coming soon */}
@@ -1341,6 +1697,9 @@ export default function StrategyPage() {
           execution slippage limits).
         </p>
       </section>
+              </div>
+      </div>
+      </div>
     </div>
   );
 }

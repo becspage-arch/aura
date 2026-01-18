@@ -87,9 +87,7 @@ export function LiveControlSwitches() {
     };
   }, []);
 
-  const togglePause = async () => {
-    const next = !state.isPaused;
-
+  const setPause = async (next: boolean) => {
     const ok = window.confirm(
       next
         ? "Pause strategy? Aura will keep collecting data, but it will not place trades."
@@ -114,9 +112,7 @@ export function LiveControlSwitches() {
     }
   };
 
-  const toggleKill = async () => {
-    const next = !state.isKillSwitched;
-
+  const setKill = async (next: boolean) => {
     const ok = window.confirm(
       next
         ? "Turn ON the kill switch? This should immediately prevent any new trading actions."
@@ -152,84 +148,133 @@ export function LiveControlSwitches() {
 
   return (
     <section className="aura-card">
-      <div className="aura-row-between">
-        <div>
-          <div className="aura-card-title">Live Controls</div>
-          <p className="aura-muted aura-text-xs aura-mt-10">
-            Safety first. These controls affect live trading behaviour.
-          </p>
-        </div>
-
-        {loading ? (
-          <div className="aura-muted aura-text-xs">Loading…</div>
-        ) : state.killSwitchedAt ? (
-          <div className="aura-muted aura-text-xs">
-            Kill switched at {new Date(state.killSwitchedAt).toLocaleString()}
-          </div>
-        ) : (
-          <div className="aura-muted aura-text-xs" />
-        )}
+      <div className="aura-muted aura-text-xs">
+        {loading
+          ? "Loading…"
+          : state.killSwitchedAt
+          ? `Kill switched at ${new Date(state.killSwitchedAt).toLocaleString()}`
+          : ""}
       </div>
 
       {err ? (
-        <div className="aura-mt-12">
+        <div className="aura-mt-12 aura-error-block">
           <div className="aura-text-xs">Error</div>
           <div className="aura-text-xs">{err}</div>
         </div>
       ) : null}
 
-      {/* Pills row */}
-      <div className="aura-mt-12 aura-grid-2">
-        {/* Pause pill */}
-        <div className="aura-pill-card">
-          <div className="aura-row-between">
-            <div>
-              <div className="aura-font-semibold">
+      {/* Strategy-style controls (same layout as Strategy page) */}
+      <div className="aura-mt-12 aura-grid-gap-12">
+        {/* Pause / Running */}
+        <div className={`aura-card-muted ${disabled ? "aura-disabled" : ""}`}>
+          <div className="aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-group-title">
                 {state.isPaused ? "Strategy is PAUSED" : "Strategy is RUNNING"}
               </div>
-              <div className="aura-muted aura-text-xs aura-mt-10">
+              <div className="aura-control-help">
                 Prevents new trades. Data still runs.
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={togglePause}
-              disabled={disabled}
-              className={`aura-btn aura-btn-pill ${disabled ? "aura-disabled-btn" : ""}`}
-            >
-              {saving === "pause"
-                ? "Saving…"
-                : state.isPaused
-                ? "Unpause"
-                : "Pause"}
-            </button>
+            <div className="aura-control-right" style={{ minWidth: 260 }}>
+              <div
+                className="aura-pill-group"
+                role="group"
+                aria-label="Strategy pause control"
+              >
+                <button
+                  type="button"
+                  className="aura-pill-toggle"
+                  aria-pressed={!state.isPaused}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (disabled) return;
+                    if (state.isPaused) setPause(false);
+                  }}
+                  title={!state.isPaused ? "Running" : "Set running"}
+                >
+                  <span className="aura-pill-indicator" />
+                  <span>{saving === "pause" && !state.isPaused ? "Saving…" : "Running"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="aura-pill-toggle"
+                  aria-pressed={state.isPaused}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (disabled) return;
+                    if (!state.isPaused) setPause(true);
+                  }}
+                  title={state.isPaused ? "Paused" : "Set paused"}
+                >
+                  <span className="aura-pill-indicator" />
+                  <span>{saving === "pause" && state.isPaused ? "Saving…" : "Paused"}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Kill pill */}
-        <div className="aura-pill-card">
-          <div className="aura-row-between">
-            <div>
-              <div className="aura-font-semibold">{killLabel}</div>
-              <div className="aura-muted aura-text-xs aura-mt-10">
+        {/* Kill switch */}
+        <div className={`aura-card-muted ${disabled ? "aura-disabled" : ""}`}>
+          <div className="aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-group-title">{killLabel}</div>
+              <div className="aura-control-help">
                 Emergency stop for trading actions.
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={toggleKill}
-              disabled={disabled}
-              className={`aura-btn aura-btn-pill ${disabled ? "aura-disabled-btn" : ""}`}
-            >
-              {saving === "kill"
-                ? "Saving…"
-                : state.isKillSwitched
-                ? "Turn OFF"
-                : "Turn ON"}
-            </button>
+            <div className="aura-control-right" style={{ minWidth: 260 }}>
+              <div
+                className="aura-pill-group"
+                role="group"
+                aria-label="Kill switch control"
+              >
+                <button
+                  type="button"
+                  className="aura-pill-toggle"
+                  aria-pressed={!state.isKillSwitched}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (disabled) return;
+                    if (state.isKillSwitched) setKill(false);
+                  }}
+                  title={!state.isKillSwitched ? "Kill switch OFF" : "Turn OFF"}
+                >
+                  <span className="aura-pill-indicator" />
+                  <span>
+                    {saving === "kill" && !state.isKillSwitched ? "Saving…" : "OFF"}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className="aura-pill-toggle"
+                  aria-pressed={state.isKillSwitched}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (disabled) return;
+                    if (!state.isKillSwitched) setKill(true);
+                  }}
+                  title={state.isKillSwitched ? "Kill switch ON" : "Turn ON"}
+                >
+                  <span className="aura-pill-indicator" />
+                  <span>
+                    {saving === "kill" && state.isKillSwitched ? "Saving…" : "ON"}
+                  </span>
+                </button>
+              </div>
+            </div>
           </div>
+
+          {state.isKillSwitched && state.killSwitchedAt ? (
+            <p className="aura-muted aura-text-xs aura-mt-10">
+              Activated {new Date(state.killSwitchedAt).toLocaleString()}.
+            </p>
+          ) : null}
         </div>
       </div>
     </section>

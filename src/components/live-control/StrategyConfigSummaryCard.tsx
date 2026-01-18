@@ -1,15 +1,15 @@
-// src/components/live-control/StrategyConfigSummaryCard.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 
 type StrategySettings = {
-  mode: "paper" | "live";
-  preset: "coreplus315";
-  symbols: string[];
+  mode: "paper" | "live" | string;
+  preset: string | null;
+
+  symbols: string[] | null;
   sessions: { asia: boolean; london: boolean; ny: boolean };
 
-  // core settings (v1)
   riskUsd: number;
   rr: number;
   maxStopTicks: number;
@@ -33,10 +33,22 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}${text ? ` - ${text}` : ""}`);
+    const trimmed = text ? text.replace(/\s+/g, " ").slice(0, 140) : "";
+    throw new Error(
+      `${res.status} ${res.statusText}${trimmed ? ` - ${trimmed}` : ""}`
+    );
   }
 
   return (await res.json()) as T;
+}
+
+function sessionList(s: StrategySettings["sessions"] | null | undefined) {
+  if (!s) return [];
+  return [
+    s.asia ? "Asia" : null,
+    s.london ? "London" : null,
+    s.ny ? "NY" : null,
+  ].filter(Boolean) as string[];
 }
 
 export function StrategyConfigSummaryCard() {
@@ -70,89 +82,81 @@ export function StrategyConfigSummaryCard() {
     };
   }, []);
 
+  const symbols = useMemo(() => cfg?.symbols?.filter(Boolean) ?? [], [cfg]);
+  const sessions = useMemo(() => sessionList(cfg?.sessions), [cfg]);
+
+  const preset = cfg?.preset ?? "—";
+
   return (
-    <section className="aura-card">
-      <div className="aura-row-between">
-        <div>
-          <div className="aura-card-title">Active Strategy Config</div>
-          <p className="aura-muted aura-text-xs aura-mt-10">
-            Read-only. Edit these on the Strategy page.
-          </p>
+    <Link href="/app/strategy" className="block">
+      <section className="aura-card cursor-pointer">
+        <div className="aura-row-between">
+          <div>
+            <div className="aura-card-title">Active Strategy</div>
+            <p className="aura-muted aura-text-xs aura-mt-10">
+              Snapshot only, locked to avoid accidental changes mid-session – click
+              to edit in Strategy Settings →
+            </p>
+          </div>
+
+          {!loading && cfg ? (
+            <div className="aura-muted aura-text-xs">
+              ${cfg.riskUsd} • RR {cfg.rr} • Max stop {cfg.maxStopTicks} •{" "}
+              {String(cfg.entryType)}
+            </div>
+          ) : (
+            <div className="aura-muted aura-text-xs">
+              {loading ? "Loading…" : "—"}
+            </div>
+          )}
         </div>
 
-        {loading ? (
-          <div className="aura-muted aura-text-xs">Loading…</div>
-        ) : cfg ? (
-          <div className="aura-muted aura-text-xs">
-            ${cfg.riskUsd} • RR {cfg.rr} • Max stop {cfg.maxStopTicks} •{" "}
-            {String(cfg.entryType)}
+        {err ? (
+          <div className="aura-mt-12 aura-error-block">
+            <div className="aura-text-xs">Error</div>
+            <div className="aura-text-xs">{err}</div>
           </div>
-        ) : (
-          <div className="aura-muted aura-text-xs" />
-        )}
-      </div>
+        ) : null}
 
-      {err ? (
-        <div className="aura-mt-12 aura-error-block">
-          <div className="aura-text-xs">Error</div>
-          <div className="aura-text-xs">{err}</div>
-        </div>
-      ) : null}
-
-      {cfg ? (
-        <div className="aura-mt-12 aura-grid-gap-10">
-          <div className="aura-card-muted aura-row-between">
-            <span>Mode</span>
-            <span className="aura-muted">{cfg.mode}</span>
+        {/* Strategy-style “health strip” snapshot (matches Strategy page) */}
+        <div
+          className="aura-mt-12 aura-health-strip"
+          aria-label="Active strategy snapshot"
+        >
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Preset</span>
+            <span className="aura-health-val">{loading ? "…" : preset}</span>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Preset</span>
-            <span className="aura-muted">{cfg.preset}</span>
-          </div>
-
-          <div className="aura-card-muted aura-row-between">
-            <span>Symbols</span>
-            <span className="aura-muted">{cfg.symbols?.join(", ") || "—"}</span>
-          </div>
-
-          <div className="aura-card-muted aura-row-between">
-            <span>Sessions</span>
-            <span className="aura-muted">
-              {cfg.sessions?.ny ? "NY" : ""}
-              {cfg.sessions?.london ? (cfg.sessions?.ny ? ", London" : "London") : ""}
-              {cfg.sessions?.asia
-                ? cfg.sessions?.ny || cfg.sessions?.london
-                  ? ", Asia"
-                  : "Asia"
-                : ""}
-              {!cfg.sessions?.ny && !cfg.sessions?.london && !cfg.sessions?.asia
-                ? "—"
-                : ""}
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Symbols</span>
+            <span className="aura-health-val">
+              {loading ? "…" : symbols.length ? symbols.join(", ") : "—"}
             </span>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Risk / trade</span>
-            <span className="aura-muted">${cfg.riskUsd}</span>
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Sessions</span>
+            <span className="aura-health-val">
+              {loading ? "…" : sessions.length ? sessions.join(", ") : "—"}
+            </span>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>RR</span>
-            <span className="aura-muted">{cfg.rr}</span>
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Risk</span>
+            <span className="aura-health-val">
+              {loading || !cfg ? "…" : `$${cfg.riskUsd} • RR ${cfg.rr}`}
+            </span>
           </div>
 
-          <div className="aura-card-muted aura-row-between">
-            <span>Max stop (ticks)</span>
-            <span className="aura-muted">{cfg.maxStopTicks}</span>
-          </div>
-
-          <div className="aura-card-muted aura-row-between">
-            <span>Entry type</span>
-            <span className="aura-muted">{String(cfg.entryType)}</span>
+          <div className="aura-health-pill">
+            <span className="aura-health-key">Entry</span>
+            <span className="aura-health-val">
+              {loading ? "…" : cfg ? String(cfg.entryType) : "—"}
+            </span>
           </div>
         </div>
-      ) : null}
-    </section>
+      </section>
+    </Link>
   );
 }
