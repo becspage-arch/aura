@@ -891,3 +891,21 @@ html.light .aura-row-link:hover {
   border-color: color-mix(in srgb, var(--aura-gold-2) 90%, var(--border));
   background: var(--aura-gold-2);
 }
+
+/* --------------------------------------------------
+   Aura pill content helpers (stacked label + sublabel)
+-------------------------------------------------- */
+
+.aura-pill-toggle__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.1;
+  align-items: flex-start;
+}
+
+.aura-pill-toggle__sublabel {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
