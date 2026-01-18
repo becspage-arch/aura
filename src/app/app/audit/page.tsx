@@ -73,7 +73,6 @@ export default async function AuditPage() {
   return (
     <div className="mx-auto grid max-w-6xl gap-6">
       <div>
-        <h1 style={{ fontSize: 28, fontWeight: 700 }}>Audit</h1>
         <p style={{ marginTop: 6, color: "var(--muted-foreground)" }}>
           User actions and system events for debugging and safety review.
         </p>

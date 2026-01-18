@@ -7,31 +7,17 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-6xl aura-page">
       {/* Page intro */}
       <div>
-        <h1 className="aura-page-title">Settings</h1>
         <p className="aura-page-subtitle">
-          Manage broker connections, notifications, safety caps, copy trading, and account preferences.
-        </p>
-      </div>
-
-      {/* UI-only notice */}
-      <section className="aura-card-muted">
-        <div className="aura-row-between">
-          <span className="aura-card-title">UI only</span>
-          <span className="aura-muted aura-text-xs">Not wired yet</span>
-        </div>
-
-        <p className="aura-muted aura-text-xs aura-mt-6">
-          Strategy rules live in{" "}
+          Manage broker connections, notifications, safety caps, copy trading, and account preferences. Note your Strategy rules live in{" "}
           <Link href="/app/strategy" className="aura-link aura-pill">
             Strategy
           </Link>
-          . Live execution and charts live in{" "}
+          .  Your Live execution and charts live in{" "}
           <Link href="/app/live-control" className="aura-link aura-pill">
             Live Control
           </Link>
-          .
         </p>
-      </section>
+      </div>
 
       {/* Broker Connections */}
       <section className="aura-card">

@@ -15,7 +15,6 @@ export default function TradesAndLogsPage() {
     <div className="mx-auto max-w-6xl aura-page">
       {/* Page intro */}
       <div>
-        <h1 className="aura-page-title">Trades & Logs</h1>
         <p className="aura-page-subtitle">
           Review executed trades, orders, fills, and system events.
         </p>

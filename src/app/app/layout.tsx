@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppTopBar } from "@/components/AppTopBar";
 
 const nav = [
   { href: "/app", label: "Dashboard" },
@@ -41,8 +42,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
       </aside>
 
-      {/* Main content */}
-      <main style={{ padding: 24 }}>{children}</main>
+      {/* Main column */}
+      <div className="min-h-screen">
+        <AppTopBar />
+        <main style={{ padding: 24, paddingTop: 18 }}>{children}</main>
+      </div>
     </div>
   );
 }

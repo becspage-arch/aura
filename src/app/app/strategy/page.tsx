@@ -305,7 +305,6 @@ export default function StrategyPage() {
     <div className="mx-auto max-w-6xl aura-page">
       {/* Page intro */}
       <div>
-        <h1 className="aura-page-title">Strategy</h1>
         <p className="aura-page-subtitle">
           Configure how Aura executes the strategy on your account.
         </p>

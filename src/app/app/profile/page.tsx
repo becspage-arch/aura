@@ -6,7 +6,6 @@ export default function ProfilePage() {
     <div className="mx-auto max-w-6xl aura-page">
       <div className="aura-row-between">
         <div>
-          <h1 className="aura-page-title">Profile</h1>
           <p className="aura-page-subtitle">Personal preferences and account overview.</p>
         </div>
 
