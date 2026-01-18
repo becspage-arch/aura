@@ -1,3 +1,4 @@
+// src/app/api/trading-state/risk-settings/route.ts
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { ensureUserProfile } from "@/lib/user-profile";
@@ -111,7 +112,12 @@ export async function POST(req: Request) {
   });
 
   // notify UI (and later worker if we choose to listen)
-  await publishToUser(clerkUserId, "risk_settings_update" as any, nextRiskSettings);
+  await publishToUser(clerkUserId, "risk_settings_update", {
+    riskSettings: normalizeRiskSettings(next.riskSettings),
+  });
 
-  return Response.json({ ok: true, riskSettings: normalizeRiskSettings(next.riskSettings) });
+  return Response.json({
+    ok: true,
+    riskSettings: normalizeRiskSettings(next.riskSettings),
+  });
 }

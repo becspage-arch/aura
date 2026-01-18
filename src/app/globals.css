@@ -840,3 +840,9 @@ html.light .aura-row-link:hover {
 .aura-mono {
   font-family: var(--font-geist-mono);
 }
+
+/* Body rendering */
+.aura-body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

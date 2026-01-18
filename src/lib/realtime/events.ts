@@ -1,3 +1,5 @@
+// src/lib/realtime/events.ts
+
 export type AuraRealtimeEventType =
   | "order_submitted"
   | "order_filled"
@@ -6,7 +8,8 @@ export type AuraRealtimeEventType =
   | "position_closed"
   | "status_update"
   | "error"
-  | "candle_closed";
+  | "candle_closed"
+  | "risk_settings_update";
 
 export type AuraBaseEvent<TType extends AuraRealtimeEventType, TData> = {
   type: TType;
@@ -81,6 +84,19 @@ export type StatusUpdateData = {
 };
 
 /* -----------------------------
+   Config events
+------------------------------ */
+
+export type RiskSettingsUpdateData = {
+  riskSettings: {
+    riskUsd: number;
+    rr: number;
+    maxStopTicks: number;
+    entryType: "market" | "limit";
+  };
+};
+
+/* -----------------------------
    Error events
 ------------------------------ */
 
@@ -103,4 +119,5 @@ export type AuraRealtimeEvent =
   | AuraBaseEvent<"position_closed", PositionClosedData>
   | AuraBaseEvent<"status_update", StatusUpdateData>
   | AuraBaseEvent<"error", ErrorData>
-  | AuraBaseEvent<"candle_closed", CandleClosedData>;
+  | AuraBaseEvent<"candle_closed", CandleClosedData>
+  | AuraBaseEvent<"risk_settings_update", RiskSettingsUpdateData>;
