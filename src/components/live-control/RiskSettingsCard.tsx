@@ -1,3 +1,4 @@
+// src/components/live-control/RiskSettingsCard.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -79,7 +80,9 @@ export function RiskSettingsCard() {
         setLoading(true);
         setErr(null);
 
-        const res = await fetchJSON<RiskGetResponse>("/api/trading-state/risk-settings");
+        const res = await fetchJSON<RiskGetResponse>(
+          "/api/trading-state/risk-settings"
+        );
         if (cancelled) return;
 
         setCurrent(res.riskSettings);
@@ -112,7 +115,9 @@ export function RiskSettingsCard() {
     }
 
     const ok = window.confirm(
-      `Apply these risk settings?\n\nRiskUsd: ${riskUsd}\nRR: ${rr}\nMaxStopTicks: ${maxStopTicks}\nEntryType: ${form.entryType || "market"}`
+      `Apply these risk settings?\n\nRiskUsd: ${riskUsd}\nRR: ${rr}\nMaxStopTicks: ${maxStopTicks}\nEntryType: ${
+        form.entryType || "market"
+      }`
     );
     if (!ok) return;
 
@@ -120,15 +125,18 @@ export function RiskSettingsCard() {
       setSaving(true);
       setErr(null);
 
-      const res = await fetchJSON<RiskPostResponse>("/api/trading-state/risk-settings", {
-        method: "POST",
-        body: JSON.stringify({
-          riskUsd,
-          rr,
-          maxStopTicks,
-          entryType: form.entryType || "market",
-        }),
-      });
+      const res = await fetchJSON<RiskPostResponse>(
+        "/api/trading-state/risk-settings",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            riskUsd,
+            rr,
+            maxStopTicks,
+            entryType: form.entryType || "market",
+          }),
+        }
+      );
 
       setCurrent(res.riskSettings);
       setForm({
@@ -155,6 +163,8 @@ export function RiskSettingsCard() {
     });
   };
 
+  const disabled = loading || saving;
+
   return (
     <section className="aura-card">
       <div className="aura-row-between">
@@ -169,31 +179,24 @@ export function RiskSettingsCard() {
           <div className="aura-muted aura-text-xs">Loading…</div>
         ) : current ? (
           <div className="aura-muted aura-text-xs">
-            Current: ${current.riskUsd} • RR {current.rr} • Max stop {current.maxStopTicks} •{" "}
-            {String(current.entryType)}
+            Current: ${current.riskUsd} • RR {current.rr} • Max stop{" "}
+            {current.maxStopTicks} • {String(current.entryType)}
           </div>
         ) : (
-          <div className="aura-muted aura-text-xs"></div>
+          <div className="aura-muted aura-text-xs" />
         )}
       </div>
 
       {err ? (
-        <div className="aura-mt-12" style={{ color: "var(--destructive)" }}>
+        <div className="aura-mt-12 aura-error-block">
           <div className="aura-text-xs">Error</div>
           <div className="aura-text-xs">{err}</div>
         </div>
       ) : null}
 
-      {/* 2-column aligned form */}
-      <div className="aura-mt-12" style={{ display: "grid", gap: 12 }}>
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            gridTemplateColumns: "1fr 1fr",
-            alignItems: "start",
-          }}
-        >
+      {/* Form */}
+      <div className="aura-mt-12 aura-grid-gap-12">
+        <div className="aura-form-2col">
           {/* Risk USD */}
           <div>
             <div className="aura-muted aura-text-xs">Risk (USD)</div>
@@ -201,14 +204,11 @@ export function RiskSettingsCard() {
               className="aura-input aura-mt-10"
               inputMode="decimal"
               value={form.riskUsd}
-              onChange={(e) => setForm((s) => ({ ...s, riskUsd: e.target.value }))}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, riskUsd: e.target.value }))
+              }
               placeholder="e.g. 50"
-              disabled={loading || saving}
-              style={{
-                width: "100%",
-                border: "1px solid var(--border)",
-                background: "var(--card)",
-              }}
+              disabled={disabled}
             />
           </div>
 
@@ -221,12 +221,7 @@ export function RiskSettingsCard() {
               value={form.rr}
               onChange={(e) => setForm((s) => ({ ...s, rr: e.target.value }))}
               placeholder="e.g. 2"
-              disabled={loading || saving}
-              style={{
-                width: "100%",
-                border: "1px solid var(--border)",
-                background: "var(--card)",
-              }}
+              disabled={disabled}
             />
           </div>
 
@@ -237,14 +232,11 @@ export function RiskSettingsCard() {
               className="aura-input aura-mt-10"
               inputMode="numeric"
               value={form.maxStopTicks}
-              onChange={(e) => setForm((s) => ({ ...s, maxStopTicks: e.target.value }))}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, maxStopTicks: e.target.value }))
+              }
               placeholder="e.g. 50"
-              disabled={loading || saving}
-              style={{
-                width: "100%",
-                border: "1px solid var(--border)",
-                background: "var(--card)",
-              }}
+              disabled={disabled}
             />
           </div>
 
@@ -254,19 +246,16 @@ export function RiskSettingsCard() {
             <select
               className="aura-input aura-mt-10"
               value={form.entryType}
-              onChange={(e) => setForm((s) => ({ ...s, entryType: e.target.value }))}
-              disabled={loading || saving}
-              style={{
-                width: "100%",
-                border: "1px solid var(--border)",
-                background: "var(--card)",
-              }}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, entryType: e.target.value }))
+              }
+              disabled={disabled}
             >
               <option value="market">market</option>
               <option value="limit">limit</option>
             </select>
             <div className="aura-muted aura-text-xs aura-mt-10">
-              (Limit support in execution can come later – this is just config.)
+              (Limit support in execution can come later - this is just config.)
             </div>
           </div>
         </div>
@@ -275,20 +264,20 @@ export function RiskSettingsCard() {
         <div className="aura-row-between aura-mt-10">
           <button
             type="button"
-            className="aura-btn"
+            className={`aura-btn aura-btn-subtle ${
+              disabled || !dirty ? "aura-disabled-btn" : ""
+            }`}
             onClick={reset}
-            disabled={loading || saving || !dirty}
-            style={{ opacity: loading || saving || !dirty ? 0.6 : 1 }}
+            disabled={disabled || !dirty}
           >
             Reset
           </button>
 
           <button
             type="button"
-            className="aura-btn"
+            className={`aura-btn ${disabled || !dirty ? "aura-disabled-btn" : ""}`}
             onClick={save}
-            disabled={loading || saving || !dirty}
-            style={{ opacity: loading || saving || !dirty ? 0.6 : 1 }}
+            disabled={disabled || !dirty}
           >
             {saving ? "Saving…" : "Apply"}
           </button>
@@ -296,7 +285,7 @@ export function RiskSettingsCard() {
 
         <p className="aura-muted aura-text-xs">
           Tip: keep this page open - you should see the worker log{" "}
-          <span style={{ fontFamily: "var(--font-geist-mono)" }}>riskSettings applied</span> within ~5
+          <span className="aura-mono">riskSettings applied</span> within ~5
           seconds after Apply.
         </p>
       </div>

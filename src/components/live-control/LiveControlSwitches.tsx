@@ -1,3 +1,4 @@
+// src/components/live-control/LiveControlSwitches.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -127,10 +128,13 @@ export function LiveControlSwitches() {
       setSaving("kill");
       setErr(null);
 
-      const res = await fetchJSON<KillPostResponse>("/api/trading-state/kill-switch", {
-        method: "POST",
-        body: JSON.stringify({ isKillSwitched: next }),
-      });
+      const res = await fetchJSON<KillPostResponse>(
+        "/api/trading-state/kill-switch",
+        {
+          method: "POST",
+          body: JSON.stringify({ isKillSwitched: next }),
+        }
+      );
 
       setState((s) => ({
         ...s,
@@ -143,6 +147,8 @@ export function LiveControlSwitches() {
       setSaving(null);
     }
   };
+
+  const disabled = loading || saving !== null;
 
   return (
     <section className="aura-card">
@@ -161,7 +167,7 @@ export function LiveControlSwitches() {
             Kill switched at {new Date(state.killSwitchedAt).toLocaleString()}
           </div>
         ) : (
-          <div className="aura-muted aura-text-xs"></div>
+          <div className="aura-muted aura-text-xs" />
         )}
       </div>
 
@@ -173,19 +179,12 @@ export function LiveControlSwitches() {
       ) : null}
 
       {/* Pills row */}
-      <div className="aura-mt-12" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+      <div className="aura-mt-12 aura-grid-2">
         {/* Pause pill */}
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 999,
-            padding: 12,
-            background: "var(--card)",
-          }}
-        >
+        <div className="aura-pill-card">
           <div className="aura-row-between">
             <div>
-              <div style={{ fontWeight: 600 }}>
+              <div className="aura-font-semibold">
                 {state.isPaused ? "Strategy is PAUSED" : "Strategy is RUNNING"}
               </div>
               <div className="aura-muted aura-text-xs aura-mt-10">
@@ -196,27 +195,23 @@ export function LiveControlSwitches() {
             <button
               type="button"
               onClick={togglePause}
-              disabled={loading || saving !== null}
-              className="aura-btn"
-              style={{ opacity: loading || saving !== null ? 0.6 : 1, borderRadius: 999 }}
+              disabled={disabled}
+              className={`aura-btn aura-btn-pill ${disabled ? "aura-disabled-btn" : ""}`}
             >
-              {saving === "pause" ? "Saving…" : state.isPaused ? "Unpause" : "Pause"}
+              {saving === "pause"
+                ? "Saving…"
+                : state.isPaused
+                ? "Unpause"
+                : "Pause"}
             </button>
           </div>
         </div>
 
         {/* Kill pill */}
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 999,
-            padding: 12,
-            background: "var(--card)",
-          }}
-        >
+        <div className="aura-pill-card">
           <div className="aura-row-between">
             <div>
-              <div style={{ fontWeight: 600 }}>{killLabel}</div>
+              <div className="aura-font-semibold">{killLabel}</div>
               <div className="aura-muted aura-text-xs aura-mt-10">
                 Emergency stop for trading actions.
               </div>
@@ -225,11 +220,14 @@ export function LiveControlSwitches() {
             <button
               type="button"
               onClick={toggleKill}
-              disabled={loading || saving !== null}
-              className="aura-btn"
-              style={{ opacity: loading || saving !== null ? 0.6 : 1, borderRadius: 999 }}
+              disabled={disabled}
+              className={`aura-btn aura-btn-pill ${disabled ? "aura-disabled-btn" : ""}`}
             >
-              {saving === "kill" ? "Saving…" : state.isKillSwitched ? "Turn OFF" : "Turn ON"}
+              {saving === "kill"
+                ? "Saving…"
+                : state.isKillSwitched
+                ? "Turn OFF"
+                : "Turn ON"}
             </button>
           </div>
         </div>

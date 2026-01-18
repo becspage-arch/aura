@@ -39,7 +39,6 @@
   --muted-foreground: var(--aura-text-2);
 
   --border: #2b3441;
-  --input: #2b3441;
 
   --primary: var(--aura-gold-1);
   --primary-foreground: var(--aura-obsidian);
@@ -53,7 +52,21 @@
   --destructive: var(--aura-error);
   --destructive-foreground: #ffffff;
 
-  --ring: rgba(214, 194, 143, 0.55);
+  /* Inputs (Aura-specific tokens to avoid collisions) */
+  /*--aura-input-bg: rgba(255, 255, 255, 0.08);*/
+  --aura-input-bg: #00ff00;
+  --aura-input-foreground: var(--foreground);
+  --aura-input-placeholder: rgba(230, 233, 239, 0.45);
+  --aura-input-border: rgba(255, 255, 255, 0.12);
+  --aura-ring: rgba(214, 194, 143, 0.45);
+}
+
+html.dark {
+  --aura-input-bg: rgba(255, 255, 255, 0.08);
+  --aura-input-foreground: var(--foreground);
+  --aura-input-placeholder: rgba(230, 233, 239, 0.45);
+  --aura-input-border: rgba(255, 255, 255, 0.14);
+  --aura-ring: rgba(214, 194, 143, 0.45);
 }
 
 /* ---------- LIGHT MODE ---------- */
@@ -73,8 +86,7 @@ html.light {
   --muted-foreground: #5c6672;
 
   --border: #e2e6ec;
-  --input: #e2e6ec;
-
+  
   --primary: var(--aura-gold-1);
   --primary-foreground: #0e1116;
 
@@ -88,6 +100,13 @@ html.light {
   --destructive-foreground: #ffffff;
 
   --ring: rgba(214, 194, 143, 0.45);
+  
+  /* Inputs (Aura-specific tokens to avoid collisions) */
+  --aura-input-bg: rgba(0, 0, 0, 0.06);
+  --aura-input-foreground: var(--foreground);
+  --aura-input-placeholder: rgba(14, 17, 22, 0.45);
+  --aura-input-border: rgba(0, 0, 0, 0.14);
+  --aura-ring: rgba(168, 140, 72, 0.35);
 }
 
 /* ---------- BASE STYLES ---------- */
@@ -167,6 +186,40 @@ body {
 
 .aura-card-title {
   font-weight: 700;
+}
+
+/* --------------------------------------------------
+   Aura form controls
+-------------------------------------------------- */
+
+.aura-input {
+  width: 100%;
+  background: var(--aura-input-bg);
+  color: var(--aura-input-foreground);
+  border: 1px solid var(--aura-input-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+.aura-input::placeholder {
+  color: var(--aura-input-placeholder);
+}
+
+.aura-input:focus {
+  border-color: rgba(214, 194, 143, 0.65);
+  box-shadow:
+    0 0 0 3px var(--aura-ring),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.aura-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .aura-muted {
@@ -732,4 +785,58 @@ html.light .aura-row-link:hover {
 
 .gate-secondary:hover {
   background: rgba(255, 255, 255, 0.06);
+}
+
+/* 2-col grid used by Live Controls pills row */
+.aura-grid-2 {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 640px) {
+  .aura-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Pill-style card (used in LiveControlSwitches) */
+.aura-pill-card {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 12px;
+  background: var(--card);
+}
+
+/* Button helpers */
+.aura-btn-pill {
+  border-radius: 999px;
+}
+
+.aura-disabled-btn {
+  opacity: 0.6;
+}
+
+/* Error block (used in RiskSettingsCard) */
+.aura-error-block {
+  color: var(--destructive);
+}
+
+/* 2-column form grid (used in RiskSettingsCard) */
+.aura-form-2col {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .aura-form-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Mono helper for inline code-like text */
+.aura-mono {
+  font-family: var(--font-geist-mono);
 }
