@@ -5,6 +5,7 @@ import {
   contractsForRisk,
   priceToTicks,
   tpTicks,
+  resolveCorePlus315ConfigFromUser,
   type CorePlus315Config,
 } from "./coreplus315Config.js";
 
@@ -118,6 +119,25 @@ export class CorePlus315Engine {
 
   getConfig(): CorePlus315Config {
     return this.cfg;
+  }
+
+  getDebugState() {
+    return {
+      hasActiveFvg: Boolean(this.activeFvg),
+      fvg: this.activeFvg
+        ? {
+            side: this.activeFvg.side,
+            time: this.activeFvg.time,
+            top: this.activeFvg.top,
+            bottom: this.activeFvg.bottom,
+            invalid: this.activeFvg.invalid,
+            retested: this.activeFvg.retested,
+            traded: this.activeFvg.traded,
+          }
+        : null,
+      last15sCount: this.last15s.length,
+      last3mCount: this.last3m.length,
+    };
   }
 
   /**

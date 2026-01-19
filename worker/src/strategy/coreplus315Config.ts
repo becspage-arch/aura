@@ -21,6 +21,34 @@ export const COREPLUS315_DEFAULTS: Omit<CorePlus315Config, "tickSize" | "tickVal
   entryType: "market",
 };
 
+// Resolve COREPLUS315 config using user strategy settings.
+// For now, we ONLY override riskUsd.
+// All other values remain hardcoded defaults until we migrate them.
+export function resolveCorePlus315ConfigFromUser(args: {
+  tickSize: number;
+  tickValue: number;
+  userSettings?: {
+    riskUsd?: number | null;
+  } | null;
+}) {
+  const { tickSize, tickValue, userSettings } = args;
+
+  const riskUsdRaw = userSettings?.riskUsd;
+  const riskUsd =
+    typeof riskUsdRaw === "number" &&
+    Number.isFinite(riskUsdRaw) &&
+    riskUsdRaw > 0
+      ? riskUsdRaw
+      : COREPLUS315_DEFAULTS.riskUsd;
+
+  return {
+    ...COREPLUS315_DEFAULTS,
+    riskUsd, // overridden from user settings if valid
+    tickSize,
+    tickValue,
+  };
+}
+
 export function buildCorePlus315Config(params: {
   tickSize: number;
   tickValue: number;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type {
   EntryType,
@@ -19,6 +19,22 @@ type Props = {
   setErr: (next: string | null) => void;
 };
 
+type RiskFormState = {
+  riskUsd: string;
+  rr: string;
+  maxStopTicks: string;
+  entryType: EntryType;
+};
+
+function formFromCurrent(current: StrategySettings): RiskFormState {
+  return {
+    riskUsd: String(current.riskUsd),
+    rr: String(current.rr),
+    maxStopTicks: String(current.maxStopTicks),
+    entryType: (current.entryType ?? "market") as EntryType,
+  };
+}
+
 export function RiskConfigurationCard({
   current,
   saving,
@@ -27,20 +43,13 @@ export function RiskConfigurationCard({
   setSaving,
   setErr,
 }: Props) {
-  const [riskForm, setRiskForm] = useState<{
-    riskUsd: string;
-    rr: string;
-    maxStopTicks: string;
-    entryType: EntryType;
-  }>(() => ({
-    riskUsd: current ? String(current.riskUsd) : "",
-    rr: current ? String(current.rr) : "",
-    maxStopTicks: current ? String(current.maxStopTicks) : "",
-    entryType: (current?.entryType ?? "market") as EntryType,
+  const [riskForm, setRiskForm] = useState<RiskFormState>(() => ({
+    riskUsd: "",
+    rr: "",
+    maxStopTicks: "",
+    entryType: "market",
   }));
 
-  // When current loads later, this local state won’t auto-update.
-  // So we compute reset values from current and offer a reset button.
   const dirtyRisk = useMemo(() => {
     if (!current) return false;
     return (
@@ -51,15 +60,27 @@ export function RiskConfigurationCard({
     );
   }, [current, riskForm]);
 
+  // Hydrate the form when `current` arrives/changes.
+  // - If the user has already edited (dirty), don't clobber.
+  // - If the form is still blank (common after refresh), always hydrate.
+  useEffect(() => {
+    if (!current) return;
+
+    const isBlank =
+      riskForm.riskUsd === "" &&
+      riskForm.rr === "" &&
+      riskForm.maxStopTicks === "";
+
+    if (isBlank || !dirtyRisk) {
+      setRiskForm(formFromCurrent(current));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+
   const resetRisk = () => {
     if (!current) return;
     setErr(null);
-    setRiskForm({
-      riskUsd: String(current.riskUsd),
-      rr: String(current.rr),
-      maxStopTicks: String(current.maxStopTicks),
-      entryType: (current.entryType ?? "market") as EntryType,
-    });
+    setRiskForm(formFromCurrent(current));
   };
 
   const applyRisk = async () => {
@@ -73,7 +94,7 @@ export function RiskConfigurationCard({
     }
 
     const ok = window.confirm(
-      `Apply these strategy risk settings?\n\nRiskUsd: ${riskUsd}\nRR: ${rr}\nMaxStopTicks: ${maxStopTicks}\nEntryType: ${riskForm.entryType}`
+      `Apply these strategy risk settings?\n\nMax Risk (USD): ${riskUsd}\nRR: ${rr}\nMaxStopTicks: ${maxStopTicks}\nEntryType: ${riskForm.entryType}`
     );
     if (!ok) return;
 
@@ -95,13 +116,7 @@ export function RiskConfigurationCard({
       );
 
       setCurrent(res.strategySettings);
-
-      setRiskForm({
-        riskUsd: String(res.strategySettings.riskUsd),
-        rr: String(res.strategySettings.rr),
-        maxStopTicks: String(res.strategySettings.maxStopTicks),
-        entryType: (res.strategySettings.entryType ?? "market") as EntryType,
-      });
+      setRiskForm(formFromCurrent(res.strategySettings));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -115,7 +130,9 @@ export function RiskConfigurationCard({
         <div className="aura-card-title">Risk Configuration</div>
         <div className="aura-muted aura-text-xs">
           {current
-            ? `Current: $${current.riskUsd} • RR ${current.rr} • Max stop ${current.maxStopTicks} • ${current.entryType ?? "market"}`
+            ? `Current: $${current.riskUsd} • RR ${current.rr} • Max stop ${current.maxStopTicks} • ${
+                current.entryType ?? "market"
+              }`
             : "—"}
         </div>
       </div>
@@ -123,7 +140,7 @@ export function RiskConfigurationCard({
       <div className="aura-mt-12 aura-grid-gap-12">
         <div className="aura-form-2col">
           <div>
-            <div className="aura-muted aura-text-xs">Risk (USD)</div>
+            <div className="aura-muted aura-text-xs">Max Risk (USD)</div>
             <input
               className="aura-input aura-mt-10"
               inputMode="decimal"
@@ -142,9 +159,7 @@ export function RiskConfigurationCard({
               className="aura-input aura-mt-10"
               inputMode="decimal"
               value={riskForm.rr}
-              onChange={(e) =>
-                setRiskForm((s) => ({ ...s, rr: e.target.value }))
-              }
+              onChange={(e) => setRiskForm((s) => ({ ...s, rr: e.target.value }))}
               placeholder="e.g. 2"
               disabled={disabled}
             />
@@ -201,9 +216,7 @@ export function RiskConfigurationCard({
 
           <button
             type="button"
-            className={`aura-btn ${
-              disabled || !dirtyRisk ? "aura-disabled-btn" : ""
-            }`}
+            className={`aura-btn ${disabled || !dirtyRisk ? "aura-disabled-btn" : ""}`}
             onClick={applyRisk}
             disabled={disabled || !dirtyRisk}
           >
@@ -213,8 +226,8 @@ export function RiskConfigurationCard({
 
         <p className="aura-muted aura-text-xs">
           Tip: this writes to{" "}
-          <span className="aura-mono">strategySettings</span>. The worker will be
-          wired to consume these next.
+          <span className="aura-mono">strategySettings</span>. The worker will
+          consume these at boot (and later via hot updates).
         </p>
       </div>
     </section>

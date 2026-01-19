@@ -1,4 +1,4 @@
-import { env } from "../env.js";
+import { env, DRY_RUN } from "../env.js";
 import { PrismaClient } from "@prisma/client";
 import { createBroker } from "./createBroker.js";
 import { ProjectXMarketHub } from "./projectxMarketHub.js";
@@ -10,6 +10,7 @@ import {
   type Candle15s as StratCandle15s,
 } from "../strategy/coreplus315Engine.js";
 import { buildBracketFromIntent } from "../trading/buildBracket.js";
+import { createAblyRealtime } from "../ably.js";
 
 // --- quote persist throttle (per instrument) ---
 const lastPersistAtByInstrument = new Map<string, number>();
@@ -34,6 +35,32 @@ export type BrokerEvent = {
 };
 
 type EmitFn = (event: BrokerEvent) => Promise<void> | void;
+
+type ManualBracketPayload = {
+  token: string;
+  clerkUserId: string;
+
+  contractId: string;
+  side: "buy" | "sell";
+  size: number;
+
+  stopLossTicks: number;
+  takeProfitTicks: number;
+};
+
+function isManualBracketPayload(x: any): x is ManualBracketPayload {
+  return (
+    x &&
+    typeof x === "object" &&
+    typeof x.token === "string" &&
+    typeof x.clerkUserId === "string" &&
+    typeof x.contractId === "string" &&
+    (x.side === "buy" || x.side === "sell") &&
+    Number.isFinite(Number(x.size)) &&
+    Number.isFinite(Number(x.stopLossTicks)) &&
+    Number.isFinite(Number(x.takeProfitTicks))
+  );
+}
 
 let prisma: PrismaClient | null = null;
 let prismaPool: Pool | null = null;
@@ -113,6 +140,8 @@ function normalizeRiskSettings(input: unknown): RiskSettings {
 
 async function getRiskSettings(): Promise<RiskSettings> {
   const clerkUserId = process.env.AURA_CLERK_USER_ID;
+  console.log(`[${env.WORKER_NAME}] getUserTradingState for`, clerkUserId);
+
   if (!clerkUserId) return RISK_DEFAULTS;
 
   const now = Date.now();
@@ -153,7 +182,10 @@ setInterval(() => {
         s.isPaused !== lastLoggedUserState.isPaused ||
         s.isKillSwitched !== lastLoggedUserState.isKillSwitched
       ) {
-        console.log(`[${env.WORKER_NAME}] user trading state`, s);
+        console.log(`[${env.WORKER_NAME}] user trading state`, {
+          clerkUserId: process.env.AURA_CLERK_USER_ID ?? null,
+          ...s,
+        });
         lastLoggedUserState = s;
       }
     } catch (e) {
@@ -301,6 +333,33 @@ async function replayRecentCandlesOnce(params: {
   });
 }
 
+async function getStrategySettingsForWorker() {
+  const clerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
+  if (!clerkUserId) {
+    throw new Error("Missing AURA_CLERK_USER_ID for worker config lookup");
+  }
+
+  const db = getPrisma();
+
+  const user = await db.userProfile.findUnique({
+    where: { clerkUserId },
+    include: { userState: true },
+  });
+
+  const ss = (user?.userState as any)?.strategySettings;
+
+  if (!ss) {
+    throw new Error("No strategySettings found on userState for this user");
+  }
+
+  return ss as {
+    riskUsd: number;
+    rr: number;
+    maxStopTicks: number;
+    entryType: "market" | "limit";
+  };
+}
+
 export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
   const broker = createBroker();
 
@@ -365,6 +424,112 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       data: status ?? undefined,
     });
 
+    // ------------------------------------------------------------------
+    // MANUAL EXECUTION LISTENER (DEV ONLY)
+    // ------------------------------------------------------------------
+    // Allows a one-off manual bracket to be submitted via Ably to prove
+    // that Aura can place real orders on the demo account.
+    //
+    // Guarded by:
+    //   MANUAL_EXEC=1
+    //   MANUAL_EXEC_TOKEN
+    //   AURA_CLERK_USER_ID
+    // ------------------------------------------------------------------
+
+    if (process.env.MANUAL_EXEC === "1") {
+      const manualToken = (process.env.MANUAL_EXEC_TOKEN || "").trim();
+      const expectedUser = (process.env.AURA_CLERK_USER_ID || "").trim();
+
+      if (!manualToken || !expectedUser) {
+        console.warn(
+          `[${env.WORKER_NAME}] MANUAL_EXEC enabled but token or user missing`,
+          {
+            hasToken: Boolean(manualToken),
+            hasUser: Boolean(expectedUser),
+          }
+        );
+      } else {
+        try {
+          const ably = createAblyRealtime();
+
+          await new Promise<void>((resolve, reject) => {
+            ably.connection.on("connected", () => resolve());
+            ably.connection.on("failed", () =>
+              reject(new Error("Ably connection failed (manual exec)"))
+            );
+          });
+
+          const execChannel = ably.channels.get("aura:exec");
+
+          execChannel.subscribe("exec.manual_bracket", async (msg) => {
+            try {
+              const p = msg.data as any;
+
+              if (
+                !p ||
+                typeof p !== "object" ||
+                p.token !== manualToken ||
+                p.clerkUserId !== expectedUser
+              ) {
+                console.warn("[manual-exec] rejected payload", p);
+                return;
+              }
+
+              const placeFn = (broker as any).placeOrderWithBrackets;
+              if (typeof placeFn !== "function") {
+                console.warn("[manual-exec] broker has no placeOrderWithBrackets");
+                return;
+              }
+
+              console.log("[manual-exec] REQUEST RECEIVED", {
+                contractId: p.contractId,
+                side: p.side,
+                size: p.size,
+                stopLossTicks: p.stopLossTicks,
+                takeProfitTicks: p.takeProfitTicks,
+                dryRun: DRY_RUN,
+              });
+
+              if (DRY_RUN) {
+                console.log("[manual-exec] DRY_RUN=true — order not submitted");
+                return;
+              }
+
+              const res = await placeFn.call(broker, {
+                contractId: String(p.contractId),
+                side: p.side === "sell" ? "sell" : "buy",
+                size: Number(p.size),
+                type: "market",
+                stopLossTicks: Number(p.stopLossTicks),
+                takeProfitTicks: Number(p.takeProfitTicks),
+                customTag: `aura-manual-${Date.now()}`,
+              });
+
+              console.log("[manual-exec] MANUAL_ORDER_SUBMITTED", {
+                orderId: res?.orderId ?? null,
+                contractId: p.contractId,
+                side: p.side,
+                size: p.size,
+                stopLossTicks: p.stopLossTicks,
+                takeProfitTicks: p.takeProfitTicks,
+              });
+            } catch (e) {
+              console.error("[manual-exec] FAILED", e);
+            }
+          });
+
+          console.log(
+            `[${env.WORKER_NAME}] manual execution listening (exec.manual_bracket)`
+          );
+        } catch (e) {
+          console.warn(
+            `[${env.WORKER_NAME}] manual exec listener failed to start`,
+            e
+          );
+        }
+      }
+    }
+
     // --- Strategy engine bootstrap (config single-source-of-truth) ---
     const tickSize = numOrNull(status?.tickSize);
     const tickValue = numOrNull(status?.tickValue);
@@ -374,16 +539,21 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
     if (tickSize && tickValue) {
       strategy = new CorePlus315Engine({ tickSize, tickValue });
 
-      const rs = await getRiskSettings();
+      const ss = await getStrategySettingsForWorker();
 
       strategy.setConfig({
-        riskUsd: rs.riskUsd,
-        rr: rs.rr,
-        maxStopTicks: rs.maxStopTicks,
-        entryType: rs.entryType,
+        riskUsd: ss.riskUsd,
+        rr: ss.rr,
+        maxStopTicks: ss.maxStopTicks,
+        entryType: ss.entryType,
       });
 
-      console.log(`[${env.WORKER_NAME}] riskSettings loaded`, rs);
+      console.log(`[${env.WORKER_NAME}] strategySettings loaded (risk)`, {
+        riskUsd: ss.riskUsd,
+        rr: ss.rr,
+        maxStopTicks: ss.maxStopTicks,
+        entryType: ss.entryType,
+      });
 
       console.log(`[${env.WORKER_NAME}] strategy ready`, {
         name: "coreplus315",
@@ -396,24 +566,29 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       setInterval(() => {
         void (async () => {
           try {
-            const rs2 = await getRiskSettings();
+            const ss2 = await getStrategySettingsForWorker();
             const current = strategy!.getConfig();
 
             const changed =
-              current.riskUsd !== rs2.riskUsd ||
-              current.rr !== rs2.rr ||
-              current.maxStopTicks !== rs2.maxStopTicks ||
-              current.entryType !== rs2.entryType;
+              current.riskUsd !== ss2.riskUsd ||
+              current.rr !== ss2.rr ||
+              current.maxStopTicks !== ss2.maxStopTicks ||
+              current.entryType !== ss2.entryType;
 
             if (changed) {
               strategy!.setConfig({
-                riskUsd: rs2.riskUsd,
-                rr: rs2.rr,
-                maxStopTicks: rs2.maxStopTicks,
-                entryType: rs2.entryType,
+                riskUsd: ss2.riskUsd,
+                rr: ss2.rr,
+                maxStopTicks: ss2.maxStopTicks,
+                entryType: ss2.entryType,
               });
 
-              console.log(`[${env.WORKER_NAME}] riskSettings applied`, rs2);
+              console.log(`[${env.WORKER_NAME}] strategySettings applied (risk)`, {
+                riskUsd: ss2.riskUsd,
+                rr: ss2.rr,
+                maxStopTicks: ss2.maxStopTicks,
+                entryType: ss2.entryType,
+              });
 
               try {
                 const db = getPrisma();
@@ -421,8 +596,13 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                   data: {
                     type: "config.applied",
                     level: "info",
-                    message: "Worker applied updated risk settings",
-                    data: rs2,
+                    message: "Worker applied updated strategySettings risk config",
+                    data: {
+                      riskUsd: ss2.riskUsd,
+                      rr: ss2.rr,
+                      maxStopTicks: ss2.maxStopTicks,
+                      entryType: ss2.entryType,
+                    },
                   },
                 });
               } catch {
@@ -430,27 +610,33 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
               }
             }
           } catch (e) {
-            console.warn(
-              `[${env.WORKER_NAME}] riskSettings hot-reload failed`,
-              e
-            );
+            console.warn(`[${env.WORKER_NAME}] strategySettings hot-reload failed`, e);
           }
         })();
       }, 5_000);
 
-      // Weekend-proof: replay seeded candles once so we can see intents immediately
-      const symbol = (process.env.PROJECTX_SYMBOL || "").trim();
-      if (symbol) {
-        await replayRecentCandlesOnce({
-          symbol,
-          limit: 600,
-          engine: strategy,
-        });
+      // Replay is ONLY for weekends / debugging.
+      // It must NOT run during live trading, otherwise it can mark the active FVG as "traded"
+      // and block real entries.
+      const enableReplay = process.env.STRATEGY_REPLAY === "1";
+
+      if (enableReplay) {
+        const symbol = (process.env.PROJECTX_SYMBOL || "").trim();
+        if (symbol) {
+          await replayRecentCandlesOnce({
+            symbol,
+            limit: 600,
+            engine: strategy,
+          });
+        } else {
+          console.warn(
+            `[${env.WORKER_NAME}] strategy replay skipped (PROJECTX_SYMBOL missing)`
+          );
+        }
       } else {
-        console.warn(
-          `[${env.WORKER_NAME}] strategy replay skipped (PROJECTX_SYMBOL missing)`
-        );
+        console.log(`[${env.WORKER_NAME}] strategy replay disabled (STRATEGY_REPLAY!=1)`);
       }
+
     } else {
       console.warn(
         `[${env.WORKER_NAME}] strategy NOT started (missing tickSize/tickValue)`,
@@ -548,6 +734,14 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
             if (strategyEnabled && strategy) {
               const { isPaused, isKillSwitched } = await getUserTradingState();
 
+              console.log(`[${env.WORKER_NAME}] state on rollover`, {
+                isPaused,
+                isKillSwitched,
+                source: params.source,
+                time,
+                symbol,
+              });
+
               if (isKillSwitched) {
                 console.warn(`[${env.WORKER_NAME}] KILL SWITCH ACTIVE - trading blocked`);
                 return;
@@ -558,6 +752,31 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                 return;
               }
 
+              console.log(
+                `[${env.WORKER_NAME}] Strategy tick (live)`,
+                {
+                  source: params.source,
+                  symbol,
+                  time,
+                  o: closed.data.o,
+                  h: closed.data.h,
+                  l: closed.data.l,
+                  c: closed.data.c,
+                  ticks,
+                }
+              );
+
+              console.log(`[${env.WORKER_NAME}] Strategy evaluating candle (live)`, {
+                source: params.source,
+                symbol,
+                time,
+                ticks,
+                o: closed.data.o,
+                h: closed.data.h,
+                l: closed.data.l,
+                c: closed.data.c,
+              });
+
               const intent = strategy.ingestClosed15s({
                 symbol,
                 time,
@@ -566,6 +785,16 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                 low: closed.data.l,
                 close: closed.data.c,
               });
+
+              if (!intent) {
+                console.log(`[${env.WORKER_NAME}] No trade this candle (live)`, {
+                  source: params.source,
+                  symbol,
+                  time,
+                  ticks,
+                  engine: strategy.getDebugState(),
+                });
+              }
 
               if (intent) {
                 console.log(`[${env.WORKER_NAME}] TRADE_INTENT (live)`, intent);
@@ -586,7 +815,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
 
                 // ✅ EXECUTION (only when DRY_RUN=false and only on real rollover candles)
                 try {
-                  if (!env.DRY_RUN && params.source === "rollover") {
+                  if (!DRY_RUN && params.source === "rollover") {
                     const placeFn = (broker as any).placeOrderWithBrackets;
 
                     if (typeof placeFn !== "function") {

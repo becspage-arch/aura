@@ -1,6 +1,17 @@
 import "dotenv/config";
 import { z } from "zod";
 
+/**
+ * Helper: parse env booleans safely.
+ * Accepts: true/false, 1/0, yes/no, y/n
+ */
+function envBool(value: unknown, fallback = false): boolean {
+  if (typeof value !== "string") return fallback;
+  const v = value.trim().toLowerCase();
+  if (!v) return fallback;
+  return v === "true" || v === "1" || v === "yes" || v === "y";
+}
+
 const EnvSchema = z.object({
   WORKER_ENV: z.string().default("local"),
   WORKER_NAME: z.string().default("cqg-worker"),
@@ -12,10 +23,12 @@ const EnvSchema = z.object({
   ABLY_API_KEY: z.string().min(1),
 
   SYMBOL_DEFAULT: z.string().default("MGC"),
+
+  // IMPORTANT: keep these as STRINGS in schema
   DRY_RUN: z.string().default("true"),
+  CQG_ENABLED: z.string().default("false"),
 
   // CQG WebAPI
-  CQG_ENABLED: z.string().default("false"),
   CQG_WS_URL: z.string().default("wss://demoapi.cqg.com:443"),
   CQG_USERNAME: z.string().optional(),
   CQG_PASSWORD: z.string().optional(),
@@ -51,9 +64,15 @@ console.log(
   dbFingerprint(process.env.DATABASE_URL)
 );
 
-export const DRY_RUN = env.DRY_RUN.toLowerCase() === "true";
+// ✅ REAL booleans from here on
+export const DRY_RUN = envBool(env.DRY_RUN, true);
+export const CQG_ENABLED = envBool(env.CQG_ENABLED, false);
 
-export const CQG_ENABLED = env.CQG_ENABLED.toLowerCase() === "true";
+// Optional but VERY helpful debug line
+console.log("[env] flags", {
+  DRY_RUN,
+  CQG_ENABLED,
+});
 
 export const CQG = {
   wsUrl: env.CQG_WS_URL,

@@ -421,21 +421,32 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       customTag: input.customTag ?? null,
     };
 
-    // Brackets are configured in ticks; type uses the same OrderType enum.
-    // Sensible defaults:
-    // - Stop loss = Stop (4)
-    // - Take profit = Limit (1)
-    if (Number.isFinite(stopLossTicks as number) && (stopLossTicks as number) > 0) {
+    // Brackets are configured in *signed* ticks for ProjectX.
+    // Convention:
+    // - Long (buy): SL must be negative, TP must be positive
+    // - Short (sell): SL must be positive, TP must be negative
+    //
+    // We accept user/strategy inputs as positive "distance" ticks
+    // and convert here so the rest of Aura can stay intuitive.
+    const isLong = side === 0; // 0=buy, 1=sell
+
+    const slAbs =
+      stopLossTicks != null && Number.isFinite(stopLossTicks) ? Math.floor(Math.abs(stopLossTicks)) : null;
+
+    const tpAbs =
+      takeProfitTicks != null && Number.isFinite(takeProfitTicks) ? Math.floor(Math.abs(takeProfitTicks)) : null;
+
+    if (slAbs != null && slAbs > 0) {
       body.stopLossBracket = {
-        ticks: Math.floor(stopLossTicks as number),
-        type: 4,
+        ticks: isLong ? -slAbs : slAbs,
+        type: 4, // Stop
       };
     }
 
-    if (Number.isFinite(takeProfitTicks as number) && (takeProfitTicks as number) > 0) {
+    if (tpAbs != null && tpAbs > 0) {
       body.takeProfitBracket = {
-        ticks: Math.floor(takeProfitTicks as number),
-        type: 1,
+        ticks: isLong ? tpAbs : -tpAbs,
+        type: 1, // Limit
       };
     }
 
@@ -447,6 +458,8 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       size: body.size,
       hasSL: Boolean(body.stopLossBracket),
       hasTP: Boolean(body.takeProfitBracket),
+      slTicks: body.stopLossBracket?.ticks ?? null,
+      tpTicks: body.takeProfitBracket?.ticks ?? null,
       customTag: body.customTag ?? null,
     });
 
