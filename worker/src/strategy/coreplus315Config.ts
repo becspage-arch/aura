@@ -7,7 +7,7 @@ export type CorePlus315Config = {
   maxStopTicks: number;       // e.g. 45 (hard cap)
 
   // Execution (hard-coded for v1, but becomes per-user later)
-  entryType: "market";        // v1: market at confirmation candle close
+  entryType: "market" | "limit"; // v1 still uses market; limit wiring comes later
 
   // Instrument info (comes from broker / contract spec)
   tickSize: number;           // e.g. 0.1 for MGC

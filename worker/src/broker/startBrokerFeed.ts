@@ -341,15 +341,26 @@ async function getStrategySettingsForWorker() {
 
   const db = getPrisma();
 
+  // 1) Map Clerk user -> internal userProfile id
   const user = await db.userProfile.findUnique({
     where: { clerkUserId },
-    include: { userState: true },
+    select: { id: true },
   });
 
-  const ss = (user?.userState as any)?.strategySettings;
+  if (!user) {
+    throw new Error(`No userProfile found for clerkUserId=${clerkUserId}`);
+  }
+
+  // 2) Read strategySettings from UserTradingState (this matches your API route)
+  const state = await db.userTradingState.findUnique({
+    where: { userId: user.id },
+    select: { strategySettings: true },
+  });
+
+  const ss = state?.strategySettings as any;
 
   if (!ss) {
-    throw new Error("No strategySettings found on userState for this user");
+    throw new Error("No strategySettings found on userTradingState for this user");
   }
 
   return ss as {
@@ -549,6 +560,13 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       });
 
       console.log(`[${env.WORKER_NAME}] strategySettings loaded (risk)`, {
+        riskUsd: ss.riskUsd,
+        rr: ss.rr,
+        maxStopTicks: ss.maxStopTicks,
+        entryType: ss.entryType,
+      });
+
+      strategy.setConfig({
         riskUsd: ss.riskUsd,
         rr: ss.rr,
         maxStopTicks: ss.maxStopTicks,

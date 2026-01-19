@@ -99,10 +99,15 @@ export class CorePlus315Engine {
   // active FVG (we follow “latest box” semantics like your indicator)
   private activeFvg: FvgBox | null = null;
 
-  constructor(params: { tickSize: number; tickValue: number }) {
-    this.cfg = buildCorePlus315Config({
+  constructor(params: {
+    tickSize: number;
+    tickValue: number;
+    userSettings?: { riskUsd?: number | null } | null;
+  }) {
+    this.cfg = resolveCorePlus315ConfigFromUser({
       tickSize: params.tickSize,
       tickValue: params.tickValue,
+      userSettings: params.userSettings ?? null,
     });
   }
 
