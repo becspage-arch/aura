@@ -1,9 +1,6 @@
 import { env, DRY_RUN, CQG_ENABLED } from "./env.js";
 import { db, checkDb } from "./db.js";
 import { createAblyRealtime } from "./ably.js";
-import { getSafetyStateForUser } from "./safety.js";
-import { hasSeen, markSeen } from "./idempotency.js";
-import { logEvent } from "./audit.js";
 import { acquireLock, refreshLock, releaseLock } from "./locks.js";
 import { randomUUID } from "crypto";
 import { startBrokerFeed } from "./broker/startBrokerFeed.js";
@@ -29,7 +26,6 @@ async function main() {
     process.exit(0);
   }
 
-  // Refresh lock periodically (heartbeat)
   const refreshEveryMs = Math.floor(lockTtlMs / 2);
   const lockInterval = setInterval(() => {
     void refreshLock(lockKey, lockTtlMs, lockOwnerId).catch((e) => {
@@ -37,7 +33,6 @@ async function main() {
     });
   }, refreshEveryMs);
 
-  // Ensure we release lock on exit
   const cleanupLock = async () => {
     clearInterval(lockInterval);
     try {
@@ -50,7 +45,7 @@ async function main() {
   process.once("SIGINT", () => void cleanupLock().finally(() => process.exit(0)));
   process.once("SIGTERM", () => void cleanupLock().finally(() => process.exit(0)));
 
-  // 3) Connect to Ably
+  // 3) Connect to Ably (lifecycle + UI only)
   const ably = createAblyRealtime();
   await new Promise<void>((resolve, reject) => {
     ably.connection.on("connected", () => resolve());
@@ -60,115 +55,48 @@ async function main() {
   });
   console.log(`[${env.WORKER_NAME}] Ably connected`);
 
-  // 4) Start broker feed + emit lifecycle events to Ably
-  const brokerChannel = ably.channels.get("aura:broker");
-  const uiChannel = ably.channels.get("aura:ui"); // UI-facing AuraRealtimeEvent stream
+  // 4) Start broker feed (broker owns execution)
+  const expectedClerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
+  if (!expectedClerkUserId) {
+    throw new Error(
+      `[${env.WORKER_NAME}] Missing AURA_CLERK_USER_ID`
+    );
+  }
+
+  const brokerChannel = ably.channels.get(`aura:broker:${expectedClerkUserId}`);
+  const uiChannel = ably.channels.get(`aura:ui:${expectedClerkUserId}`);
 
   try {
     await startBrokerFeed(async (event) => {
-      // Always publish raw broker events (debug / internal)
       await brokerChannel.publish(event.name, event);
 
-      // Additionally publish UI-friendly AuraRealtimeEvent for candle close
       if (event.name === "candle.15s.closed" && event.data) {
         const d: any = event.data;
 
-        // d is Candle15s from candle15sAggregator:
-        // { contractId, t0(ms), o,h,l,c, ticks }
-        const auraEvt = {
+        await uiChannel.publish("aura", {
           type: "candle_closed",
           ts: event.ts,
           data: {
             symbol: String(d.contractId),
             timeframe: "15s",
-            time: Math.floor(Number(d.t0) / 1000), // epoch seconds (open time)
+            time: Math.floor(Number(d.t0) / 1000),
             open: Number(d.o),
             high: Number(d.h),
             low: Number(d.l),
             close: Number(d.c),
-            // volume optional; we don't have real volume yet
           },
-        };
-
-        await uiChannel.publish("aura", auraEvt);
+        });
       }
 
       console.log(`[${env.WORKER_NAME}] published broker event`, {
         name: event.name,
         broker: event.broker,
-        data: event.data ?? null,
       });
     });
   } catch (e) {
     console.error(`[${env.WORKER_NAME}] broker start failed`, e);
     process.exit(1);
   }
-
-  // 5) Subscribe to execution commands
-  const channel = ably.channels.get("aura:exec");
-
-  channel.subscribe(async (msg) => {
-    console.log(`[${env.WORKER_NAME}] RAW MESSAGE RECEIVED`, {
-      msgId: msg.id,
-      msgName: msg.name,
-      data: msg.data,
-    });
-
-    const payload = msg.data as any;
-
-    // Idempotency key
-    const idemKey = `exec:${msg.id}`;
-    if (await hasSeen(idemKey)) return;
-    await markSeen(idemKey, { seenAt: new Date().toISOString() });
-
-    const clerkUserId = payload?.clerkUserId;
-    if (!clerkUserId) return;
-
-    let safety;
-    try {
-      console.log(`[${env.WORKER_NAME}] calling getSafetyStateForUser`, clerkUserId);
-      safety = await getSafetyStateForUser(clerkUserId);
-      console.log(`[${env.WORKER_NAME}] safety result`, safety);
-    } catch (err) {
-      console.error(`[${env.WORKER_NAME}] getSafetyStateForUser FAILED`, err);
-      return;
-    }
-
-    if (!safety.allow) {
-      await logEvent({
-        level: "WARN",
-        type: "EXEC_BLOCKED",
-        message: `Blocked execution: ${safety.reason}`,
-        data: { payload },
-        userId: null,
-      });
-      return;
-    }
-
-    // NOTE:
-    // We intentionally DO NOT place live orders from index.ts yet.
-    // The broker instance currently lives inside startBrokerFeed(), not here.
-    // For now we log + persist intent; we’ll wire real execution in the module that owns the broker.
-
-    await logEvent({
-      level: "INFO",
-      type: "EXEC_ALLOWED",
-      message: DRY_RUN
-        ? "Dry run: would execute bracket"
-        : "Execution queued (order routing not wired yet)",
-      data: { payload },
-      userId: safety.userId,
-    });
-
-    console.log(`[${env.WORKER_NAME}] EXEC_ALLOWED (no order routing yet)`, {
-      clerkUserId,
-      payload,
-    });
-
-    return;
-  });
-
-  console.log(`[${env.WORKER_NAME}] listening on Ably channel aura:exec`);
 }
 
 main()

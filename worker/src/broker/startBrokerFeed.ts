@@ -11,6 +11,13 @@ import {
 } from "../strategy/coreplus315Engine.js";
 import { buildBracketFromIntent } from "../trading/buildBracket.js";
 import { createAblyRealtime } from "../ably.js";
+import { executeBracket } from "../execution/executeBracket.js";
+
+console.log("[startBrokerFeed.ts] LOADED", {
+  MANUAL_EXEC: process.env.MANUAL_EXEC ?? null,
+  hasManualToken: Boolean((process.env.MANUAL_EXEC_TOKEN || "").trim()),
+  AURA_CLERK_USER_ID: process.env.AURA_CLERK_USER_ID ?? null,
+});
 
 // --- quote persist throttle (per instrument) ---
 const lastPersistAtByInstrument = new Map<string, number>();
@@ -133,7 +140,12 @@ function normalizeRiskSettings(input: unknown): RiskSettings {
   return {
     riskUsd: clampNumber(obj.riskUsd, 1, 5000, RISK_DEFAULTS.riskUsd),
     rr: clampNumber(obj.rr, 0.5, 10, RISK_DEFAULTS.rr),
-    maxStopTicks: clampNumber(obj.maxStopTicks, 1, 500, RISK_DEFAULTS.maxStopTicks),
+    maxStopTicks: clampNumber(
+      obj.maxStopTicks,
+      1,
+      500,
+      RISK_DEFAULTS.maxStopTicks
+    ),
     entryType: "market", // v1 only
   };
 }
@@ -145,7 +157,10 @@ async function getRiskSettings(): Promise<RiskSettings> {
   if (!clerkUserId) return RISK_DEFAULTS;
 
   const now = Date.now();
-  if (cachedRiskSettings && now - lastRiskSettingsCheck < RISK_SETTINGS_REFRESH_MS) {
+  if (
+    cachedRiskSettings &&
+    now - lastRiskSettingsCheck < RISK_SETTINGS_REFRESH_MS
+  ) {
     return cachedRiskSettings;
   }
 
@@ -166,7 +181,8 @@ async function getRiskSettings(): Promise<RiskSettings> {
 
 // --- debug: log pause/kill changes even when markets are closed ---
 // (safe: read-only, no trading impact)
-let lastLoggedUserState: { isPaused: boolean; isKillSwitched: boolean } | null = null;
+let lastLoggedUserState: { isPaused: boolean; isKillSwitched: boolean } | null =
+  null;
 
 setInterval(() => {
   void (async () => {
@@ -333,6 +349,29 @@ async function replayRecentCandlesOnce(params: {
   });
 }
 
+async function getUserIdentityForWorker(): Promise<{
+  clerkUserId: string;
+  userId: string;
+}> {
+  const clerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
+  if (!clerkUserId) {
+    throw new Error("Missing AURA_CLERK_USER_ID for worker user identity");
+  }
+
+  const db = getPrisma();
+
+  const user = await db.userProfile.findUnique({
+    where: { clerkUserId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new Error(`No userProfile found for clerkUserId=${clerkUserId}`);
+  }
+
+  return { clerkUserId, userId: user.id };
+}
+
 async function getStrategySettingsForWorker() {
   const clerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
   if (!clerkUserId) {
@@ -360,7 +399,9 @@ async function getStrategySettingsForWorker() {
   const ss = state?.strategySettings as any;
 
   if (!ss) {
-    throw new Error("No strategySettings found on userTradingState for this user");
+    throw new Error(
+      "No strategySettings found on userTradingState for this user"
+    );
   }
 
   return ss as {
@@ -447,6 +488,12 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
     //   AURA_CLERK_USER_ID
     // ------------------------------------------------------------------
 
+    console.log(`[${env.WORKER_NAME}] MANUAL_EXEC_CHECK`, {
+      MANUAL_EXEC: process.env.MANUAL_EXEC ?? null,
+      manualTokenLen: (process.env.MANUAL_EXEC_TOKEN || "").trim().length,
+      expectedUser: (process.env.AURA_CLERK_USER_ID || "").trim(),
+    });
+
     if (process.env.MANUAL_EXEC === "1") {
       const manualToken = (process.env.MANUAL_EXEC_TOKEN || "").trim();
       const expectedUser = (process.env.AURA_CLERK_USER_ID || "").trim();
@@ -470,9 +517,21 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
             );
           });
 
-          const execChannel = ably.channels.get("aura:exec");
+          const execChannel = ably.channels.get(`aura:exec:${expectedUser}`);
+
+          await execChannel.attach();
+
+          console.log(
+            `[${env.WORKER_NAME}] exec channel attached`,
+            execChannel.name
+          );
 
           execChannel.subscribe("exec.manual_bracket", async (msg) => {
+            console.log(
+              `[${env.WORKER_NAME}] exec.manual_bracket RECEIVED`,
+              msg.data
+            );
+
             try {
               const p = msg.data as any;
 
@@ -486,13 +545,13 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                 return;
               }
 
-              const placeFn = (broker as any).placeOrderWithBrackets;
-              if (typeof placeFn !== "function") {
-                console.warn("[manual-exec] broker has no placeOrderWithBrackets");
-                return;
-              }
+              const ident = await getUserIdentityForWorker();
+
+              const msgId = (msg as any)?.id ? String((msg as any).id) : null;
+              const execKey = `manual:${expectedUser}:${msgId ?? Date.now()}`;
 
               console.log("[manual-exec] REQUEST RECEIVED", {
+                execKey,
                 contractId: p.contractId,
                 side: p.side,
                 size: p.size,
@@ -506,23 +565,27 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                 return;
               }
 
-              const res = await placeFn.call(broker, {
-                contractId: String(p.contractId),
-                side: p.side === "sell" ? "sell" : "buy",
-                size: Number(p.size),
-                type: "market",
-                stopLossTicks: Number(p.stopLossTicks),
-                takeProfitTicks: Number(p.takeProfitTicks),
-                customTag: `aura-manual-${Date.now()}`,
+              const row = await executeBracket({
+                prisma: getPrisma(),
+                broker,
+                input: {
+                  execKey,
+                  userId: ident.userId,
+                  brokerName: broker.name,
+                  contractId: String(p.contractId),
+                  symbol: null,
+                  side: p.side === "sell" ? "sell" : "buy",
+                  qty: Number(p.size),
+                  entryType: "market",
+                  stopLossTicks: Number(p.stopLossTicks),
+                  takeProfitTicks: Number(p.takeProfitTicks),
+                  customTag: `aura-manual-${Date.now()}`,
+                },
               });
 
               console.log("[manual-exec] MANUAL_ORDER_SUBMITTED", {
-                orderId: res?.orderId ?? null,
-                contractId: p.contractId,
-                side: p.side,
-                size: p.size,
-                stopLossTicks: p.stopLossTicks,
-                takeProfitTicks: p.takeProfitTicks,
+                execKey,
+                executionId: row.id,
               });
             } catch (e) {
               console.error("[manual-exec] FAILED", e);
@@ -610,17 +673,21 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
 
               try {
                 const db = getPrisma();
+                const ident = await getUserIdentityForWorker();
+
                 await db.eventLog.create({
                   data: {
                     type: "config.applied",
                     level: "info",
                     message: "Worker applied updated strategySettings risk config",
                     data: {
+                      clerkUserId: ident.clerkUserId,
                       riskUsd: ss2.riskUsd,
                       rr: ss2.rr,
                       maxStopTicks: ss2.maxStopTicks,
                       entryType: ss2.entryType,
                     },
+                    userId: ident.userId,
                   },
                 });
               } catch {
@@ -628,7 +695,10 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
               }
             }
           } catch (e) {
-            console.warn(`[${env.WORKER_NAME}] strategySettings hot-reload failed`, e);
+            console.warn(
+              `[${env.WORKER_NAME}] strategySettings hot-reload failed`,
+              e
+            );
           }
         })();
       }, 5_000);
@@ -652,9 +722,10 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
           );
         }
       } else {
-        console.log(`[${env.WORKER_NAME}] strategy replay disabled (STRATEGY_REPLAY!=1)`);
+        console.log(
+          `[${env.WORKER_NAME}] strategy replay disabled (STRATEGY_REPLAY!=1)`
+        );
       }
-
     } else {
       console.warn(
         `[${env.WORKER_NAME}] strategy NOT started (missing tickSize/tickValue)`,
@@ -675,9 +746,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       const contractId = process.env.PROJECTX_CONTRACT_ID?.trim() || null;
 
       if (!token) {
-        console.warn(
-          "[projectx-market] no token available, market hub not started"
-        );
+        console.warn("[projectx-market] no token available, market hub not started");
         return;
       }
 
@@ -725,8 +794,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
           try {
             const db = getPrisma();
             const symbol =
-              (process.env.PROJECTX_SYMBOL || "").trim() ||
-              closed.data.contractId;
+              (process.env.PROJECTX_SYMBOL || "").trim() || closed.data.contractId;
 
             const time = Math.floor(closed.data.t0 / 1000);
 
@@ -761,39 +829,43 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
               });
 
               if (isKillSwitched) {
-                console.warn(`[${env.WORKER_NAME}] KILL SWITCH ACTIVE - trading blocked`);
+                console.warn(
+                  `[${env.WORKER_NAME}] KILL SWITCH ACTIVE - trading blocked`
+                );
                 return;
               }
 
               if (isPaused) {
-                console.log(`[${env.WORKER_NAME}] Trading paused - skipping strategy`);
+                console.log(
+                  `[${env.WORKER_NAME}] Trading paused - skipping strategy`
+                );
                 return;
               }
 
-              console.log(
-                `[${env.WORKER_NAME}] Strategy tick (live)`,
-                {
-                  source: params.source,
-                  symbol,
-                  time,
-                  o: closed.data.o,
-                  h: closed.data.h,
-                  l: closed.data.l,
-                  c: closed.data.c,
-                  ticks,
-                }
-              );
-
-              console.log(`[${env.WORKER_NAME}] Strategy evaluating candle (live)`, {
+              console.log(`[${env.WORKER_NAME}] Strategy tick (live)`, {
                 source: params.source,
                 symbol,
                 time,
-                ticks,
                 o: closed.data.o,
                 h: closed.data.h,
                 l: closed.data.l,
                 c: closed.data.c,
+                ticks,
               });
+
+              console.log(
+                `[${env.WORKER_NAME}] Strategy evaluating candle (live)`,
+                {
+                  source: params.source,
+                  symbol,
+                  time,
+                  ticks,
+                  o: closed.data.o,
+                  h: closed.data.h,
+                  l: closed.data.l,
+                  c: closed.data.c,
+                }
+              );
 
               const intent = strategy.ingestClosed15s({
                 symbol,
@@ -840,14 +912,11 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                       console.warn("[exec] broker missing placeOrderWithBrackets");
                     } else {
                       const contractIdFromBracket = String(
-                        (bracket as any).contractId ||
-                          (bracket as any).symbol ||
-                          ""
+                        (bracket as any).contractId || (bracket as any).symbol || ""
                       ).trim();
 
                       const side =
-                        String((bracket as any).side || "").toLowerCase() ===
-                        "sell"
+                        String((bracket as any).side || "").toLowerCase() === "sell"
                           ? "sell"
                           : "buy";
 
@@ -887,12 +956,15 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
 
                         // Persist exec audit trail
                         try {
+                          const ident = await getUserIdentityForWorker();
+
                           await db.eventLog.create({
                             data: {
                               type: "exec.submitted",
                               level: "info",
                               message: "Order submitted via ProjectX",
                               data: {
+                                clerkUserId: ident.clerkUserId,
                                 orderId: res?.orderId ?? null,
                                 contractId: contractIdFromBracket,
                                 side,
@@ -901,6 +973,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                                 takeProfitTicks,
                                 bracket,
                               },
+                              userId: ident.userId,
                             },
                           });
                         } catch (e) {
@@ -915,15 +988,19 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                 } catch (e) {
                   console.error("[exec] placeOrderWithBrackets failed", e);
                   try {
+                    const ident = await getUserIdentityForWorker();
+
                     await db.eventLog.create({
                       data: {
                         type: "exec.failed",
                         level: "error",
                         message: "placeOrderWithBrackets failed",
                         data: {
+                          clerkUserId: ident.clerkUserId,
                           error: e instanceof Error ? e.message : String(e),
                           bracket,
                         },
+                        userId: ident.userId,
                       },
                     });
                   } catch {
@@ -933,10 +1010,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
               }
             }
           } catch (e) {
-            console.error(
-              "[projectx-market] failed to persist Candle15s / run strategy",
-              e
-            );
+            console.error("[projectx-market] failed to persist Candle15s / run strategy", e);
           }
 
           // 3c) Emit candle close event
@@ -993,12 +1067,15 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
 
                 const db = getPrisma();
 
+                const ident = await getUserIdentityForWorker();
+
                 await db.eventLog.create({
                   data: {
                     type: "market.quote",
                     level: "info",
                     message: "ProjectX quote",
                     data: {
+                      clerkUserId: ident.clerkUserId,
                       broker: "projectx",
                       contractId: q.contractId,
                       bid: q.bid ?? null,
@@ -1006,6 +1083,7 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
                       last: q.last ?? null,
                       ts: q.ts ?? null,
                     },
+                    userId: ident.userId,
                   },
                 });
               }
@@ -1052,7 +1130,10 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
 
         // --- quote stream watchdog (prove we're truly live, not just a snapshot) ---
         try {
-          const live = await marketHub.waitForLiveQuotes({ minQuotes: 5, withinMs: 10_000 });
+          const live = await marketHub.waitForLiveQuotes({
+            minQuotes: 5,
+            withinMs: 10_000,
+          });
 
           const s = marketHub.getQuoteStats();
 

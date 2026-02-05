@@ -82,9 +82,10 @@ export function AppTopBar() {
     const clerkUserId = user?.id;
     if (!clerkUserId) return;
 
-    const channelName = `user:${clerkUserId}`;
+    const statusChannelName = `user:${clerkUserId}`;
+    const uiChannelName = `aura:ui:${clerkUserId}`;
 
-    return subscribeUserChannel(channelName, (item) => {
+    const unsubscribeStatus = subscribeUserChannel(statusChannelName, (item) => {
       // You publish: publishToUser(clerkUserId, "status_update", {...})
       // So item.name should be "status_update"
       if (item.name !== "status_update") return;
@@ -93,6 +94,16 @@ export function AppTopBar() {
       if (typeof data.isPaused === "boolean") setIsPaused(data.isPaused);
       if (typeof data.isKillSwitched === "boolean") setIsKillSwitched(data.isKillSwitched);
     });
+
+    // Keep this subscription even if AppTopBar doesn't use the events directly yet.
+    // It proves the per-user UI stream wiring is correct and prevents "no subscribers" surprises.
+    const unsubscribeUi = subscribeUserChannel(uiChannelName, () => {});
+
+    return () => {
+      unsubscribeStatus();
+      unsubscribeUi();
+    };
+
   }, [isLoaded, user?.id]);
 
   const statusLabel = isKillSwitched ? "KILL SWITCH" : isPaused ? "PAUSED" : "RUNNING";
