@@ -1,10 +1,10 @@
-// src/app/api/notifications/test-trade-closed/route.ts
+// src/app/api/notifications/test-trade-opened/route.ts
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications/notify";
-import type { TradeClosedEvent } from "@/lib/notifications/events";
+import type { TradeOpenedEvent } from "@/lib/notifications/events";
 
 export async function POST() {
   const { userId } = await auth();
@@ -12,7 +12,6 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  // Ensure the profile exists (optional, but helpful for your DB consistency)
   await prisma.userProfile.upsert({
     where: { clerkUserId: userId },
     create: { clerkUserId: userId },
@@ -21,8 +20,8 @@ export async function POST() {
 
   const now = new Date().toISOString();
 
-  const event: TradeClosedEvent = {
-    type: "trade_closed",
+  const event: TradeOpenedEvent = {
+    type: "trade_opened",
     ts: now,
     userId,
 
@@ -30,10 +29,9 @@ export async function POST() {
     accountId: "test-account-001",
     symbol: "MGC",
     direction: "long",
+    size: 1,
     entryTs: now,
-    exitTs: now,
-    realisedPnlUsd: 186,
-    result: "win",
+    entryPrice: 2843.2,
   };
 
   const res = await notify(event, { prisma });

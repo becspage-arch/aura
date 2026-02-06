@@ -1,3 +1,5 @@
+// src/app/api/ably/token/route.ts
+
 import Ably from "ably";
 import { auth } from "@clerk/nextjs/server";
 import { userChannelName } from "@/lib/ably/server";
@@ -11,9 +13,12 @@ export async function GET() {
 
   const ably = new Ably.Rest({ key });
 
-  // Capability: user can ONLY subscribe to their own channel.
+  // Capability: user can ONLY subscribe to their own channels.
+  // - user:<userId> (existing per-user stream)
+  // - user:<userId>:notifications (in-app notifications)
   const capability = {
     [userChannelName(userId)]: ["subscribe"],
+    [`user:${userId}:notifications`]: ["subscribe"],
   };
 
   const tokenRequest = await ably.auth.createTokenRequest({

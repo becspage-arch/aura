@@ -4,6 +4,7 @@ import { createAblyRealtime } from "./ably.js";
 import { acquireLock, refreshLock, releaseLock } from "./locks.js";
 import { randomUUID } from "crypto";
 import { startBrokerFeed } from "./broker/startBrokerFeed.js";
+import { startDailyScheduler } from "./notifications/dailyScheduler.js";
 
 async function main() {
   console.log(`[${env.WORKER_NAME}] boot`, {
@@ -54,6 +55,18 @@ async function main() {
     );
   });
   console.log(`[${env.WORKER_NAME}] Ably connected`);
+
+  // 3b) Start daily summary scheduler (Phase 1 completion)
+  startDailyScheduler({
+    tz: "Europe/London",
+    onRun: async () => {
+      const { emitDailySummary } = await import("./notifications/emitDailySummary.js");
+      await emitDailySummary({
+        prisma: db,
+        clerkUserId: expectedClerkUserId,
+      });
+    },
+  });
 
   // 4) Start broker feed (broker owns execution)
   const expectedClerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();

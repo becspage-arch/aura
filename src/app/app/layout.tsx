@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppTopBar } from "@/components/AppTopBar";
+import { NotificationsListener } from "@/components/NotificationsListener";
 
 const nav = [
   { href: "/app", label: "Dashboard" },
@@ -45,6 +46,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main column */}
       <div className="min-h-screen">
         <AppTopBar />
+        <NotificationsListener />
         <main style={{ padding: 24, paddingTop: 18 }}>{children}</main>
       </div>
     </div>

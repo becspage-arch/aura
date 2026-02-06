@@ -27,6 +27,11 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* PWA */}
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#0b0b0b" />
+      </head>
       <body className={`${inter.variable} ${geistMono.variable} aura-body`}>
         <ClerkProvider afterSignInUrl="/app" afterSignUpUrl="/app">
           <ThemeProvider>{children}</ThemeProvider>

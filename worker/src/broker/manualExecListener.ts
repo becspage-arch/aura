@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { IBrokerAdapter } from "./IBrokerAdapter.js";
 import { executeBracket } from "../execution/executeBracket.js";
 import { logTag } from "../lib/logTags";
+import { publishInAppNotification } from "../notifications/publishInApp.js";
 
 type EnvLike = {
   WORKER_NAME: string;
@@ -232,6 +233,17 @@ export async function startManualExecListener(params: {
           takeProfitTicks,
           customTag,
         },
+      });
+
+      const now = new Date().toISOString();
+      const dir = side === "buy" ? "🟦 ENTERED LONG" : "🟥 ENTERED SHORT";
+
+      await publishInAppNotification(clerkUserId, {
+        type: "trade_opened",
+        title: "Aura - Trade Opened",
+        body: `${dir} ${Math.round(qty)}x ${symbol || contractId}`,
+        ts: now,
+        deepLink: "/app/trades",
       });
 
       console.log("[manual-exec] MANUAL_ORDER_SUBMITTED", { execKey });

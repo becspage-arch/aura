@@ -28,6 +28,25 @@ export type TradeClosedEvent = {
   strategyRunId?: string; // optional
 };
 
+export type TradeOpenedEvent = {
+  type: "trade_opened";
+  ts: string; // ISO timestamp (when we placed / confirmed the entry)
+
+  userId: string;
+
+  tradeId: string;
+  accountId: string;
+  symbol: string;
+
+  direction: TradeDirection;
+  size: number;
+
+  entryTs: string; // ISO
+  entryPrice?: number; // optional (depends on what we have at entry time)
+
+  strategyRunId?: string; // optional
+};
+
 /**
  * Summary for a session/day (we’ll decide later how we define “session”).
  */
@@ -56,13 +75,14 @@ export type SessionSummaryEvent = {
 /**
  * Union of events our notification system will support (v1).
  */
-export type NotificationEvent = TradeClosedEvent | SessionSummaryEvent;
+export type NotificationEvent = TradeClosedEvent | TradeOpenedEvent | SessionSummaryEvent;
 
 /**
  * Idempotency key so we can safely retry without duplicates.
  */
 export function notificationIdempotencyKey(e: NotificationEvent): string {
   if (e.type === "trade_closed") return `${e.tradeId}:${e.type}`;
+  if (e.type === "trade_opened") return `${e.tradeId}:${e.type}`;
   // session summary should be unique per user + period label + kind
   return `${e.userId}:${e.type}:${e.period.kind}:${e.period.label}`;
 }
