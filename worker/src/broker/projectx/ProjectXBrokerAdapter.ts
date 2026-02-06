@@ -1,4 +1,4 @@
-import type { IBrokerAdapter } from "./IBrokerAdapter.js";
+import type { IBrokerAdapter } from "../IBrokerAdapter.js";
 
 type ValidateResponse = {
   success?: boolean;
@@ -41,6 +41,20 @@ type PlaceOrderWithBracketsInput = {
   takeProfitTicks?: number | null;
   customTag?: string | null;
 };
+
+function parseJsonOrNull(text: string): any | null {
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+function truncate(text: string, max = 4000): string {
+  if (!text) return text;
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}…(truncated ${text.length - max} chars)`;
+}
 
 export class ProjectXBrokerAdapter implements IBrokerAdapter {
   readonly name = "projectx" as const;
@@ -398,8 +412,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     }
 
     // OrderType enum: 1=Limit, 2=Market, 4=Stop
-    const orderType =
-      input.type === "limit" ? 1 : input.type === "stop" ? 4 : 2;
+    const orderType = input.type === "limit" ? 1 : input.type === "stop" ? 4 : 2;
 
     // OrderSide enum: 0=Bid(buy), 1=Ask(sell)
     const side = input.side === "sell" ? 1 : 0;
@@ -431,10 +444,14 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     const isLong = side === 0; // 0=buy, 1=sell
 
     const slAbs =
-      stopLossTicks != null && Number.isFinite(stopLossTicks) ? Math.floor(Math.abs(stopLossTicks)) : null;
+      stopLossTicks != null && Number.isFinite(stopLossTicks)
+        ? Math.floor(Math.abs(stopLossTicks))
+        : null;
 
     const tpAbs =
-      takeProfitTicks != null && Number.isFinite(takeProfitTicks) ? Math.floor(Math.abs(takeProfitTicks)) : null;
+      takeProfitTicks != null && Number.isFinite(takeProfitTicks)
+        ? Math.floor(Math.abs(takeProfitTicks))
+        : null;
 
     if (slAbs != null && slAbs > 0) {
       body.stopLossBracket = {
@@ -450,18 +467,22 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       };
     }
 
-    console.log("[projectx-adapter] order.place request", {
+    const requestSummary = {
       accountId: this.accountId,
       contractId,
       type: body.type,
       side: body.side,
       size: body.size,
+      limitPrice: body.limitPrice ?? null,
+      stopPrice: body.stopPrice ?? null,
       hasSL: Boolean(body.stopLossBracket),
       hasTP: Boolean(body.takeProfitBracket),
       slTicks: body.stopLossBracket?.ticks ?? null,
       tpTicks: body.takeProfitBracket?.ticks ?? null,
       customTag: body.customTag ?? null,
-    });
+    };
+
+    console.log("[projectx-adapter] order.place request", requestSummary);
 
     const res = await fetch("https://api.topstepx.com/api/Order/place", {
       method: "POST",
@@ -474,32 +495,38 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     });
 
     const text = await res.text();
-
-    let json: PlaceOrderResponse | null = null;
-    try {
-      json = text ? (JSON.parse(text) as PlaceOrderResponse) : null;
-    } catch {
-      json = null;
-    }
+    const parsed = parseJsonOrNull(text) as PlaceOrderResponse | null;
 
     console.log("[projectx-adapter] order.place response", {
       status: res.status,
       ok: res.ok,
-      success: json?.success,
-      errorCode: json?.errorCode,
-      errorMessage: json?.errorMessage ?? null,
-      orderId: json?.orderId ?? null,
+      success: parsed?.success,
+      errorCode: parsed?.errorCode,
+      errorMessage: parsed?.errorMessage ?? null,
+      orderId: parsed?.orderId ?? null,
     });
 
-    if (!res.ok || !json?.success || !json?.orderId) {
+    const failed = !res.ok || !parsed?.success || !parsed?.orderId;
+
+    if (failed) {
+      console.error("[projectx-adapter] order.place rejected (full payload)", {
+        request: requestSummary,
+        response: {
+          status: res.status,
+          ok: res.ok,
+          raw: truncate(text, 8000),
+          json: parsed,
+        },
+      });
+
       throw new Error(
         `ProjectX Order/place failed (HTTP ${res.status})${
-          json?.errorCode != null ? ` code=${json.errorCode}` : ""
-        }${json?.errorMessage ? ` msg=${json.errorMessage}` : ""}`
+          parsed?.errorCode != null ? ` code=${parsed.errorCode}` : ""
+        }${parsed?.errorMessage ? ` msg=${parsed.errorMessage}` : ""}`
       );
     }
 
-    return { orderId: json.orderId, raw: json };
+    return { orderId: parsed.orderId, raw: parsed };
   }
 
   startKeepAlive(): void {

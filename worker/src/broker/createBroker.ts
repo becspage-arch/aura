@@ -1,7 +1,7 @@
 import type { IBrokerAdapter, BrokerName } from "./IBrokerAdapter.js";
 import { CqgBrokerAdapter } from "./CqgBrokerAdapter.js";
 import { RithmicBrokerAdapter } from "./RithmicBrokerAdapter.js";
-import { ProjectXBrokerAdapter } from "./ProjectXBrokerAdapter.js";
+import { ProjectXBrokerAdapter } from "./projectx/ProjectXBrokerAdapter.js";
 
 class DisabledBroker implements IBrokerAdapter {
   public readonly name: BrokerName = "mock";

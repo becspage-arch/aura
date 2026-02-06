@@ -114,7 +114,9 @@ export class CorePlus315Engine {
   /**
    * Later: swap this with DB-loaded per-user config.
    */
-  setConfig(overrides: Partial<Omit<CorePlus315Config, "tickSize" | "tickValue">>) {
+  setConfig(
+    overrides: Partial<Omit<CorePlus315Config, "tickSize" | "tickValue">>
+  ) {
     this.cfg = buildCorePlus315Config({
       tickSize: this.cfg.tickSize,
       tickValue: this.cfg.tickValue,
@@ -146,8 +148,28 @@ export class CorePlus315Engine {
   }
 
   /**
+   * Mark the currently-active FVG as "traded" *only after* a successful submission.
+   * This prevents "traded=true" when the broker rejects the order.
+   *
+   * Guard:
+   * - We only mark if the active FVG matches the intent's fvgTime.
+   */
+  markActiveFvgTraded(params: { fvgTime: number }): boolean {
+    if (!this.activeFvg) return false;
+    if (this.activeFvg.invalid) return false;
+    if (this.activeFvg.time !== params.fvgTime) return false;
+
+    this.activeFvg.traded = true;
+    return true;
+  }
+
+  /**
    * Main entry point: call this for each CLOSED 15s candle.
    * Returns a TradeIntent when the entry triggers; otherwise null.
+   *
+   * IMPORTANT:
+   * This function does NOT set activeFvg.traded anymore.
+   * The caller must call markActiveFvgTraded() after successful execution.
    */
   ingestClosed15s(c: Candle15s): TradeIntent | null {
     // store 15s
@@ -201,7 +223,8 @@ export class CorePlus315Engine {
     const stopPrice = side === "buy" ? b.low : b.high;
 
     // Risk checks
-    const stopDist = side === "buy" ? entryPrice - stopPrice : stopPrice - entryPrice;
+    const stopDist =
+      side === "buy" ? entryPrice - stopPrice : stopPrice - entryPrice;
     if (!isNumber(stopDist) || stopDist <= 0) return null;
 
     const stopTicks = priceToTicks(stopDist, this.cfg.tickSize);
@@ -246,9 +269,6 @@ export class CorePlus315Engine {
         retested: this.activeFvg.retested,
       },
     };
-
-    // One trade per active FVG (like “latest box” behavior)
-    this.activeFvg.traded = true;
 
     return intent;
   }

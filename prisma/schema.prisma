@@ -257,6 +257,50 @@ model UserTradingState {
   user UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model Trade {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+
+  // Ownership
+  clerkUserId   String
+
+  // Idempotency (prevents duplicate rows on reconnects)
+  execKey       String   @unique
+
+  // Instrument
+  symbol        String
+  contractId    String?
+
+  // Direction & size
+  side          OrderSide
+  qty           Decimal
+
+  // Timing
+  openedAt      DateTime
+  closedAt      DateTime
+  durationSec   Int?
+
+  // Planned (from Execution intent)
+  plannedStopTicks       Int?
+  plannedTakeProfitTicks Int?
+  plannedRiskUsd         Decimal?
+  plannedRR              Decimal?
+
+  // Actual fills
+  entryPriceAvg  Decimal
+  exitPriceAvg   Decimal
+  realizedPnlTicks Int
+  realizedPnlUsd   Decimal
+  rrAchieved       Decimal?
+
+  // Outcome / reason
+  exitReason    String // "TP" | "SL" | "MANUAL" | "KILL_SWITCH" | "SESSION_END" | "FLATTEN" | "UNKNOWN"
+  outcome       String // "WIN" | "LOSS" | "BREAKEVEN"
+
+  @@index([clerkUserId, closedAt])
+  @@index([clerkUserId, openedAt])
+}
+
 enum CandleTimeframe {
   S15
   M3
