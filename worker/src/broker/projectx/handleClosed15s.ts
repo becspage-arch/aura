@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { CorePlus315Engine } from "../../strategy/coreplus315Engine.js";
 import { buildBracketFromIntent } from "../../trading/buildBracket.js";
 import { executeBracket } from "../../execution/executeBracket.js";
+import { logTag } from "../../lib/logTags";
 
 export type HandleClosed15sDeps = {
   env: { WORKER_NAME: string };
@@ -140,28 +141,21 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
 
         if (!intent) {
           const dbg = deps.strategy.getDebugState?.() as any;
-          console.log(`[${deps.env.WORKER_NAME}] No trade this candle (live)`, {
+
+          logTag(`[${deps.env.WORKER_NAME}] NO_TRADE_DEBUG`, {
             source: params.source,
             symbol,
             time,
             ticks,
-            dbg: dbg
-              ? {
-                  trend: dbg.trend ?? null,
-                  emaOk: dbg.emaOk ?? null,
-                  hasActiveFvg: dbg.hasActiveFvg ?? (dbg.activeFvg != null) ?? null,
-                  activeFvg: dbg.activeFvg ?? null,
-                  lastSignalAt: dbg.lastSignalAt ?? null,
-                }
-              : null,
+            engine: dbg ?? null,
           });
         }
 
         if (intent) {
-          console.log(`[${deps.env.WORKER_NAME}] TRADE_INTENT (live)`, intent);
+          logTag(`[${deps.env.WORKER_NAME}] TRADE_INTENT`, intent);
 
           const bracket = buildBracketFromIntent(intent);
-          console.log(`[${deps.env.WORKER_NAME}] BRACKET (live)`, bracket);
+          logTag(`[${deps.env.WORKER_NAME}] BRACKET`, bracket);
 
           await deps.emitSafe({
             name: "exec.bracket",
@@ -185,9 +179,9 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           try {
             const ident = await deps.getUserIdentityForWorker();
 
-            const contractIdFromBracket = String(
-              (bracket as any).contractId || (bracket as any).symbol || ""
-            ).trim();
+          const contractIdFromBracket = String(
+            closed?.data?.contractId || (bracket as any).contractId || ""
+          ).trim();
 
             const side =
               String((bracket as any).side || "").toLowerCase() === "sell" ? "sell" : "buy";
@@ -195,14 +189,18 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
             const qty = Number((bracket as any).qty ?? 1);
 
             const stopLossTicks =
-              (bracket as any)?.meta?.stopTicks != null
-                ? Number((bracket as any).meta.stopTicks)
-                : null;
+              (bracket as any)?.stopLossTicks != null
+                ? Number((bracket as any).stopLossTicks)
+                : (bracket as any)?.meta?.stopTicks != null
+                  ? Number((bracket as any).meta.stopTicks)
+                  : null;
 
             const takeProfitTicks =
-              (bracket as any)?.meta?.tpTicks != null
-                ? Number((bracket as any).meta.tpTicks)
-                : null;
+              (bracket as any)?.takeProfitTicks != null
+                ? Number((bracket as any).takeProfitTicks)
+                : (bracket as any)?.meta?.tpTicks != null
+                  ? Number((bracket as any).meta.tpTicks)
+                  : null;
 
             if (!contractIdFromBracket) {
               console.warn("[exec] missing contractId on bracket - cannot execute", bracket);

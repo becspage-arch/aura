@@ -7,6 +7,10 @@ export type BracketOrder = {
   side: "buy" | "sell";
   qty: number;
 
+  // Tick distances - required for tick-based validation + broker execution logic
+  stopLossTicks: number;
+  takeProfitTicks: number;
+
   entry: {
     type: "market";
     price: number; // informational only for market orders
@@ -27,6 +31,7 @@ export type BracketOrder = {
     entryTime: number;
     fvgTime: number;
     stopTicks: number;
+    tpTicks: number;
     rr: number;
     riskUsdPlanned: number;
   };
@@ -37,6 +42,9 @@ export function buildBracketFromIntent(intent: TradeIntent): BracketOrder {
     symbol: intent.symbol,
     side: intent.side,
     qty: intent.contracts,
+
+    stopLossTicks: intent.stopTicks,
+    takeProfitTicks: intent.tpTicks,
 
     entry: {
       type: "market",
@@ -58,6 +66,7 @@ export function buildBracketFromIntent(intent: TradeIntent): BracketOrder {
       entryTime: intent.entryTime,
       fvgTime: intent.fvgTime,
       stopTicks: intent.stopTicks,
+      tpTicks: intent.tpTicks,
       rr: intent.rr,
       riskUsdPlanned: intent.riskUsdPlanned,
     },

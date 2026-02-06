@@ -6,6 +6,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { startManualExecListener } from "./manualExecListener.js";
 import { startProjectXMarketFeed } from "./projectx/startProjectXMarketFeed.js";
 import { bootstrapStrategy } from "../strategy/bootstrapStrategy.js";
+import { startProjectXUserFeed } from "./projectx/startProjectXUserFeed.js";
 
 console.log("[startBrokerFeed.ts] LOADED", {
   MANUAL_EXEC: process.env.MANUAL_EXEC ?? null,
@@ -358,6 +359,20 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       if (!contractId) {
         console.warn("[projectx-market] PROJECTX_CONTRACT_ID not set, market hub not started");
         return;
+      }
+
+      // --- ProjectX user hub (orders/fills/positions) ---
+      try {
+        await startProjectXUserFeed({
+          env,
+          DRY_RUN,
+          getPrisma,
+          getUserIdentityForWorker,
+          token,
+          accountId: status?.accountId ?? null,
+        });
+      } catch (e) {
+        console.error("[projectx-user] failed to start", e);
       }
 
       try {

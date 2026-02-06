@@ -124,8 +124,20 @@ export async function startProjectXMarketFeed(params: {
       );
 
       if (closed) {
+        if (process.env.DEBUG_CANDLES === "1") {
+          console.log("[candles] 15s closed", {
+            source: "rollover",
+            t: closed.time,
+            o: closed.open,
+            h: closed.high,
+            l: closed.low,
+            c: closed.close,
+            ticks: closed.ticks ?? null,
+          });
+        }
         await handleClosed15s({ source: "rollover", closed });
       }
+
     },
   });
 
@@ -167,7 +179,19 @@ export async function startProjectXMarketFeed(params: {
         const forced = candle15s.forceCloseIfDue(now);
         if (!forced) return;
 
+        if (process.env.DEBUG_CANDLES === "1") {
+          console.log("[candles] 15s closed", {
+            source: "forceClose",
+            t: forced.time,
+            o: forced.open,
+            h: forced.high,
+            l: forced.low,
+            c: forced.close,
+            ticks: forced.ticks ?? null,
+          });
+        }
         await handleClosed15s({ source: "forceClose", closed: forced });
+
       } catch (e) {
         console.error("[projectx-market] forceCloseIfDue failed", e);
       }

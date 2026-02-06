@@ -1,3 +1,4 @@
+// src/components/AppTopBar.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -14,7 +15,8 @@ type PauseGetResponse = {
 
 function titleFromPath(pathname: string) {
   // Normalize: remove trailing slash
-  const p = pathname.endsWith("/") && pathname !== "/" ? pathname.slice(0, -1) : pathname;
+  const p =
+    pathname.endsWith("/") && pathname !== "/" ? pathname.slice(0, -1) : pathname;
 
   // Order matters (more specific first)
   if (p === "/app") return "Dashboard";
@@ -40,7 +42,9 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}${text ? ` - ${text}` : ""}`);
+    throw new Error(
+      `${res.status} ${res.statusText}${text ? ` - ${text}` : ""}`
+    );
   }
 
   return (await res.json()) as T;
@@ -83,7 +87,6 @@ export function AppTopBar() {
     if (!clerkUserId) return;
 
     const statusChannelName = `user:${clerkUserId}`;
-    const uiChannelName = `aura:ui:${clerkUserId}`;
 
     const unsubscribeStatus = subscribeUserChannel(statusChannelName, (item) => {
       // You publish: publishToUser(clerkUserId, "status_update", {...})
@@ -95,15 +98,9 @@ export function AppTopBar() {
       if (typeof data.isKillSwitched === "boolean") setIsKillSwitched(data.isKillSwitched);
     });
 
-    // Keep this subscription even if AppTopBar doesn't use the events directly yet.
-    // It proves the per-user UI stream wiring is correct and prevents "no subscribers" surprises.
-    const unsubscribeUi = subscribeUserChannel(uiChannelName, () => {});
-
     return () => {
       unsubscribeStatus();
-      unsubscribeUi();
     };
-
   }, [isLoaded, user?.id]);
 
   const statusLabel = isKillSwitched ? "KILL SWITCH" : isPaused ? "PAUSED" : "RUNNING";

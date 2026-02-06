@@ -16,6 +16,7 @@ model UserProfile {
   auditLogs      AuditLog[]
   brokerAccounts BrokerAccount[]
   userState      UserTradingState?
+  onboardingNotificationsDone Boolean @default(false)
 }
 
 model BrokerAccount {
@@ -232,6 +233,16 @@ model AuditLog {
 
   @@index([userId, createdAt])
   @@index([action, createdAt])
+}
+
+model NotificationLog {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String   @unique
+  type      String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model SystemState {

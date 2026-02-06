@@ -64,7 +64,6 @@ async function main() {
   }
 
   const brokerChannel = ably.channels.get(`aura:broker:${expectedClerkUserId}`);
-  const uiChannel = ably.channels.get(`aura:ui:${expectedClerkUserId}`);
 
   try {
     await startBrokerFeed(async (event) => {

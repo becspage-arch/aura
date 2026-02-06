@@ -1,5 +1,6 @@
 import { PrismaClient, OrderSide } from "@prisma/client";
 import type { IBrokerAdapter } from "../broker/IBrokerAdapter.js";
+import { logTag } from "../lib/logTags";
 
 export type ExecuteBracketInput = {
   execKey: string; // deterministic idempotency key
@@ -107,6 +108,20 @@ export async function executeBracket(params: {
       execKey: input.execKey,
       executionId: updated.id,
       status: updated.status,
+      entryOrderId: updated.entryOrderId ?? null,
+    });
+
+    logTag("[projectx-worker] ORDER_SUBMITTED", {
+      execKey: input.execKey,
+      executionId: updated.id,
+      broker: (broker as any)?.name ?? null,
+      contractId: input.contractId,
+      symbol: input.symbol ?? null,
+      side: input.side,
+      qty: input.qty,
+      entryType: input.entryType,
+      stopLossTicks: input.stopLossTicks ?? null,
+      takeProfitTicks: input.takeProfitTicks ?? null,
       entryOrderId: updated.entryOrderId ?? null,
     });
 
