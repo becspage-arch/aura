@@ -63,6 +63,10 @@ export function EnablePushCard() {
           const txt = await r.text().catch(() => "");
           throw new Error(`Subscribe save failed (${r.status}) ${txt}`);
         }
+      } else if (res.enabled && !res.subscriptionId) {
+        throw new Error(
+          "Permission granted, but no OneSignal subscription id was created. Check NEXT_PUBLIC_ONESIGNAL_SAFARI_WEB_ID and service worker."
+        );
       }
 
       await refresh();
@@ -80,10 +84,7 @@ export function EnablePushCard() {
     try {
       const r = await fetch("/api/push/test", { method: "POST" });
       const txt = await r.text().catch(() => "");
-
-      if (!r.ok) {
-        throw new Error(`Test push failed (${r.status}) ${txt}`);
-      }
+      if (!r.ok) throw new Error(`Test push failed (${r.status}) ${txt}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -93,7 +94,9 @@ export function EnablePushCard() {
 
   const ios = isIOS();
   const standalone = isStandalone();
-  const isEnabled = status.permission === "granted" && status.subscribed;
+
+  // ✅ Only "Enabled" when we have a real OneSignal subscription id
+  const isEnabled = status.permission === "granted" && !!status.subscriptionId;
 
   return (
     <div className="aura-grid-gap-12">
@@ -106,7 +109,7 @@ export function EnablePushCard() {
             <div className="aura-font-semibold">iPhone (Safari)</div>
             <ol className="aura-mt-6 aura-muted">
               <li>a. Open Aura in Safari and log in</li>
-              <li>b. Tap Share → Add to Home Screen</li>
+              <li>b. Tap Share → More → Add to Home Screen</li>
               <li>c. Open Aura from the Home Screen icon</li>
             </ol>
 
@@ -121,7 +124,7 @@ export function EnablePushCard() {
             <div className="aura-font-semibold">Android (Chrome)</div>
             <ol className="aura-mt-6 aura-muted">
               <li>a. Open Aura in Chrome and log in</li>
-              <li>b. (Optional) Install Aura when prompted</li>
+              <li>b. Install Aura when prompted</li>
             </ol>
           </div>
         </div>
@@ -133,14 +136,7 @@ export function EnablePushCard() {
 
         <div className="aura-control-row aura-mt-10">
           <div className="aura-control-meta">
-            <div className="aura-control-help">
-              Click Enable and allow notifications for this device.
-            </div>
-
-            <div className="aura-muted aura-text-xs aura-mt-6">
-              Debug: permission={status.permission} · subscribed={String(status.subscribed)} · id=
-              {status.subscriptionId ? "yes" : "no"}
-            </div>
+            <div className="aura-control-help">Click Enable and allow notifications for this device.</div>
 
             {status.subscriptionId ? (
               <div className="aura-muted aura-text-xs aura-mt-6">Device registered</div>
@@ -166,9 +162,7 @@ export function EnablePushCard() {
 
         <div className="aura-control-row aura-mt-10">
           <div className="aura-control-meta">
-            <div className="aura-control-help">
-              Lock your phone immediately after clicking send to see the notification.
-            </div>
+            <div className="aura-control-help">Click the button, then immediately lock your phone to see the notification.</div>
           </div>
 
           <div className="aura-control-right">
