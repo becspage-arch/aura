@@ -2,10 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  getPushStatus,
-  requestPushPermission,
-} from "@/lib/onesignal/client";
+import { getPushStatus, requestPushPermission } from "@/lib/onesignal/client";
 
 type PushStatus = {
   permission: string;
@@ -45,9 +42,7 @@ export function EnablePushCard() {
   }
 
   useEffect(() => {
-    refresh().catch((e) =>
-      setError(e instanceof Error ? e.message : String(e))
-    );
+    refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   async function enableOnThisDevice() {
@@ -58,11 +53,16 @@ export function EnablePushCard() {
       const res = await requestPushPermission();
 
       if (res.enabled && res.subscriptionId) {
-        await fetch("/api/push/subscribe", {
+        const r = await fetch("/api/push/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ subscriptionId: res.subscriptionId }),
         });
+
+        if (!r.ok) {
+          const txt = await r.text().catch(() => "");
+          throw new Error(`Subscribe save failed (${r.status}) ${txt}`);
+        }
       }
 
       await refresh();
@@ -78,7 +78,12 @@ export function EnablePushCard() {
     setError(null);
 
     try {
-      await fetch("/api/push/test", { method: "POST" });
+      const r = await fetch("/api/push/test", { method: "POST" });
+      const txt = await r.text().catch(() => "");
+
+      if (!r.ok) {
+        throw new Error(`Test push failed (${r.status}) ${txt}`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -92,12 +97,9 @@ export function EnablePushCard() {
 
   return (
     <div className="aura-grid-gap-12">
-
       {/* STEP 1 */}
       <div className="aura-card-muted">
-        <div className="aura-control-title">
-          Step 1 – Add Aura to your device
-        </div>
+        <div className="aura-control-title">Step 1 – Add Aura to your device</div>
 
         <div className="aura-grid-gap-10 aura-text-xs aura-mt-10">
           <div>
@@ -110,8 +112,7 @@ export function EnablePushCard() {
 
             {ios ? (
               <div className="aura-muted aura-text-xs aura-mt-6">
-                Detected: iPhone ·{" "}
-                {standalone ? "Installed" : "Not installed"}
+                Detected: iPhone · {standalone ? "Installed" : "Not installed"}
               </div>
             ) : null}
           </div>
@@ -128,9 +129,7 @@ export function EnablePushCard() {
 
       {/* STEP 2 */}
       <div className="aura-card-muted">
-        <div className="aura-control-title">
-          Step 2 – Enable notifications
-        </div>
+        <div className="aura-control-title">Step 2 – Enable notifications</div>
 
         <div className="aura-control-row aura-mt-10">
           <div className="aura-control-meta">
@@ -138,10 +137,13 @@ export function EnablePushCard() {
               Click Enable and allow notifications for this device.
             </div>
 
+            <div className="aura-muted aura-text-xs aura-mt-6">
+              Debug: permission={status.permission} · subscribed={String(status.subscribed)} · id=
+              {status.subscriptionId ? "yes" : "no"}
+            </div>
+
             {status.subscriptionId ? (
-              <div className="aura-muted aura-text-xs aura-mt-6">
-                Device registered
-              </div>
+              <div className="aura-muted aura-text-xs aura-mt-6">Device registered</div>
             ) : null}
           </div>
 
@@ -152,11 +154,7 @@ export function EnablePushCard() {
               disabled={loading || isEnabled}
               onClick={enableOnThisDevice}
             >
-              {loading
-                ? "Enabling…"
-                : isEnabled
-                ? "Enabled"
-                : "Enable"}
+              {loading ? "Enabling…" : isEnabled ? "Enabled" : "Enable"}
             </button>
           </div>
         </div>
@@ -164,9 +162,7 @@ export function EnablePushCard() {
 
       {/* STEP 3 */}
       <div className="aura-card-muted">
-        <div className="aura-control-title">
-          Step 3 – Send a test notification
-        </div>
+        <div className="aura-control-title">Step 3 – Send a test notification</div>
 
         <div className="aura-control-row aura-mt-10">
           <div className="aura-control-meta">
