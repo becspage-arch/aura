@@ -167,7 +167,7 @@ export function EnablePushCard() {
         <div className="aura-control-row aura-mt-10">
           <div className="aura-control-meta">
             <div className="aura-control-help">
-              Lock your phone after sending to see the notification.
+              Lock your phone immediately after clicking send to see the notification.
             </div>
           </div>
 
