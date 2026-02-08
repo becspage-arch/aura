@@ -45,7 +45,6 @@ async function registerOneSignalServiceWorker(): Promise<void> {
 
   await navigator.serviceWorker.register("/OneSignalSDKWorker.js", { scope: "/" });
 
-  // wait for activation (bounded)
   for (let i = 0; i < 30; i++) {
     const r2 = await navigator.serviceWorker.getRegistrations();
     const ok = r2.some((r) => r.active?.scriptURL?.includes("/OneSignalSDKWorker.js"));
@@ -70,7 +69,6 @@ export async function ensureOneSignalLoaded() {
   if ((window as any).__auraOneSignalInited) return;
   (window as any).__auraOneSignalInited = true;
 
-  // ✅ SW must exist for iOS web push
   await withTimeout(registerOneSignalServiceWorker(), 8000, "Service worker registration");
 
   window.OneSignal.push(function () {
@@ -91,6 +89,24 @@ function browserPermission(): string {
   return (window.Notification?.permission || "unknown").toString();
 }
 
+async function requestBrowserPermissionNative(): Promise<string> {
+  if (typeof window === "undefined") return "unknown";
+  if (!window.Notification || typeof window.Notification.requestPermission !== "function") {
+    return browserPermission();
+  }
+
+  const cur = browserPermission();
+  if (cur !== "default") return cur;
+
+  const res = await withTimeout(
+    window.Notification.requestPermission(),
+    8000,
+    "Notification.requestPermission()"
+  );
+
+  return String(res || browserPermission());
+}
+
 async function waitForSubscriptionId(timeoutMs: number) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -105,52 +121,54 @@ async function waitForSubscriptionId(timeoutMs: number) {
   return null;
 }
 
-async function requestBrowserPermissionNative(): Promise<string> {
-  if (typeof window === "undefined") return "unknown";
-  if (!window.Notification || typeof window.Notification.requestPermission !== "function") {
-    return browserPermission();
+async function ensureOneSignalOptInFlow(): Promise<void> {
+  // Runs inside OneSignal.push() callback (OneSignal is ready)
+  // 1) Prompt flow (this is what actually finalises the iOS web-push registration)
+  try {
+    if (window.OneSignal?.Slidedown?.promptPush) {
+      await window.OneSignal.Slidedown.promptPush();
+    }
+  } catch {
+    // ignore - some contexts won't show slidedown
   }
 
-  // If already decided, don't call again
-  const cur = browserPermission();
-  if (cur !== "default") return cur;
-
-  // ✅ Use native iOS permission request (most reliable)
-  const res = await withTimeout(window.Notification.requestPermission(), 8000, "Notification.requestPermission()");
-  return String(res || browserPermission());
+  // 2) Opt in (should flip optedIn -> true when device is truly registered)
+  try {
+    await window.OneSignal?.User?.PushSubscription?.optIn();
+  } catch {
+    // ignore
+  }
 }
 
 export async function requestPushPermission() {
   await ensureOneSignalLoaded();
 
-  // Everything below must never hang silently
   return await withTimeout(
     new Promise<{ enabled: boolean; subscriptionId?: string | null }>((resolve, reject) => {
       window.OneSignal!.push(async function () {
         try {
-          // 1) Native browser permission prompt (iOS-safe)
+          // 1) native iOS prompt
           const perm = await requestBrowserPermissionNative();
           const enabled = perm === "granted";
 
-          // 2) Tell OneSignal we want to opt-in (no-op if already)
-          if (enabled) {
-            try {
-              await window.OneSignal.User.PushSubscription.optIn();
-            } catch {
-              // ignore
-            }
+          if (!enabled) {
+            resolve({ enabled: false, subscriptionId: null });
+            return;
           }
 
-          // 3) Wait for OneSignal to generate a subscription id
-          const subscriptionId = enabled ? await waitForSubscriptionId(10000) : null;
+          // 2) Force OneSignal to run its registration / opt-in flow
+          await ensureOneSignalOptInFlow();
 
-          resolve({ enabled, subscriptionId });
+          // 3) Wait for real id
+          const subscriptionId = await waitForSubscriptionId(15000);
+
+          resolve({ enabled: true, subscriptionId });
         } catch (e) {
           reject(e);
         }
       });
     }),
-    12000,
+    20000,
     "Push enable flow"
   );
 }
