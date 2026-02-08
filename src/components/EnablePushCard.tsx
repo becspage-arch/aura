@@ -100,81 +100,21 @@ export function EnablePushCard() {
 
   return (
     <div className="aura-grid-gap-12">
-      {/* STATUS */}
-      <div className="aura-control-row">
-        <div className="aura-control-meta">
-          <div className="aura-control-title">Phone push status</div>
-          <div className="aura-control-help">
-            Permission:{" "}
-            <span className="aura-muted">{status.permission}</span>
-            {" · "}
-            Subscribed:{" "}
-            <span className="aura-muted">
-              {status.subscribed ? "Yes" : "No"}
-            </span>
-          </div>
 
-          {status.subscriptionId ? (
-            <div className="aura-muted aura-text-xs aura-mt-6">
-              Device ID: {status.subscriptionId}
-            </div>
-          ) : null}
-        </div>
-
-        <span className="aura-select-pill">{statusLabel}</span>
-      </div>
-
-      {/* ERROR */}
-      {error ? (
-        <div className="aura-card-muted aura-error-block">
-          <div className="aura-control-title">Something went wrong</div>
-          <div className="aura-control-help">{error}</div>
-        </div>
-      ) : null}
-
-      {/* ACTIONS */}
-      <div className="aura-control-row">
-        <div className="aura-control-meta">
-          <div className="aura-control-title">Enable on this device</div>
-          <div className="aura-control-help">
-            You will only see the browser permission prompt after clicking Enable.
-          </div>
-        </div>
-
-        <div className="aura-control-right">
-          <button
-            type="button"
-            className="aura-btn"
-            disabled={loading}
-            onClick={enableOnThisDevice}
-          >
-            {loading ? "Enabling…" : "Enable"}
-          </button>
-
-          <button
-            type="button"
-            className="aura-btn aura-btn-subtle"
-            disabled={sendingTest || !status.subscriptionId}
-            onClick={sendTestPush}
-          >
-            {sendingTest ? "Sending…" : "Send test push"}
-          </button>
-        </div>
-      </div>
-
-      {/* PUSH PROMPTS */}
+      {/* STEP 1 */}
       <div className="aura-card-muted">
-        <div className="aura-control-title">Push prompts</div>
+        <div className="aura-control-title">
+          Step 1 – Add Aura to your device
+        </div>
 
         <div className="aura-grid-gap-10 aura-text-xs aura-mt-10">
-          {/* iOS */}
           <div>
             <div className="aura-font-semibold">iPhone (Safari)</div>
             <ol className="aura-mt-6 aura-muted">
-              <li>Open Aura in Safari</li>
-              <li>Tap Share → Add to Home Screen</li>
-              <li>Open Aura from the Home Screen icon</li>
-              <li>Return here and click Enable</li>
+              <li>a. Open Aura in Safari and log in</li>
+              <li>b. Tap Share → Add to Home Screen</li>
+              <li>c. An Aura icon will appear on your Home Screen</li>
+              <li>d. Open Aura from the icon and return here</li>
             </ol>
 
             {ios ? (
@@ -185,18 +125,95 @@ export function EnablePushCard() {
             ) : null}
           </div>
 
-          {/* Android */}
           <div>
             <div className="aura-font-semibold">Android (Chrome)</div>
             <ol className="aura-mt-6 aura-muted">
-              <li>Open Aura in Chrome</li>
-              <li>(Optional) Install Aura when prompted</li>
-              <li>Click Enable above</li>
-              <li>Tap Allow on the permission prompt</li>
+              <li>a. Open Aura in Chrome and log in</li>
+              <li>b. (Optional) Install Aura when prompted</li>
+              <li>c. Return here to enable notifications</li>
             </ol>
           </div>
         </div>
       </div>
+
+      {/* STEP 2 */}
+      <div className="aura-card-muted">
+        <div className="aura-control-title">
+          Step 2 – Enable notifications
+        </div>
+
+        <div className="aura-control-row aura-mt-10">
+          <div className="aura-control-meta">
+            <div className="aura-control-help">
+              Click Enable to allow Aura to send notifications to this device.
+              You will only see the permission prompt after clicking the button.
+            </div>
+
+            <div className="aura-control-help aura-mt-6">
+              Permission:{" "}
+              <span className="aura-muted">{status.permission}</span>
+              {" · "}
+              Subscribed:{" "}
+              <span className="aura-muted">
+                {status.subscribed ? "Yes" : "No"}
+              </span>
+            </div>
+
+            {status.subscriptionId ? (
+              <div className="aura-muted aura-text-xs aura-mt-6">
+                Device ID: {status.subscriptionId}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="aura-control-right">
+            <button
+              type="button"
+              className="aura-btn"
+              disabled={loading}
+              onClick={enableOnThisDevice}
+            >
+              {loading ? "Enabling…" : "Enable"}
+            </button>
+
+            <span className="aura-select-pill">{statusLabel}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* STEP 3 */}
+      <div className="aura-card-muted">
+        <div className="aura-control-title">
+          Step 3 – Send a test notification
+        </div>
+
+        <div className="aura-control-row aura-mt-10">
+          <div className="aura-control-meta">
+            <div className="aura-control-help">
+              Send a test notification to confirm everything is working.
+            </div>
+          </div>
+
+          <div className="aura-control-right">
+            <button
+              type="button"
+              className="aura-btn aura-btn-subtle"
+              disabled={sendingTest || !status.subscriptionId}
+              onClick={sendTestPush}
+            >
+              {sendingTest ? "Sending…" : "Send test notification"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ERROR */}
+      {error ? (
+        <div className="aura-card-muted aura-error-block">
+          <div className="aura-control-title">Something went wrong</div>
+          <div className="aura-control-help">{error}</div>
+        </div>
+      ) : null}
     </div>
   );
 }

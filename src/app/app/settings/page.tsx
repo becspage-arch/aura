@@ -138,7 +138,7 @@ export default function SettingsPage() {
         <div className="aura-row-between">
           <div className="aura-card-title">Notifications</div>
           <div className="aura-muted aura-text-xs">
-            Choose what you want to hear about - then where Aura should send it
+            Choose what you want to hear about, then where Aura should send it
           </div>
         </div>
 
@@ -147,7 +147,7 @@ export default function SettingsPage() {
           <div>
             <div className="aura-control-title">What to notify you about</div>
             <div className="aura-control-help">
-              Pick the events you want. (We’ll wire these to saved preferences next.)
+              Pick the notifications you want. (We’ll wire these to saved preferences next.)
             </div>
 
             <div className="aura-mt-12 aura-pill-group">
