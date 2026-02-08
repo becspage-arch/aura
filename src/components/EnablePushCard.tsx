@@ -162,7 +162,7 @@ export function EnablePushCard() {
 
         <div className="aura-control-row aura-mt-10">
           <div className="aura-control-meta">
-            <div className="aura-control-help">Click the button, then immediately lock your phone to see the notification.</div>
+            <div className="aura-control-help">Click the button below, then immediately lock your phone to see the notification.</div>
           </div>
 
           <div className="aura-control-right">
