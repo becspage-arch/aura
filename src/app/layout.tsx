@@ -31,6 +31,7 @@ export default function RootLayout({
         {/* PWA */}
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#0b0b0b" />
+        <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer />
       </head>
       <body className={`${inter.variable} ${geistMono.variable} aura-body`}>
         <ClerkProvider afterSignInUrl="/app" afterSignUpUrl="/app">

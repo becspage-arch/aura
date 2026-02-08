@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { EnablePushCard } from "@/components/EnablePushCard";
 
 export default function SettingsPage() {
   return (
@@ -136,32 +137,123 @@ export default function SettingsPage() {
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Notifications</div>
-          <div className="aura-muted aura-text-xs">Awareness without noise</div>
+          <div className="aura-muted aura-text-xs">
+            Choose what you want to hear about - then where Aura should send it
+          </div>
         </div>
 
-        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
-          <div className="aura-card-muted aura-control-row">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Trade opened</div>
-              <div className="aura-control-help">Alert when a position is entered.</div>
+        <div className="aura-mt-12 aura-grid-gap-12">
+          {/* What */}
+          <div>
+            <div className="aura-control-title">What to notify you about</div>
+            <div className="aura-control-help">
+              Pick the events you want. (We’ll wire these to saved preferences next.)
             </div>
-            <div className="aura-toggle" />
+
+            <div className="aura-mt-12 aura-pill-group">
+              {/* placeholders for now */}
+              <button
+                type="button"
+                className="aura-pill-toggle aura-disabled"
+                aria-pressed="false"
+                title="Coming soon"
+              >
+                <span className="aura-pill-indicator" />
+                <span className="aura-pill-toggle__stack">
+                  <span>Trade opened</span>
+                  <span className="aura-pill-toggle__sublabel">When a position is entered.</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="aura-pill-toggle aura-disabled"
+                aria-pressed="false"
+                title="Coming soon"
+              >
+                <span className="aura-pill-indicator" />
+                <span className="aura-pill-toggle__stack">
+                  <span>Trade closed</span>
+                  <span className="aura-pill-toggle__sublabel">
+                    When a position exits (win/loss/breakeven).
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="aura-pill-toggle aura-disabled"
+                aria-pressed="false"
+                title="Coming soon"
+              >
+                <span className="aura-pill-indicator" />
+                <span className="aura-pill-toggle__stack">
+                  <span>Kill switch / safety halt</span>
+                  <span className="aura-pill-toggle__sublabel">
+                    High-priority alert if Aura stops trading.
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="aura-pill-toggle aura-disabled"
+                aria-pressed="false"
+                title="Coming soon"
+              >
+                <span className="aura-pill-indicator" />
+                <span className="aura-pill-toggle__stack">
+                  <span>Daily summary</span>
+                  <span className="aura-pill-toggle__sublabel">End-of-day summary email.</span>
+                </span>
+              </button>
+            </div>
           </div>
 
-          <div className="aura-card-muted aura-control-row">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Trade closed</div>
-              <div className="aura-control-help">Alert when a position exits.</div>
-            </div>
-            <div className="aura-toggle aura-toggle-on" />
-          </div>
+          <div className="aura-divider" />
 
-          <div className="aura-card-muted aura-control-row">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Kill switch</div>
-              <div className="aura-control-help">High-priority safety alert.</div>
+          {/* Channels */}
+          <div>
+            <div className="aura-control-title">Channels</div>
+            <div className="aura-control-help">
+              Choose where Aura should send notifications.
             </div>
-            <div className="aura-toggle aura-toggle-on" />
+
+            <div className="aura-mt-12 aura-grid-gap-12">
+              {/* In-app */}
+              <div className="aura-card-muted aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">In-app (browser)</div>
+                  <div className="aura-control-help">
+                    Pop-up messages while Aura is open. No setup needed.
+                  </div>
+                </div>
+                <span className="aura-select-pill">On</span>
+              </div>
+
+              {/* Phone push */}
+              <div className="aura-card-muted aura-grid-gap-12">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Phone push</div>
+                  <div className="aura-control-help">
+                    Lock-screen notifications on iPhone + Android (requires enabling).
+                  </div>
+                </div>
+
+                <EnablePushCard />
+              </div>
+
+              {/* Email */}
+              <div className="aura-card-muted aura-control-row aura-disabled">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Email</div>
+                  <div className="aura-control-help">
+                    Daily/session summaries and high-priority alerts (coming soon).
+                  </div>
+                </div>
+                <span className="aura-select-pill">Coming soon</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -169,7 +261,7 @@ export default function SettingsPage() {
       {/* Safety Caps */}
       <section className="aura-card">
         <div className="aura-row-between">
-          <div className="aura-card-title">Safety Caps</div>
+          <div className="aura-card-title">Daily Limits</div>
           <div className="aura-muted aura-text-xs">Hard overrides</div>
         </div>
 
@@ -186,9 +278,9 @@ export default function SettingsPage() {
 
           <div className="aura-card-muted aura-control-row">
             <div className="aura-control-meta">
-              <div className="aura-control-title">Max open risk</div>
+              <div className="aura-control-title">Max daily profit</div>
               <div className="aura-control-help">
-                Caps total exposure across positions.
+                Aura pauses automatically if reached.
               </div>
             </div>
             <span className="aura-select-pill">—</span>
@@ -219,7 +311,7 @@ export default function SettingsPage() {
               <div className="aura-control-title">Currency display</div>
               <div className="aura-control-help">Profit and risk formatting.</div>
             </div>
-            <span className="aura-select-pill">GBP</span>
+            <span className="aura-select-pill">USD</span>
           </div>
         </div>
       </section>

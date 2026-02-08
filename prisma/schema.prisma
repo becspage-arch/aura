@@ -337,3 +337,13 @@ enum OrderStatus {
   CANCELLED
   REJECTED
 }
+
+model OneSignalPushSubscription {
+  id             String   @id @default(cuid())
+  userId         String
+  subscriptionId String   @unique
+  createdAt      DateTime @default(now())
+  lastSeenAt     DateTime @updatedAt
+
+  @@index([userId])
+}
