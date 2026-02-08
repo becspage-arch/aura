@@ -26,11 +26,11 @@ export async function ensureOneSignalLoaded() {
   window.OneSignal.push(function () {
     window.OneSignal.init({
       appId,
-      // Service worker is served from /OneSignalSDKWorker.js because it's in /public
+      safari_web_id: "web.onesignal.auto.66c7fbb6-f0f6-47ab-9f8e-1bd725d1f3d2",
       serviceWorkerPath: "/OneSignalSDKWorker.js",
       serviceWorkerUpdaterPath: "/OneSignalSDKWorker.js",
       notifyButton: { enable: false },
-      allowLocalhostAsSecureOrigin: true, // helps dev on http://localhost
+      allowLocalhostAsSecureOrigin: true,
     });
   });
 }
