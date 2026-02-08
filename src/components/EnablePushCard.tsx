@@ -143,7 +143,12 @@ export function EnablePushCard() {
     setError(null);
 
     try {
-      const res = await requestPushPermission();
+      const res = await Promise.race([
+        requestPushPermission(),
+        new Promise<{ enabled: boolean; subscriptionId?: string | null }>((_, reject) =>
+            setTimeout(() => reject(new Error("Enable timed out. Tap Diagnostics → Collect and paste it here.")), 15000)
+        ),
+        ]);
 
       if (res.enabled && res.subscriptionId) {
         const r = await fetch("/api/push/subscribe", {
