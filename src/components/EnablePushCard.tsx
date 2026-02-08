@@ -13,14 +13,6 @@ type PushStatus = {
   subscriptionId?: string | null;
 };
 
-function statusLabelFrom(status: PushStatus) {
-  if (status.permission === "granted" && status.subscribed) return "Enabled";
-  if (status.permission === "denied") return "Blocked";
-  if (status.permission === "granted" && !status.subscribed)
-    return "Allowed (not subscribed)";
-  return "Not enabled";
-}
-
 function isIOS() {
   if (typeof navigator === "undefined") return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -94,9 +86,9 @@ export function EnablePushCard() {
     }
   }
 
-  const statusLabel = statusLabelFrom(status);
   const ios = isIOS();
   const standalone = isStandalone();
+  const isEnabled = status.permission === "granted" && status.subscribed;
 
   return (
     <div className="aura-grid-gap-12">
@@ -113,14 +105,13 @@ export function EnablePushCard() {
             <ol className="aura-mt-6 aura-muted">
               <li>a. Open Aura in Safari and log in</li>
               <li>b. Tap Share → Add to Home Screen</li>
-              <li>c. An Aura icon will appear on your Home Screen</li>
-              <li>d. Open Aura from the icon and return here</li>
+              <li>c. Open Aura from the Home Screen icon</li>
             </ol>
 
             {ios ? (
               <div className="aura-muted aura-text-xs aura-mt-6">
                 Detected: iPhone ·{" "}
-                {standalone ? "Installed mode" : "Not installed"}
+                {standalone ? "Installed" : "Not installed"}
               </div>
             ) : null}
           </div>
@@ -130,7 +121,6 @@ export function EnablePushCard() {
             <ol className="aura-mt-6 aura-muted">
               <li>a. Open Aura in Chrome and log in</li>
               <li>b. (Optional) Install Aura when prompted</li>
-              <li>c. Return here to enable notifications</li>
             </ol>
           </div>
         </div>
@@ -145,23 +135,12 @@ export function EnablePushCard() {
         <div className="aura-control-row aura-mt-10">
           <div className="aura-control-meta">
             <div className="aura-control-help">
-              Click Enable to allow Aura to send notifications to this device.
-              You will only see the permission prompt after clicking the button.
-            </div>
-
-            <div className="aura-control-help aura-mt-6">
-              Permission:{" "}
-              <span className="aura-muted">{status.permission}</span>
-              {" · "}
-              Subscribed:{" "}
-              <span className="aura-muted">
-                {status.subscribed ? "Yes" : "No"}
-              </span>
+              Click Enable and allow notifications for this device.
             </div>
 
             {status.subscriptionId ? (
               <div className="aura-muted aura-text-xs aura-mt-6">
-                Device ID: {status.subscriptionId}
+                Device registered
               </div>
             ) : null}
           </div>
@@ -170,13 +149,15 @@ export function EnablePushCard() {
             <button
               type="button"
               className="aura-btn"
-              disabled={loading}
+              disabled={loading || isEnabled}
               onClick={enableOnThisDevice}
             >
-              {loading ? "Enabling…" : "Enable"}
+              {loading
+                ? "Enabling…"
+                : isEnabled
+                ? "Enabled"
+                : "Enable"}
             </button>
-
-            <span className="aura-select-pill">{statusLabel}</span>
           </div>
         </div>
       </div>
@@ -190,7 +171,7 @@ export function EnablePushCard() {
         <div className="aura-control-row aura-mt-10">
           <div className="aura-control-meta">
             <div className="aura-control-help">
-              Send a test notification to confirm everything is working.
+              Lock your phone after sending to see the notification.
             </div>
           </div>
 
@@ -198,7 +179,7 @@ export function EnablePushCard() {
             <button
               type="button"
               className="aura-btn aura-btn-subtle"
-              disabled={sendingTest || !status.subscriptionId}
+              disabled={sendingTest || !isEnabled}
               onClick={sendTestPush}
             >
               {sendingTest ? "Sending…" : "Send test notification"}
