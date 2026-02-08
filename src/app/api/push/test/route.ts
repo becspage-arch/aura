@@ -1,8 +1,7 @@
 // src/app/api/push/test/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-
-import { prisma } from "@/lib/prisma"; // adjust if your prisma client path differs
+import { prisma } from "@/lib/prisma";
 
 type Body = {
   title?: string;
@@ -12,7 +11,10 @@ type Body = {
 export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "UNAUTHENTICATED" },
+      { status: 401 }
+    );
   }
 
   const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
@@ -29,7 +31,7 @@ export async function POST(req: Request) {
   try {
     body = (await req.json()) as Body;
   } catch {
-    // ok to default
+    // ok
   }
 
   const title = (body.title || "Aura").trim();
@@ -40,35 +42,39 @@ export async function POST(req: Request) {
     select: { subscriptionId: true },
   });
 
-  const subscriptionIds = subs.map((s) => s.subscriptionId);
-  if (subscriptionIds.length === 0) {
-    return NextResponse.json({ ok: false, error: "NO_SUBSCRIPTIONS" }, { status: 400 });
+  if (subs.length === 0) {
+    return NextResponse.json(
+      { ok: false, error: "NO_SUBSCRIPTIONS" },
+      { status: 400 }
+    );
   }
 
-  // OneSignal Create Message API (push) using include_subscription_ids
-  // Headings recommended for Web Push. :contentReference[oaicite:7]{index=7}
-  const res = await fetch("https://onesignal.com/api/v1/notifications", {
+  const response = await fetch("https://api.onesignal.com/notifications", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
+      Authorization: `Bearer ${ONESIGNAL_REST_API_KEY}`,
     },
     body: JSON.stringify({
       app_id: ONESIGNAL_APP_ID,
-      include_subscription_ids: subscriptionIds,
+      target_channel: "push",
+      include_subscription_ids: subs.map((s) => s.subscriptionId),
       headings: { en: title },
       contents: { en: message },
-      // Optional: open a specific page
-      url: "https://tradeaura.net/app", // tweak if your real route differs
-      isAnyWeb: true,
+      url: "https://tradeaura.net/app",
     }),
   });
 
-  const data = await res.json().catch(() => ({} as unknown));
+  const data = await response.json();
 
-  if (!res.ok) {
+  if (!response.ok) {
     return NextResponse.json(
-      { ok: false, error: "ONESIGNAL_ERROR", status: res.status, data },
+      {
+        ok: false,
+        error: "ONESIGNAL_ERROR",
+        status: response.status,
+        data,
+      },
       { status: 500 }
     );
   }
