@@ -552,8 +552,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       customTag: input.customTag ?? null,
     };
 
-    const isLong = side === 0;
-
     const slAbs =
       stopLossTicks != null && Number.isFinite(stopLossTicks)
         ? Math.floor(Math.abs(stopLossTicks))
@@ -566,14 +564,14 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
 
     if (slAbs != null && slAbs > 0) {
       body.stopLossBracket = {
-        ticks: isLong ? -slAbs : slAbs,
+        ticks: slAbs,
         type: 4,
       };
     }
 
     if (tpAbs != null && tpAbs > 0) {
       body.takeProfitBracket = {
-        ticks: isLong ? tpAbs : -tpAbs,
+        ticks: tpAbs,
         type: 1,
       };
     }
