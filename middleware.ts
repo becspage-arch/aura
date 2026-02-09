@@ -25,7 +25,10 @@ export default clerkMiddleware((auth, req) => {
   if (
     pathname === "/OneSignalSDKWorker.js" ||
     pathname === "/OneSignalSDKUpdaterWorker.js" ||
-    pathname === "/manifest.json"
+    pathname === "/manifest.json" ||
+    pathname.startsWith("/icons/") ||
+    pathname === "/favicon.ico" ||
+    pathname.startsWith("/favicon") // keep your existing
   ) {
     return NextResponse.next();
   }

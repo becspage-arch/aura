@@ -57,6 +57,7 @@ type Diag = {
 
   fetchWorker?: FetchDiag;
   fetchManifest?: FetchDiag;
+  fetchIcon192?: FetchDiag;
 
   swRegisterAttempt?: {
     ok: boolean;
@@ -211,15 +212,12 @@ async function collectDiagnostics(extra?: {
       ? String((window as any).Notification.permission)
       : "Notification API missing";
 
-  const oneSignalAny =
-    typeof window !== "undefined" ? (window as any).OneSignal : undefined;
+  const oneSignalAny = typeof window !== "undefined" ? (window as any).OneSignal : undefined;
 
   const auraInitMarker =
     typeof window !== "undefined" ? (window as any).__auraOneSignalInit : null;
 
-  const oneSignalGlobalType = Array.isArray(oneSignalAny)
-    ? "array(queue)"
-    : typeof oneSignalAny;
+  const oneSignalGlobalType = Array.isArray(oneSignalAny) ? "array(queue)" : typeof oneSignalAny;
 
   const oneSignalHasUserModel =
     !!oneSignalAny &&
@@ -264,9 +262,10 @@ async function collectDiagnostics(extra?: {
     errors.push(`SW registrations error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  const [fetchWorker, fetchManifest, oneSignalLive] = await Promise.all([
+  const [fetchWorker, fetchManifest, fetchIcon192, oneSignalLive] = await Promise.all([
     safeFetchDiag("/OneSignalSDKWorker.js"),
     safeFetchDiag("/manifest.json"),
+    safeFetchDiag("/icons/icon-192.png"),
     readOneSignalLive(),
   ]);
 
@@ -286,6 +285,7 @@ async function collectDiagnostics(extra?: {
     swRegistrations,
     fetchWorker,
     fetchManifest,
+    fetchIcon192,
     swRegisterAttempt: extra?.swRegisterAttempt,
     oneSignalLive,
     errors,
