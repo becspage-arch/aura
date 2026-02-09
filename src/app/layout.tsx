@@ -33,11 +33,21 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#0b0b0b" />
 
+        {/* iOS PWA REQUIRED */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
+        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
+        {/* OneSignal SDK */}
         <Script
           src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
           strategy="afterInteractive"
         />
       </head>
+
       <body className={`${inter.variable} ${geistMono.variable} aura-body`}>
         <ClerkProvider afterSignInUrl="/app" afterSignUpUrl="/app">
           <ThemeProvider>{children}</ThemeProvider>

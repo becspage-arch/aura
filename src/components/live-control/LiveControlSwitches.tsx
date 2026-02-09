@@ -2,6 +2,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ManualOrderButton } from "@/app/components/ManualOrderButton";
+
 
 type PauseGetResponse = {
   ok: true;
@@ -174,6 +176,7 @@ export function LiveControlSwitches() {
               </div>
               <div className="aura-control-help">
                 Prevents new trades. Data still runs.
+                <ManualOrderButton />
               </div>
             </div>
 
