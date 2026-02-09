@@ -2,11 +2,12 @@
 "use client";
 
 import { useEffect } from "react";
-import { ensureOneSignalLoaded } from "@/lib/onesignal/client";
 
 export function OneSignalInit() {
   useEffect(() => {
-    ensureOneSignalLoaded().catch(() => {});
+    // OneSignal v16 loads/initializes via the global OneSignalDeferred queue.
+    // We do NOT call ensureOneSignalLoaded here because your client.ts does not export it.
+    // This component is intentionally a no-op to avoid build/runtime issues.
   }, []);
 
   return null;

@@ -220,34 +220,45 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     }
 
     const accounts = json?.accounts ?? [];
-    console.log(
-      "[projectx-adapter] accounts returned",
-      JSON.stringify(
-        accounts.map(a => ({
-          id: a.id,
-          name: a.name,
-          balance: a.balance,
-          canTrade: a.canTrade,
-          isVisible: a.isVisible,
-          simulated: a.simulated,
-        })),
-        null,
-        2
-      )
-    );
 
-    const preferredName = process.env.PROJECTX_ACCOUNT_NAME?.trim();
-    const preferredIdRaw = process.env.PROJECTX_ACCOUNT_ID?.trim();
+    const preferredName = process.env.PROJECTX_ACCOUNT_NAME?.trim() || null;
+    const preferredIdRaw = process.env.PROJECTX_ACCOUNT_ID?.trim() || null;
     const preferredId = preferredIdRaw ? Number(preferredIdRaw) : null;
+
+    // Helpful debug: log what we actually received (safe subset).
+    console.log("[projectx-adapter] account search accounts", {
+      count: accounts.length,
+      accounts: accounts.map((a) => ({
+        id: a.id,
+        name: a.name,
+        canTrade: a.canTrade,
+        isVisible: a.isVisible,
+        simulated: a.simulated,
+        balance: a.balance,
+      })),
+    });
 
     const preferredById =
       typeof preferredId === "number" && Number.isFinite(preferredId)
-        ? accounts.find((a) => a.id === preferredId)
+        ? accounts.find((a) => a.id === preferredId) ?? null
         : null;
 
     const preferredByName = preferredName
-      ? accounts.find((a) => a.name === preferredName)
+      ? accounts.find((a) => a.name === preferredName) ?? null
       : null;
+
+    // STRICT MODE:
+    // If user specified an account name/id, we MUST match it or refuse to run.
+    if (preferredIdRaw && !preferredById) {
+      throw new Error(
+        `ProjectX account selection failed: PROJECTX_ACCOUNT_ID=${preferredIdRaw} not found in active accounts`
+      );
+    }
+    if (preferredName && !preferredByName) {
+      throw new Error(
+        `ProjectX account selection failed: PROJECTX_ACCOUNT_NAME="${preferredName}" not found in active accounts`
+      );
+    }
 
     const selected =
       preferredById ??
@@ -260,18 +271,12 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     this.accountName = selected?.name ?? null;
     this.accountSimulated = selected?.simulated ?? null;
 
-    console.log("[projectx-adapter] account search", {
-      status: res.status,
-      ok: res.ok,
-      success: json?.success,
-      errorCode: json?.errorCode,
-      errorMessage: json?.errorMessage ?? null,
-      activeAccountsCount: accounts.length,
-      preferredAccountName: preferredName ?? null,
-      preferredAccountId: preferredIdRaw ?? null,
+    console.log("[projectx-adapter] account selected", {
       selectedAccountId: this.accountId,
       selectedAccountName: this.accountName,
       selectedAccountSimulated: this.accountSimulated,
+      preferredAccountName: preferredName,
+      preferredAccountId: preferredIdRaw,
     });
 
     if (!res.ok) {

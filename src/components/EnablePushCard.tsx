@@ -2,11 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  ensureOneSignalLoaded,
-  getPushStatus,
-  requestPushPermission,
-} from "@/lib/onesignal/client";
+import { getPushStatus, requestPushPermission } from "@/lib/onesignal/client";
 import { registerRootServiceWorker } from "@/lib/onesignal/registerServiceWorker";
 
 type PushStatus = {
@@ -48,11 +44,11 @@ type Diag = {
   isStandalone: boolean;
   notificationPermission: string;
 
-  oneSignalGlobalType: string; // "array(queue)" | "object" | "function" | "undefined"
+  oneSignalGlobalType: string;
   oneSignalHasUserModel: boolean;
 
-  oneSignalOptedIn: string; // stringified
-  oneSignalSubscriptionId: string; // stringified
+  oneSignalOptedIn: string;
+  oneSignalSubscriptionId: string;
 
   swSupported: boolean;
   swController: boolean;
@@ -69,9 +65,6 @@ type Diag = {
   };
 
   oneSignalLive?: OneSignalLiveInfo;
-
-  osInitInfo?: any;
-  pushLastChange?: any;
 
   errors: string[];
 };
@@ -122,7 +115,9 @@ async function safeFetchDiag(path: string): Promise<FetchDiag> {
 
 async function readOneSignalLive(): Promise<OneSignalLiveInfo> {
   try {
-    await ensureOneSignalLoaded();
+    if (typeof window === "undefined") {
+      return { ok: false, error: "No window", browserPermission: "unknown" };
+    }
 
     const w = window as any;
     w.OneSignalDeferred = w.OneSignalDeferred || [];
@@ -240,16 +235,11 @@ async function collectDiagnostics(extra?: {
       oneSignalSubscriptionId = "OneSignal not ready (still queue)";
     }
   } catch (e) {
-    errors.push(
-      `OneSignal read error: ${e instanceof Error ? e.message : String(e)}`
-    );
+    errors.push(`OneSignal read error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  const swSupported =
-    typeof navigator !== "undefined" && "serviceWorker" in navigator;
-  const swController = !!(
-    typeof navigator !== "undefined" && navigator.serviceWorker?.controller
-  );
+  const swSupported = typeof navigator !== "undefined" && "serviceWorker" in navigator;
+  const swController = !!(typeof navigator !== "undefined" && navigator.serviceWorker?.controller);
 
   let swRegistrations: { scope: string; scriptURL: string }[] = [];
   try {
@@ -293,12 +283,6 @@ async function collectDiagnostics(extra?: {
     fetchManifest,
     swRegisterAttempt: extra?.swRegisterAttempt,
     oneSignalLive,
-    osInitInfo:
-      typeof window !== "undefined" ? (window as any).__auraOsInitInfo ?? null : null,
-    pushLastChange:
-      typeof window !== "undefined"
-        ? (window as any).__auraPushLastChange ?? null
-        : null,
     errors,
   };
 }
@@ -326,12 +310,7 @@ export function EnablePushCard() {
   }
 
   useEffect(() => {
-    ensureOneSignalLoaded()
-      .catch(() => {})
-      .finally(() => {
-        refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)));
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   async function enableOnThisDevice() {
@@ -359,15 +338,7 @@ export function EnablePushCard() {
       const res = await Promise.race([
         requestPushPermission(),
         new Promise<{ enabled: boolean; subscriptionId?: string | null }>((_, reject) =>
-          setTimeout(
-            () =>
-              reject(
-                new Error(
-                  "Enable timed out. Tap Diagnostics → Collect and paste it here."
-                )
-              ),
-            20000
-          )
+          setTimeout(() => reject(new Error("Enable timed out.")), 20000)
         ),
       ]);
 
@@ -418,7 +389,6 @@ export function EnablePushCard() {
 
   const ios = isIOS();
   const standalone = isStandalone();
-
   const isEnabled = status.permission === "granted" && !!status.subscriptionId;
 
   const diagText = useMemo(() => {
