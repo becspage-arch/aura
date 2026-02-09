@@ -109,6 +109,7 @@ async function main() {
 
   await startAblyExecListener({
     ablyApiKey: ablyKey,
+    clerkUserId: expectedClerkUserId,
     log: (msg, extra) => console.log(msg, extra ?? ""),
     placeManualBracket: async (p) => {
       if (!brokerRef) {
