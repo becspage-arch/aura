@@ -58,6 +58,52 @@ async function waitForSubscriptionId(OneSignal: any, timeoutMs: number) {
 
 export async function requestPushPermission() {
   return await withOneSignal(async (OneSignal) => {
+    // Listen for the moment iOS actually provides token/id
+    const sub = OneSignal?.User?.PushSubscription;
+    if (!sub?.addEventListener) {
+      throw new Error("OneSignal PushSubscription listener not available");
+    }
+
+    let done = false;
+
+    const waitForRealSubscription = new Promise<{ enabled: boolean; subscriptionId: string | null }>(
+      (resolve) => {
+        const onChange = (event: any) => {
+          const id = event?.current?.id ? String(event.current.id) : null;
+          const token = event?.current?.token ? String(event.current.token) : null;
+
+          // We care about ID. Token is nice to see in diagnostics.
+          if (id && !done) {
+            done = true;
+            try {
+              sub.removeEventListener?.("change", onChange);
+            } catch {
+              // ignore
+            }
+            resolve({ enabled: true, subscriptionId: id });
+          }
+
+          // Optional: if you want, you can console.log token/id here for debugging
+          // console.log("[OneSignal] sub change", { id, token, optedIn: event?.current?.optedIn });
+        };
+
+        sub.addEventListener("change", onChange);
+
+        // Safety timeout: return enabled but null id if never arrives
+        setTimeout(() => {
+          if (!done) {
+            done = true;
+            try {
+              sub.removeEventListener?.("change", onChange);
+            } catch {
+              // ignore
+            }
+            resolve({ enabled: browserPermission() === "granted", subscriptionId: null });
+          }
+        }, 90000); // 90s for iOS
+      }
+    );
+
     // 1) Ask browser permission (must be from a user click)
     await OneSignal.Notifications.requestPermission();
 
@@ -65,17 +111,11 @@ export async function requestPushPermission() {
     const enabled = perm === "granted";
     if (!enabled) return { enabled: false, subscriptionId: null };
 
-    // 2) Ensure OneSignal subscription is opted in
-    try {
-      await OneSignal.User.PushSubscription.optIn();
-    } catch {
-      // ignore
-    }
+    // 2) Do NOT force optIn here. On iOS it can mark optedIn=true even before token/id exists.
+    // Let the subscription change event tell us when the token/id actually arrives.
 
-    // 3) Wait for subscription id (iOS can be slow)
-    const subscriptionId = await waitForSubscriptionId(OneSignal, 30000);
-
-    return { enabled: true, subscriptionId };
+    // 3) Wait for real subscription id via the official listener
+    return await waitForRealSubscription;
   });
 }
 
