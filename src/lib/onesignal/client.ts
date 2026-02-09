@@ -4,12 +4,6 @@
 declare global {
   interface Window {
     OneSignalDeferred?: any[];
-    OneSignal?: any;
-    __auraOneSignalInited?: boolean;
-
-    // for diagnostics
-    __auraOsInitInfo?: any;
-    __auraPushLastChange?: any;
   }
 }
 
@@ -17,112 +11,45 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export function getOneSignalAppId() {
-  return (process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || "").trim();
-}
-
-/**
- * Safari Web ID is ONLY needed for legacy Safari Web Push (mostly macOS Safari legacy).
- * Do NOT require it for iOS PWA web push.
- */
-export function getOneSignalSafariWebId() {
-  return (process.env.NEXT_PUBLIC_ONESIGNAL_SAFARI_WEB_ID || "").trim();
-}
-
 function browserPermission(): string {
   if (typeof window === "undefined") return "unknown";
   return (window.Notification?.permission || "unknown").toString();
 }
 
-function safeJson(obj: any) {
-  try {
-    return JSON.parse(JSON.stringify(obj));
-  } catch {
-    return String(obj);
-  }
-}
-
-export async function ensureOneSignalLoaded() {
-  if (typeof window === "undefined") return;
-
-  const appId = getOneSignalAppId();
-  if (!appId) throw new Error("NEXT_PUBLIC_ONESIGNAL_APP_ID missing");
-
-  // safariWebId is optional
-  const safariWebId = getOneSignalSafariWebId();
+async function withOneSignal<T>(fn: (OneSignal: any) => Promise<T>): Promise<T> {
+  if (typeof window === "undefined") throw new Error("OneSignal unavailable on server");
 
   window.OneSignalDeferred = window.OneSignalDeferred || [];
 
-  if (window.__auraOneSignalInited) return;
-  window.__auraOneSignalInited = true;
-
-  window.OneSignalDeferred.push(async function (OneSignal: any) {
-    const initConfig: any = {
-      appId,
-      serviceWorkerPath: "/OneSignalSDKWorker.js",
-      serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
-      notifyButton: { enable: false },
-      allowLocalhostAsSecureOrigin: true,
-    };
-
-    // Only include if set
-    if (safariWebId) initConfig.safariWebId = safariWebId;
-
-    await OneSignal.init(initConfig);
-
-    // Capture baseline init info for diagnostics
-    try {
-      const isPushSupported = await OneSignal.Notifications.isPushSupported();
-      const osPermission = await OneSignal.Notifications.permission;
-      window.__auraOsInitInfo = {
-        initialized: OneSignal.initialized,
-        isPushSupported,
-        osPermission,
-        browserPermission: browserPermission(),
-        onesignalId: OneSignal?.User?.onesignalId ?? null,
-        subId:
-          OneSignal?.User?.PushSubscription?.id ??
-          OneSignal?.User?.PushSubscription?.getId?.() ??
-          null,
-        token:
-          OneSignal?.User?.PushSubscription?.token ??
-          OneSignal?.User?.PushSubscription?.getToken?.() ??
-          null,
-      };
-    } catch (e) {
-      window.__auraOsInitInfo = { error: e instanceof Error ? e.message : String(e) };
-    }
-
-    // Listen for subscription changes
-    try {
-      OneSignal.User.PushSubscription.addEventListener("change", (event: any) => {
-        window.__auraPushLastChange = safeJson({
-          previous: event?.previous,
-          current: event?.current,
-        });
-      });
-    } catch (e) {
-      window.__auraPushLastChange = { error: e instanceof Error ? e.message : String(e) };
-    }
+  return await new Promise<T>((resolve, reject) => {
+    window.OneSignalDeferred!.push(async (OneSignal: any) => {
+      try {
+        const result = await fn(OneSignal);
+        resolve(result);
+      } catch (e) {
+        reject(e);
+      }
+    });
   });
-
-  await sleep(0);
 }
 
-async function waitForId(OneSignal: any, timeoutMs: number) {
+async function waitForSubscriptionId(OneSignal: any, timeoutMs: number) {
   const started = Date.now();
 
-  const getIdNow = () =>
-    OneSignal?.User?.PushSubscription?.id ??
-    OneSignal?.User?.PushSubscription?.getId?.() ??
-    null;
+  const readId = () => {
+    const id =
+      OneSignal?.User?.PushSubscription?.id ??
+      OneSignal?.User?.PushSubscription?.getId?.() ??
+      null;
+    return id ? String(id) : null;
+  };
 
-  const existing = getIdNow();
-  if (existing) return String(existing);
+  const existing = readId();
+  if (existing) return existing;
 
   while (Date.now() - started < timeoutMs) {
-    const id = getIdNow();
-    if (id) return String(id);
+    const id = readId();
+    if (id) return id;
     await sleep(250);
   }
 
@@ -130,58 +57,43 @@ async function waitForId(OneSignal: any, timeoutMs: number) {
 }
 
 export async function requestPushPermission() {
-  await ensureOneSignalLoaded();
+  return await withOneSignal(async (OneSignal) => {
+    // 1) Ask browser permission (must be from a user click)
+    await OneSignal.Notifications.requestPermission();
 
-  return await new Promise<{ enabled: boolean; subscriptionId?: string | null }>((resolve) => {
-    window.OneSignalDeferred!.push(async function (OneSignal: any) {
-      // 1) request browser permission (must be user-initiated)
-      await OneSignal.Notifications.requestPermission();
+    const perm = browserPermission();
+    const enabled = perm === "granted";
+    if (!enabled) return { enabled: false, subscriptionId: null };
 
-      const perm = browserPermission();
-      const enabled = perm === "granted";
+    // 2) Ensure OneSignal subscription is opted in
+    try {
+      await OneSignal.User.PushSubscription.optIn();
+    } catch {
+      // ignore
+    }
 
-      if (!enabled) {
-        resolve({ enabled: false, subscriptionId: null });
-        return;
-      }
+    // 3) Wait for subscription id (iOS can be slow)
+    const subscriptionId = await waitForSubscriptionId(OneSignal, 30000);
 
-      // 2) opt-in
-      try {
-        await OneSignal.User.PushSubscription.optIn();
-      } catch {
-        // ignore
-      }
-
-      // 3) wait for subscription id (iOS can take a bit)
-      const subscriptionId = await waitForId(OneSignal, 30000);
-
-      resolve({ enabled: true, subscriptionId });
-    });
+    return { enabled: true, subscriptionId };
   });
 }
 
 export async function getPushStatus() {
-  await ensureOneSignalLoaded();
+  return await withOneSignal(async (OneSignal) => {
+    const permission = browserPermission();
 
-  return await new Promise<{
-    permission: string;
-    subscribed: boolean;
-    subscriptionId?: string | null;
-  }>((resolve) => {
-    window.OneSignalDeferred!.push(async function (OneSignal: any) {
-      const permission = browserPermission();
+    const subscribed = !!OneSignal?.User?.PushSubscription?.optedIn;
 
-      const optedIn = !!OneSignal?.User?.PushSubscription?.optedIn;
-      const id =
-        OneSignal?.User?.PushSubscription?.id ??
-        OneSignal?.User?.PushSubscription?.getId?.() ??
-        null;
+    const id =
+      OneSignal?.User?.PushSubscription?.id ??
+      OneSignal?.User?.PushSubscription?.getId?.() ??
+      null;
 
-      resolve({
-        permission,
-        subscribed: optedIn && !!id,
-        subscriptionId: id ? String(id) : null,
-      });
-    });
+    return {
+      permission,
+      subscribed,
+      subscriptionId: id ? String(id) : null,
+    };
   });
 }
