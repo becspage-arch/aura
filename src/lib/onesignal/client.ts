@@ -55,21 +55,20 @@ export async function ensureOneSignalLoaded() {
   window.OneSignalDeferred.push(async function (OneSignal: any) {
     await OneSignal.init({
       appId,
-      safariWebId,
+      // IMPORTANT: correct key name for Safari
+      safari_web_id: safariWebId,
+
       serviceWorkerPath: "/OneSignalSDKWorker.js",
       serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
+
       notifyButton: { enable: false },
       allowLocalhostAsSecureOrigin: true,
     });
 
-    try {
-      await OneSignal.Notifications.isPushSupported();
-    } catch {}
-
-    // Capture baseline init info for diagnostics
+    // Capture baseline init info
     try {
       const isPushSupported = await OneSignal.Notifications.isPushSupported();
-      const osPermission = await OneSignal.Notifications.permission; // OneSignal’s own permission state
+      const osPermission = await OneSignal.Notifications.permission;
       window.__auraOsInitInfo = {
         initialized: OneSignal.initialized,
         isPushSupported,
@@ -83,7 +82,7 @@ export async function ensureOneSignalLoaded() {
       window.__auraOsInitInfo = { error: e instanceof Error ? e.message : String(e) };
     }
 
-    // Recommended: listen for subscription changes
+    // Listen for subscription changes
     try {
       OneSignal.User.PushSubscription.addEventListener("change", (event: any) => {
         window.__auraPushLastChange = safeJson({
@@ -96,33 +95,22 @@ export async function ensureOneSignalLoaded() {
     }
   });
 
-  // allow the pushed init callback to run
   await sleep(0);
 }
 
 async function waitForIdViaListener(OneSignal: any, timeoutMs: number) {
   const started = Date.now();
 
-  // quick check first
   const existing = OneSignal?.User?.PushSubscription?.id;
   if (existing) return String(existing);
 
   return await new Promise<string | null>((resolve) => {
     let done = false;
 
-    const stop = () => {
-      done = true;
-      try {
-        OneSignal?.User?.PushSubscription?.removeEventListener?.("change", onChange);
-      } catch {
-        // ignore
-      }
-    };
-
     const onChange = (event: any) => {
       const id = event?.current?.id;
       if (id) {
-        stop();
+        done = true;
         resolve(String(id));
       }
     };
@@ -130,20 +118,19 @@ async function waitForIdViaListener(OneSignal: any, timeoutMs: number) {
     try {
       OneSignal.User.PushSubscription.addEventListener("change", onChange);
     } catch {
-      // if removeEventListener isn't supported in this build, we still resolve by timeout/poll
+      //
     }
 
     const tick = async () => {
       while (!done && Date.now() - started < timeoutMs) {
         const id = OneSignal?.User?.PushSubscription?.id;
         if (id) {
-          stop();
+          done = true;
           resolve(String(id));
           return;
         }
         await sleep(250);
       }
-      stop();
       resolve(null);
     };
 
@@ -156,7 +143,6 @@ export async function requestPushPermission() {
 
   return await new Promise<{ enabled: boolean; subscriptionId?: string | null }>((resolve) => {
     window.OneSignalDeferred!.push(async function (OneSignal: any) {
-      // 1) request browser permission
       await OneSignal.Notifications.requestPermission();
 
       const perm = browserPermission();
@@ -167,14 +153,12 @@ export async function requestPushPermission() {
         return;
       }
 
-      // 2) opt-in with OneSignal
       try {
         await OneSignal.User.PushSubscription.optIn();
       } catch {
         // ignore
       }
 
-      // 3) wait for subscription id via listener (more reliable on iOS)
       const subscriptionId = await waitForIdViaListener(OneSignal, 30000);
 
       resolve({ enabled: true, subscriptionId });
@@ -192,7 +176,6 @@ export async function getPushStatus() {
   }>((resolve) => {
     window.OneSignalDeferred!.push(async function (OneSignal: any) {
       const permission = browserPermission();
-
       const subscribed = !!OneSignal?.User?.PushSubscription?.optedIn;
       const subscriptionId = OneSignal?.User?.PushSubscription?.id
         ? String(OneSignal.User.PushSubscription.id)
