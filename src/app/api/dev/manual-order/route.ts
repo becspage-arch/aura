@@ -24,7 +24,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // IMPORTANT: this must match the worker's AURA_CLERK_USER_ID
     const clerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
     if (!clerkUserId) {
       return NextResponse.json(
@@ -33,7 +32,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // IMPORTANT: must match worker MANUAL_EXEC_TOKEN
     const manualToken = (process.env.MANUAL_EXEC_TOKEN || "").trim();
     if (!manualToken) {
       return NextResponse.json(
@@ -41,14 +39,6 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
-
-    const ably = new Ably.Realtime({ key: ablyKey });
-    await new Promise<void>((resolve, reject) => {
-      ably.connection.on("connected", () => resolve());
-      ably.connection.on("failed", () => reject(new Error("Ably connection failed")));
-    });
-
-    const ch = ably.channels.get(`aura:exec:${clerkUserId}`);
 
     const payload = {
       token: manualToken,
@@ -60,9 +50,12 @@ export async function POST(req: Request) {
       takeProfitTicks,
     };
 
-    await ch.publish("exec.manual_bracket", payload);
-
-    ably.close();
+    // ✅ REST publish - no hanging serverless connections
+    const ably = new Ably.Rest({ key: ablyKey });
+    await ably.channels.get(`aura:exec:${clerkUserId}`).publish(
+      "exec.manual_bracket",
+      payload
+    );
 
     return NextResponse.json({
       ok: true,
