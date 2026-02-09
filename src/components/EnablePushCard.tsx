@@ -3,9 +3,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ensureOneSignalLoaded,
   getPushStatus,
   requestPushPermission,
-  ensureOneSignalLoaded,
 } from "@/lib/onesignal/client";
 import { registerRootServiceWorker } from "@/lib/onesignal/registerServiceWorker";
 
@@ -68,10 +68,8 @@ type Diag = {
     error?: string;
   };
 
-  // NEW: live OneSignal read at the moment diagnostics are collected
   oneSignalLive?: OneSignalLiveInfo;
 
-  // still keep these (may or may not be populated)
   osInitInfo?: any;
   pushLastChange?: any;
 
@@ -157,26 +155,28 @@ async function readOneSignalLive(): Promise<OneSignalLiveInfo> {
           }
 
           try {
-            info.subscriptionId = OneSignal?.User?.PushSubscription?.id
-              ? String(OneSignal.User.PushSubscription.id)
-              : null;
+            const subId =
+              OneSignal?.User?.PushSubscription?.id ??
+              OneSignal?.User?.PushSubscription?.getId?.() ??
+              null;
+            info.subscriptionId = subId ? String(subId) : null;
           } catch {
             info.subscriptionId = null;
           }
 
           try {
-            info.token = OneSignal?.User?.PushSubscription?.token
-              ? String(OneSignal.User.PushSubscription.token)
-              : null;
+            const tok =
+              OneSignal?.User?.PushSubscription?.token ??
+              OneSignal?.User?.PushSubscription?.getToken?.() ??
+              null;
+            info.token = tok ? String(tok) : null;
           } catch {
             info.token = null;
           }
 
           try {
-            info.optedIn =
-              typeof OneSignal?.User?.PushSubscription?.optedIn === "boolean"
-                ? OneSignal.User.PushSubscription.optedIn
-                : null;
+            const oi = OneSignal?.User?.PushSubscription?.optedIn;
+            info.optedIn = typeof oi === "boolean" ? oi : null;
           } catch {
             info.optedIn = null;
           }
@@ -215,7 +215,8 @@ async function collectDiagnostics(extra?: {
       ? String((window as any).Notification.permission)
       : "Notification API missing";
 
-  const oneSignalAny = typeof window !== "undefined" ? (window as any).OneSignal : undefined;
+  const oneSignalAny =
+    typeof window !== "undefined" ? (window as any).OneSignal : undefined;
 
   const oneSignalGlobalType = Array.isArray(oneSignalAny)
     ? "array(queue)"
@@ -239,11 +240,16 @@ async function collectDiagnostics(extra?: {
       oneSignalSubscriptionId = "OneSignal not ready (still queue)";
     }
   } catch (e) {
-    errors.push(`OneSignal read error: ${e instanceof Error ? e.message : String(e)}`);
+    errors.push(
+      `OneSignal read error: ${e instanceof Error ? e.message : String(e)}`
+    );
   }
 
-  const swSupported = typeof navigator !== "undefined" && "serviceWorker" in navigator;
-  const swController = !!(typeof navigator !== "undefined" && navigator.serviceWorker?.controller);
+  const swSupported =
+    typeof navigator !== "undefined" && "serviceWorker" in navigator;
+  const swController = !!(
+    typeof navigator !== "undefined" && navigator.serviceWorker?.controller
+  );
 
   let swRegistrations: { scope: string; scriptURL: string }[] = [];
   try {
@@ -286,12 +292,13 @@ async function collectDiagnostics(extra?: {
     fetchWorker,
     fetchManifest,
     swRegisterAttempt: extra?.swRegisterAttempt,
-
     oneSignalLive,
-
-    osInitInfo: typeof window !== "undefined" ? (window as any).__auraOsInitInfo ?? null : null,
-    pushLastChange: typeof window !== "undefined" ? (window as any).__auraPushLastChange ?? null : null,
-
+    osInitInfo:
+      typeof window !== "undefined" ? (window as any).__auraOsInitInfo ?? null : null,
+    pushLastChange:
+      typeof window !== "undefined"
+        ? (window as any).__auraPushLastChange ?? null
+        : null,
     errors,
   };
 }
@@ -324,6 +331,7 @@ export function EnablePushCard() {
       .finally(() => {
         refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)));
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function enableOnThisDevice() {
@@ -333,7 +341,6 @@ export function EnablePushCard() {
     let swAttempt: Diag["swRegisterAttempt"] | undefined;
 
     try {
-      // 0) Explicit SW register
       try {
         const reg = await registerRootServiceWorker();
         swAttempt = {
@@ -349,12 +356,16 @@ export function EnablePushCard() {
         swAttempt = { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
 
-      // 1) OneSignal permission + opt-in
       const res = await Promise.race([
         requestPushPermission(),
         new Promise<{ enabled: boolean; subscriptionId?: string | null }>((_, reject) =>
           setTimeout(
-            () => reject(new Error("Enable timed out. Tap Diagnostics → Collect and paste it here.")),
+            () =>
+              reject(
+                new Error(
+                  "Enable timed out. Tap Diagnostics → Collect and paste it here."
+                )
+              ),
             20000
           )
         ),
