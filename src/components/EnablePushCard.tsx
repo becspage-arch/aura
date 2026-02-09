@@ -93,6 +93,13 @@ type Diag = {
   swController: boolean;
   swRegistrations: { scope: string; scriptURL: string; state?: string }[];
 
+  swRegisterAttempt?: {
+    ok: boolean;
+    scope?: string;
+    scriptURL?: string;
+    error?: string;
+  };
+
   // fetch checks
   fetchWorker?: FetchDiag;
   fetchUpdaterWorker?: FetchDiag;
