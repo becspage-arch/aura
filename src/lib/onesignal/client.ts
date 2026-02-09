@@ -1,3 +1,4 @@
+// src/lib/onesignal/client.ts
 "use client";
 
 declare global {
@@ -26,7 +27,7 @@ function browserPermission(): string {
 }
 
 /**
- * v16 init uses OneSignalDeferred, NOT OneSignal.push(...)
+ * v16 init uses OneSignalDeferred
  */
 export async function ensureOneSignalLoaded() {
   if (typeof window === "undefined") return;
@@ -45,18 +46,23 @@ export async function ensureOneSignalLoaded() {
   window.OneSignalDeferred.push(async function (OneSignal: any) {
     await OneSignal.init({
       appId,
-      safari_web_id: safariWebId,
 
-      // Important: use the standard filenames OneSignal expects
+      // ✅ v16 key (NOT safari_web_id)
+      safariWebId,
+
+      // ✅ keep explicit SW paths
       serviceWorkerPath: "/OneSignalSDKWorker.js",
       serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
 
       notifyButton: { enable: false },
 
-      // ok for local dev only
+      // local dev only
       allowLocalhostAsSecureOrigin: true,
     });
   });
+
+  // Wait a tick so the init handler can run in the same session
+  await sleep(0);
 }
 
 async function readSubscriptionId(OneSignal: any): Promise<string | null> {
@@ -85,13 +91,21 @@ export async function requestPushPermission() {
   return await new Promise<{ enabled: boolean; subscriptionId?: string | null }>(
     (resolve) => {
       window.OneSignalDeferred!.push(async function (OneSignal: any) {
+        // Ensure init fully applied before we prompt
+        // (important for iOS PWA)
+        try {
+          await OneSignal.login?.("anon"); // harmless; ensures user model ready if supported
+        } catch {
+          // ignore
+        }
+
         // 1) Ask browser permission
         await OneSignal.Notifications.requestPermission();
 
         const perm = browserPermission();
         const enabled = perm === "granted";
 
-        // 2) If granted, opt-in at OneSignal level
+        // 2) Opt-in at OneSignal level
         if (enabled) {
           try {
             await OneSignal.User.PushSubscription.optIn();
@@ -100,8 +114,8 @@ export async function requestPushPermission() {
           }
         }
 
-        // 3) Wait for real id to exist
-        const subscriptionId = enabled ? await waitForSubscriptionId(OneSignal, 10000) : null;
+        // 3) Wait for real id
+        const subscriptionId = enabled ? await waitForSubscriptionId(OneSignal, 15000) : null;
 
         resolve({ enabled, subscriptionId });
       });
