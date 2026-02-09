@@ -2,7 +2,6 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Inter, Geist_Mono } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 
@@ -29,10 +28,7 @@ export default function RootLayout({
   const appId = (process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || "").trim();
   const safariWebId = (process.env.NEXT_PUBLIC_ONESIGNAL_SAFARI_WEB_ID || "").trim();
 
-  // IMPORTANT:
-  // - init MUST run in <head>
-  // - iOS web push does NOT require safari_web_id, but Safari (macOS legacy) can.
-  // - So we include safari_web_id only if it exists.
+  // Hard fail early if appId missing (silent failures waste days)
   const initObject = {
     appId,
     ...(safariWebId ? { safari_web_id: safariWebId } : {}),
@@ -41,16 +37,33 @@ export default function RootLayout({
     notifyButton: { enable: false },
   };
 
+  // Plain scripts (no next/script) to eliminate App Router script timing issues.
+  // Also set a marker so your in-app diagnostics can prove init actually ran.
   const initInline = `
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    OneSignalDeferred.push(async function(OneSignal) {
-      try {
-        await OneSignal.init(${JSON.stringify(initObject)});
-      } catch (e) {
-        console.warn("[OneSignal] init error", e);
-      }
-    });
-  `;
+(function () {
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  window.__auraOneSignalInit = { ran: false, ok: false, error: null, at: null };
+
+  var appId = ${JSON.stringify(appId)};
+  if (!appId) {
+    window.__auraOneSignalInit = { ran: true, ok: false, error: "Missing NEXT_PUBLIC_ONESIGNAL_APP_ID", at: new Date().toISOString() };
+    return;
+  }
+
+  window.OneSignalDeferred.push(async function (OneSignal) {
+    window.__auraOneSignalInit.ran = true;
+    window.__auraOneSignalInit.at = new Date().toISOString();
+
+    try {
+      await OneSignal.init(${JSON.stringify(initObject)});
+      window.__auraOneSignalInit.ok = true;
+    } catch (e) {
+      window.__auraOneSignalInit.ok = false;
+      window.__auraOneSignalInit.error = (e && e.message) ? e.message : String(e);
+    }
+  });
+})();
+`;
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -61,16 +74,20 @@ export default function RootLayout({
 
         {/* iOS PWA */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 
-        {/* OneSignal SDK (defer) */}
-        <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer />
+        {/* 1) Create queue + init marker immediately */}
+        <script dangerouslySetInnerHTML={{ __html: initInline }} />
 
-        {/* OneSignal init in HEAD */}
-        <Script id="onesignal-init" strategy="beforeInteractive">
-          {initInline}
-        </Script>
+        {/* 2) Load OneSignal SDK (defer) */}
+        <script
+          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+          defer
+        />
       </head>
 
       <body className={`${inter.variable} ${geistMono.variable} aura-body`}>

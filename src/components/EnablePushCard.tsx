@@ -49,6 +49,7 @@ type Diag = {
 
   oneSignalOptedIn: string;
   oneSignalSubscriptionId: string;
+  auraOneSignalInit?: any;
 
   swSupported: boolean;
   swController: boolean;
@@ -213,6 +214,9 @@ async function collectDiagnostics(extra?: {
   const oneSignalAny =
     typeof window !== "undefined" ? (window as any).OneSignal : undefined;
 
+  const auraInitMarker =
+    typeof window !== "undefined" ? (window as any).__auraOneSignalInit : null;
+
   const oneSignalGlobalType = Array.isArray(oneSignalAny)
     ? "array(queue)"
     : typeof oneSignalAny;
@@ -276,6 +280,7 @@ async function collectDiagnostics(extra?: {
     oneSignalHasUserModel,
     oneSignalOptedIn,
     oneSignalSubscriptionId,
+    auraOneSignalInit: auraInitMarker,
     swSupported,
     swController,
     swRegistrations,
