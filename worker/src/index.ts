@@ -117,40 +117,41 @@ async function main() {
 
   // 6) Start broker feed (and capture broker instance when ready)
   try {
-    await startBrokerFeed({
-      onBrokerReady: (b) => {
-        brokerRef = b;
-        console.log(`[${env.WORKER_NAME}] broker ready for exec`, {
-          name: (b as any)?.name ?? null,
+  await startBrokerFeed({
+    onBrokerReady: (b) => {
+      brokerRef = b;
+      console.log(`[${env.WORKER_NAME}] broker ready for exec`, {
+        name: (b as any)?.name ?? null,
+      });
+    },
+    emitSafe: async (event) => {
+      await brokerChannel.publish(event.name, event);
+
+      if (event.name === "candle.15s.closed" && event.data) {
+        const d: any = event.data;
+
+        await uiChannel.publish("aura", {
+          type: "candle_closed",
+          ts: event.ts,
+          data: {
+            symbol: String(d.contractId),
+            timeframe: "15s",
+            time: Math.floor(Number(d.t0) / 1000),
+            open: Number(d.o),
+            high: Number(d.h),
+            low: Number(d.l),
+            close: Number(d.c),
+          },
         });
-      },
-      emitSafe: async (event) => {
-        await brokerChannel.publish(event.name, event);
+      }
 
-        if (event.name === "candle.15s.closed" && event.data) {
-          const d: any = event.data;
+      console.log(`[${env.WORKER_NAME}] published broker event`, {
+        name: event.name,
+        broker: event.broker,
+      });
+    },
+  });
 
-          await uiChannel.publish("aura", {
-            type: "candle_closed",
-            ts: event.ts,
-            data: {
-              symbol: String(d.contractId),
-              timeframe: "15s",
-              time: Math.floor(Number(d.t0) / 1000),
-              open: Number(d.o),
-              high: Number(d.h),
-              low: Number(d.l),
-              close: Number(d.c),
-            },
-          });
-        }
-
-        console.log(`[${env.WORKER_NAME}] published broker event`, {
-          name: event.name,
-          broker: event.broker,
-        });
-      },
-    });
   } catch (e) {
     console.error(`[${env.WORKER_NAME}] broker start failed`, e);
     process.exit(1);

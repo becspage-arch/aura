@@ -7,6 +7,7 @@ import { startManualExecListener } from "./manualExecListener.js";
 import { startProjectXMarketFeed } from "./projectx/startProjectXMarketFeed.js";
 import { bootstrapStrategy } from "../strategy/bootstrapStrategy.js";
 import { startProjectXUserFeed } from "./projectx/startProjectXUserFeed.js";
+import type { IBrokerAdapter } from "./IBrokerAdapter.js";
 
 console.log("[startBrokerFeed.ts] LOADED", {
   MANUAL_EXEC: process.env.MANUAL_EXEC ?? null,
@@ -242,12 +243,15 @@ async function getStrategySettingsForWorker() {
   };
 }
 
-export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
+export async function startBrokerFeed(params?: {
+  emitSafe?: EmitFn;
+  onBrokerReady?: (broker: IBrokerAdapter) => void;
+}): Promise<void> {
   const broker = createBroker();
 
   const emitSafe = async (event: BrokerEvent) => {
     try {
-      await emit?.(event);
+      await params?.emitSafe?.(event);
     } catch (e) {
       console.error(`[${env.WORKER_NAME}] broker event emit failed`, {
         event,
@@ -306,18 +310,16 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       data: status ?? undefined,
     });
 
+    // IMPORTANT: hand the live broker instance back to index.ts for Ably exec
+    try {
+      params?.onBrokerReady?.(broker as unknown as IBrokerAdapter);
+    } catch (e) {
+      console.warn(`[${env.WORKER_NAME}] onBrokerReady callback failed`, e);
+    }
+
     // ------------------------------------------------------------------
     // MANUAL EXECUTION LISTENER (DEV ONLY)
     // ------------------------------------------------------------------
-    // Allows a one-off manual bracket to be submitted via Ably to prove
-    // that Aura can place real orders on the demo account.
-    //
-    // Guarded by:
-    //   MANUAL_EXEC=1
-    //   MANUAL_EXEC_TOKEN
-    //   AURA_CLERK_USER_ID
-    // ------------------------------------------------------------------
-
     console.log(`[${env.WORKER_NAME}] MANUAL_EXEC_CHECK`, {
       MANUAL_EXEC: process.env.MANUAL_EXEC ?? null,
       manualTokenLen: (process.env.MANUAL_EXEC_TOKEN || "").trim().length,
@@ -352,12 +354,16 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
       const contractId = process.env.PROJECTX_CONTRACT_ID?.trim() || null;
 
       if (!token) {
-        console.warn("[projectx-market] no token available, market hub not started");
+        console.warn(
+          "[projectx-market] no token available, market hub not started"
+        );
         return;
       }
 
       if (!contractId) {
-        console.warn("[projectx-market] PROJECTX_CONTRACT_ID not set, market hub not started");
+        console.warn(
+          "[projectx-market] PROJECTX_CONTRACT_ID not set, market hub not started"
+        );
         return;
       }
 
@@ -394,7 +400,6 @@ export async function startBrokerFeed(emit?: EmitFn): Promise<void> {
         console.error("[projectx-market] failed to start", e);
       }
     }
-
   } catch (e) {
     await emitSafe({
       name: "broker.error",
