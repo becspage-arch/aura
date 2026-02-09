@@ -1,3 +1,5 @@
+// worker/src/broker/projectx/ProjectXBrokerAdapter.ts
+
 import type { IBrokerAdapter } from "../IBrokerAdapter.js";
 
 type ValidateResponse = {
@@ -28,6 +30,16 @@ type PlaceOrderResponse = {
   success?: boolean;
   errorCode?: number;
   errorMessage?: string | null;
+};
+
+type PlaceOrderInput = {
+  contractId: string;
+  side: "buy" | "sell";
+  size: number;
+  type: "market" | "limit" | "stop";
+  limitPrice?: number | null;
+  stopPrice?: number | null;
+  customTag?: string | null;
 };
 
 type PlaceOrderWithBracketsInput = {
@@ -260,7 +272,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     }
   }
 
-  // Proves market-data entitlement + whether "live" vs "sim" matters for your token.
   private async testHistoryBars(): Promise<void> {
     if (!this.token) return;
 
@@ -271,7 +282,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     }
 
     const end = new Date();
-    const start = new Date(end.getTime() - 10 * 60 * 1000); // last 10 minutes
+    const start = new Date(end.getTime() - 10 * 60 * 1000);
 
     const run = async (live: boolean) => {
       const body = {
@@ -279,8 +290,8 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
         live,
         startTime: start.toISOString(),
         endTime: end.toISOString(),
-        unit: 1, // Second
-        unitNumber: 15, // 15-second bars
+        unit: 1,
+        unitNumber: 15,
         limit: 20,
         includePartialBar: true,
       };
@@ -325,7 +336,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     await run(true);
   }
 
-  // Proves whether the contractId exists / is accessible for your token.
   private async testContractAccess(): Promise<void> {
     if (!this.token) return;
 
@@ -356,7 +366,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
 
     const c = json?.contract ?? null;
 
-    // Store contract spec for sizing/risk
     this.contractTickSize =
       typeof c?.tickSize === "number" ? c.tickSize : Number(c?.tickSize ?? NaN);
     if (!Number.isFinite(this.contractTickSize as number)) this.contractTickSize = null;
@@ -385,11 +394,105 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   }
 
   async warmup(): Promise<void> {
-    // Runs before broker.ready is emitted (called by startBrokerFeed if present)
     await this.validateToken();
     await this.fetchActiveAccounts();
     await this.testHistoryBars();
     await this.testContractAccess();
+  }
+
+  /**
+   * ENTRY ONLY: Places MARKET/LIMIT/STOP without ANY brackets fields.
+   * Uses: POST https://api.topstepx.com/api/Order/place
+   */
+  async placeOrder(input: PlaceOrderInput): Promise<{ orderId: number; raw: PlaceOrderResponse }> {
+    if (!this.token) throw new Error("Cannot place order without ProjectX token");
+    if (!this.accountId) throw new Error("Cannot place order without selected ProjectX account");
+
+    const contractId = String(input.contractId || "").trim();
+    if (!contractId) throw new Error("placeOrder: contractId missing");
+
+    const size = Number(input.size);
+    if (!Number.isFinite(size) || size <= 0) {
+      throw new Error(`placeOrder: invalid size ${String(input.size)}`);
+    }
+
+    // OrderType enum: 1=Limit, 2=Market, 4=Stop
+    const orderType = input.type === "limit" ? 1 : input.type === "stop" ? 4 : 2;
+
+    // OrderSide enum: 0=Bid(buy), 1=Ask(sell)
+    const side = input.side === "sell" ? 1 : 0;
+
+    const body: any = {
+      accountId: this.accountId,
+      contractId,
+      type: orderType,
+      side,
+      size,
+      limitPrice: input.limitPrice ?? null,
+      stopPrice: input.stopPrice ?? null,
+      trailPrice: null,
+      customTag: input.customTag ?? null,
+      // IMPORTANT: NO bracket fields here, ever.
+    };
+
+    const requestSummary = {
+      accountId: this.accountId,
+      contractId,
+      type: body.type,
+      side: body.side,
+      size: body.size,
+      limitPrice: body.limitPrice ?? null,
+      stopPrice: body.stopPrice ?? null,
+      customTag: body.customTag ?? null,
+      hasSL: false,
+      hasTP: false,
+    };
+
+    console.log("[projectx-adapter] order.place ENTRY request", requestSummary);
+
+    const res = await fetch("https://api.topstepx.com/api/Order/place", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const text = await res.text();
+    const parsed = parseJsonOrNull(text) as PlaceOrderResponse | null;
+
+    console.log("[projectx-adapter] order.place ENTRY response", {
+      status: res.status,
+      ok: res.ok,
+      success: parsed?.success,
+      errorCode: parsed?.errorCode,
+      errorMessage: parsed?.errorMessage ?? null,
+      orderId: parsed?.orderId ?? null,
+    });
+
+    const failed = !res.ok || !parsed?.success || !parsed?.orderId;
+
+    if (failed) {
+      console.error("[projectx-adapter] order.place ENTRY rejected (full payload)", {
+        request: requestSummary,
+        response: {
+          status: res.status,
+          ok: res.ok,
+          raw: truncate(text, 8000),
+          json: parsed,
+        },
+      });
+
+      throw new Error(
+        `ProjectX Order/place failed (HTTP ${res.status})${
+          parsed?.errorCode != null ? ` code=${parsed.errorCode}` : ""
+        }${parsed?.errorMessage ? ` msg=${parsed.errorMessage}` : ""}`
+      );
+    }
+
+    return { orderId: parsed.orderId, raw: parsed };
   }
 
   /**
@@ -411,16 +514,11 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       throw new Error(`placeOrderWithBrackets: invalid size ${String(input.size)}`);
     }
 
-    // OrderType enum: 1=Limit, 2=Market, 4=Stop
     const orderType = input.type === "limit" ? 1 : input.type === "stop" ? 4 : 2;
-
-    // OrderSide enum: 0=Bid(buy), 1=Ask(sell)
     const side = input.side === "sell" ? 1 : 0;
 
-    const stopLossTicks =
-      input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
-    const takeProfitTicks =
-      input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+    const stopLossTicks = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
+    const takeProfitTicks = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
 
     const body: any = {
       accountId: this.accountId,
@@ -434,14 +532,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       customTag: input.customTag ?? null,
     };
 
-    // Brackets are configured in *signed* ticks for ProjectX.
-    // Convention:
-    // - Long (buy): SL must be negative, TP must be positive
-    // - Short (sell): SL must be positive, TP must be negative
-    //
-    // We accept user/strategy inputs as positive "distance" ticks
-    // and convert here so the rest of Aura can stay intuitive.
-    const isLong = side === 0; // 0=buy, 1=sell
+    const isLong = side === 0;
 
     const slAbs =
       stopLossTicks != null && Number.isFinite(stopLossTicks)
@@ -456,14 +547,14 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     if (slAbs != null && slAbs > 0) {
       body.stopLossBracket = {
         ticks: isLong ? -slAbs : slAbs,
-        type: 4, // Stop
+        type: 4,
       };
     }
 
     if (tpAbs != null && tpAbs > 0) {
       body.takeProfitBracket = {
         ticks: isLong ? tpAbs : -tpAbs,
-        type: 1, // Limit
+        type: 1,
       };
     }
 
@@ -540,7 +631,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
 
     console.log("[projectx-adapter] starting keepalive");
 
-    // warmup() handles initial validate + account selection before broker.ready
     this.lastValidateAtMs = Date.now();
 
     this.keepAliveTimer = setInterval(() => {
