@@ -35,50 +35,92 @@ type OneSignalLiveInfo = {
   subscriptionId?: string | null;
   token?: string | null;
   optedIn?: boolean | null;
+
+  // extra internal reads (best-effort)
+  rawUser?: any;
+  rawPushSub?: any;
+};
+
+type IosPwaInfo = {
+  uaHasIosDevice: boolean;
+  navigatorStandalone?: boolean;
+  displayModeStandalone?: boolean;
+  referrer?: string;
+};
+
+type PermissionInfo = {
+  notificationPermission: string;
+  permissionsApi_supported: boolean;
+  permissionsApi_notifications?: string | null;
+  permissionsApi_push?: string | null;
+};
+
+type StorageInfo = {
+  localStorage_ok: boolean;
+  sessionStorage_ok: boolean;
+  localStorage_error?: string;
+  sessionStorage_error?: string;
+};
+
+type NetworkInfo = {
+  online?: boolean;
+  effectiveType?: string | null;
+  rtt?: number | null;
+  downlink?: number | null;
+  saveData?: boolean | null;
 };
 
 type Diag = {
   pageUrl: string;
   origin: string;
   userAgent: string;
-  isStandalone: boolean;
-  notificationPermission: string;
 
+  isStandalone: boolean;
+  iosPwa: IosPwaInfo;
+
+  permission: PermissionInfo;
+
+  // OneSignal (global + internal)
   oneSignalGlobalType: string;
   oneSignalHasUserModel: boolean;
-
   oneSignalOptedIn: string;
   oneSignalSubscriptionId: string;
   auraOneSignalInit?: any;
   auraPushSubLast?: any;
 
+  // service worker
   swSupported: boolean;
   swController: boolean;
-  swRegistrations: { scope: string; scriptURL: string }[];
+  swRegistrations: { scope: string; scriptURL: string; state?: string }[];
 
+  // fetch checks
   fetchWorker?: FetchDiag;
   fetchUpdaterWorker?: FetchDiag;
   fetchManifest?: FetchDiag;
   fetchIcon192?: FetchDiag;
 
-  swRegisterAttempt?: {
-    ok: boolean;
-    scope?: string;
-    scriptURL?: string;
-    error?: string;
-  };
+  // api probes
+  pingApi?: { ok: boolean; status: number; error?: string };
+  pingOneSignalCdn?: { ok: boolean; status: number; error?: string };
+  pingOneSignalApi?: { ok: boolean; status: number; error?: string };
 
+  // storage/network
+  storage: StorageInfo;
+  network: NetworkInfo;
+
+  // OneSignal live snapshot
   oneSignalLive?: OneSignalLiveInfo;
 
+  // any errors we captured
   errors: string[];
 };
 
-function isIOS() {
+function isIOSDeviceUA(): boolean {
   if (typeof navigator === "undefined") return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
 }
 
-function isStandalone() {
+function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
   if ((window.navigator as any).standalone) return true;
   return window.matchMedia("(display-mode: standalone)").matches;
@@ -115,6 +157,102 @@ async function safeFetchDiag(path: string): Promise<FetchDiag> {
       error: e instanceof Error ? e.message : String(e),
     };
   }
+}
+
+async function ping(url: string): Promise<{ ok: boolean; status: number; error?: string }> {
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      // avoid CORS failures looking like "network down"
+      mode: "no-cors" as RequestMode,
+    });
+
+    // With no-cors, status may be 0 even if it succeeded. Still useful.
+    return { ok: true, status: (res as any).status ?? 0 };
+  } catch (e) {
+    return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function readPermissionsApi(): Promise<PermissionInfo> {
+  const info: PermissionInfo = {
+    notificationPermission: browserPermission(),
+    permissionsApi_supported: false,
+    permissionsApi_notifications: null,
+    permissionsApi_push: null,
+  };
+
+  try {
+    if (typeof navigator === "undefined" || !(navigator as any).permissions?.query) {
+      return info;
+    }
+    info.permissionsApi_supported = true;
+
+    try {
+      const n = await (navigator as any).permissions.query({ name: "notifications" });
+      info.permissionsApi_notifications = n?.state ?? null;
+    } catch {
+      info.permissionsApi_notifications = null;
+    }
+
+    // "push" is not consistently supported on iOS Permissions API
+    try {
+      const p = await (navigator as any).permissions.query({ name: "push" });
+      info.permissionsApi_push = p?.state ?? null;
+    } catch {
+      info.permissionsApi_push = null;
+    }
+
+    return info;
+  } catch {
+    return info;
+  }
+}
+
+function readStorageInfo(): StorageInfo {
+  const out: StorageInfo = {
+    localStorage_ok: false,
+    sessionStorage_ok: false,
+  };
+
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const k = "__aura_ls_test";
+      window.localStorage.setItem(k, "1");
+      window.localStorage.removeItem(k);
+      out.localStorage_ok = true;
+    }
+  } catch (e) {
+    out.localStorage_ok = false;
+    out.localStorage_error = e instanceof Error ? e.message : String(e);
+  }
+
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const k = "__aura_ss_test";
+      window.sessionStorage.setItem(k, "1");
+      window.sessionStorage.removeItem(k);
+      out.sessionStorage_ok = true;
+    }
+  } catch (e) {
+    out.sessionStorage_ok = false;
+    out.sessionStorage_error = e instanceof Error ? e.message : String(e);
+  }
+
+  return out;
+}
+
+function readNetworkInfo(): NetworkInfo {
+  const n: any = typeof navigator !== "undefined" ? (navigator as any) : null;
+  const c: any = n?.connection ?? n?.mozConnection ?? n?.webkitConnection ?? null;
+  return {
+    online: n?.onLine,
+    effectiveType: c?.effectiveType ?? null,
+    rtt: typeof c?.rtt === "number" ? c.rtt : null,
+    downlink: typeof c?.downlink === "number" ? c.downlink : null,
+    saveData: typeof c?.saveData === "boolean" ? c.saveData : null,
+  };
 }
 
 async function readOneSignalLive(): Promise<OneSignalLiveInfo> {
@@ -154,29 +292,25 @@ async function readOneSignalLive(): Promise<OneSignalLiveInfo> {
           }
 
           try {
-            const subId =
-              OneSignal?.User?.PushSubscription?.id ??
-              OneSignal?.User?.PushSubscription?.getId?.() ??
+            const sub =
+              OneSignal?.User?.PushSubscription ??
+              OneSignal?.User?.pushSubscription ??
               null;
+
+            info.rawUser = OneSignal?.User ?? null;
+            info.rawPushSub = sub ?? null;
+
+            const subId = sub?.id ?? sub?.getId?.() ?? null;
             info.subscriptionId = subId ? String(subId) : null;
-          } catch {
-            info.subscriptionId = null;
-          }
 
-          try {
-            const tok =
-              OneSignal?.User?.PushSubscription?.token ??
-              OneSignal?.User?.PushSubscription?.getToken?.() ??
-              null;
+            const tok = sub?.token ?? sub?.getToken?.() ?? null;
             info.token = tok ? String(tok) : null;
-          } catch {
-            info.token = null;
-          }
 
-          try {
-            const oi = OneSignal?.User?.PushSubscription?.optedIn;
+            const oi = sub?.optedIn;
             info.optedIn = typeof oi === "boolean" ? oi : null;
           } catch {
+            info.subscriptionId = null;
+            info.token = null;
             info.optedIn = null;
           }
 
@@ -209,18 +343,20 @@ async function collectDiagnostics(extra?: {
   const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "unknown";
   const standalone = isStandalone();
 
-  const notificationPermission =
-    typeof window !== "undefined" && (window as any).Notification
-      ? String((window as any).Notification.permission)
-      : "Notification API missing";
+  const iosPwa: IosPwaInfo = {
+    uaHasIosDevice: isIOSDeviceUA(),
+    navigatorStandalone: typeof window !== "undefined" ? (window.navigator as any).standalone : undefined,
+    displayModeStandalone: typeof window !== "undefined" ? window.matchMedia("(display-mode: standalone)").matches : undefined,
+    referrer: typeof document !== "undefined" ? document.referrer || "" : "",
+  };
+
+  const permission = await readPermissionsApi();
+  const storage = readStorageInfo();
+  const network = readNetworkInfo();
 
   const oneSignalAny = typeof window !== "undefined" ? (window as any).OneSignal : undefined;
-
-  const auraInitMarker =
-    typeof window !== "undefined" ? (window as any).__auraOneSignalInit : null;
-  
-  const auraPushSubLast =
-    typeof window !== "undefined" ? (window as any).__auraPushSubLast : null;
+  const auraInitMarker = typeof window !== "undefined" ? (window as any).__auraOneSignalInit : null;
+  const auraPushSubLast = typeof window !== "undefined" ? (window as any).__auraPushSubLast : null;
 
   const oneSignalGlobalType = Array.isArray(oneSignalAny) ? "array(queue)" : typeof oneSignalAny;
 
@@ -248,7 +384,7 @@ async function collectDiagnostics(extra?: {
   const swSupported = typeof navigator !== "undefined" && "serviceWorker" in navigator;
   const swController = !!(typeof navigator !== "undefined" && navigator.serviceWorker?.controller);
 
-  let swRegistrations: { scope: string; scriptURL: string }[] = [];
+  let swRegistrations: { scope: string; scriptURL: string; state?: string }[] = [];
   try {
     if (swSupported && navigator.serviceWorker) {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -259,6 +395,7 @@ async function collectDiagnostics(extra?: {
           r.installing?.scriptURL ||
           r.waiting?.scriptURL ||
           "(no active scriptURL)",
+        state: r.active?.state || r.waiting?.state || r.installing?.state,
       }));
     } else {
       errors.push("serviceWorker API missing");
@@ -267,12 +404,24 @@ async function collectDiagnostics(extra?: {
     errors.push(`SW registrations error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  const [fetchWorker, fetchUpdaterWorker, fetchManifest, fetchIcon192, oneSignalLive] = await Promise.all([
+  const [
+    fetchWorker,
+    fetchUpdaterWorker,
+    fetchManifest,
+    fetchIcon192,
+    oneSignalLive,
+    pingApi,
+    pingOneSignalCdn,
+    pingOneSignalApi,
+  ] = await Promise.all([
     safeFetchDiag("/OneSignalSDKWorker.js"),
     safeFetchDiag("/OneSignalSDKUpdaterWorker.js"),
     safeFetchDiag("/manifest.json"),
     safeFetchDiag("/icons/icon-192.png"),
     readOneSignalLive(),
+    ping("/api/health"),
+    ping("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"),
+    ping("https://onesignal.com"),
   ]);
 
   return {
@@ -280,7 +429,8 @@ async function collectDiagnostics(extra?: {
     origin,
     userAgent,
     isStandalone: standalone,
-    notificationPermission,
+    iosPwa,
+    permission,
     oneSignalGlobalType,
     oneSignalHasUserModel,
     oneSignalOptedIn,
@@ -294,6 +444,11 @@ async function collectDiagnostics(extra?: {
     fetchUpdaterWorker,
     fetchManifest,
     fetchIcon192,
+    pingApi,
+    pingOneSignalCdn,
+    pingOneSignalApi,
+    storage,
+    network,
     swRegisterAttempt: extra?.swRegisterAttempt,
     oneSignalLive,
     errors,
@@ -400,7 +555,7 @@ export function EnablePushCard() {
     }
   }
 
-  const ios = isIOS();
+  const ios = isIOSDeviceUA();
   const standalone = isStandalone();
   const isEnabled = status.permission === "granted" && !!status.subscriptionId;
 
