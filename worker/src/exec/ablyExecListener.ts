@@ -92,7 +92,7 @@ export async function startAblyExecListener(params: {
 
   // ✅ Subscribe to both names we’ve used historically
   ch.subscribe("exec", handler);
-  ch.subscribe("exec.manual.bracket", handler);
+  ch.subscribe("exec.manual_bracket", handler);
 
   params.log("[ABLY_EXEC] listening", { channelName });
 }

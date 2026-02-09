@@ -33,6 +33,7 @@ export default function RootLayout({
     appId,
     ...(safariWebId ? { safari_web_id: safariWebId } : {}),
     serviceWorkerPath: "/OneSignalSDKWorker.js",
+    serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
     serviceWorkerParam: { scope: "/" },
     notifyButton: { enable: false },
   };
