@@ -1,3 +1,5 @@
+// worker/src/execution/executeBracket.ts
+
 import { PrismaClient, OrderSide } from "@prisma/client";
 import type { IBrokerAdapter } from "../broker/IBrokerAdapter.js";
 import { logTag } from "../lib/logTags";
@@ -59,7 +61,9 @@ export async function executeBracket(params: {
     },
   });
 
-  // 2) Submit ENTRY ONLY (because Topstep Position Brackets mode requires 2-step)
+  // 2) Submit ENTRY ONLY
+  // Topstep in "Position Brackets" mode rejects bracket params unless Auto OCO is enabled.
+  // We therefore ONLY place the entry here. (Brackets can be added in a separate step later.)
   const placeEntryFn = (broker as any).placeOrder;
   const placeWithBracketsFn = (broker as any).placeOrderWithBrackets;
 
@@ -133,7 +137,6 @@ export async function executeBracket(params: {
       side: input.side,
       qty: input.qty,
       entryType: input.entryType,
-      // We are intentionally NOT submitting brackets in this mode:
       stopLossTicks: null,
       takeProfitTicks: null,
       entryOrderId: updated.entryOrderId ?? null,
