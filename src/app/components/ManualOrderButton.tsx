@@ -38,7 +38,7 @@ export function ManualOrderButton() {
         <div>
           <div className="aura-card-title">Manual Test Order</div>
           <div className="aura-muted aura-text-xs">
-            Temporary button. Sends a market order with default SL/TP.
+            Temporary button. Sends a market order with default SL/TP. 
           </div>
         </div>
 
