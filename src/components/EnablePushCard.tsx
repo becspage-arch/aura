@@ -8,7 +8,6 @@ import {
   ensureOneSignalLoaded,
 } from "@/lib/onesignal/client";
 import { registerRootServiceWorker } from "@/lib/onesignal/registerServiceWorker";
-import { ensureOneSignalLoaded } from "@/lib/onesignal/client";
 
 type PushStatus = {
   permission: string;
