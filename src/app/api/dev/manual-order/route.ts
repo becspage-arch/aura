@@ -17,7 +17,7 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export function getOneSignalAppId() {
+function getOneSignalAppId() {
   return (process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || "").trim();
 }
 
