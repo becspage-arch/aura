@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ManualOrderButton } from "@/src/app/components/ManualOrderButton";
+import { ManualOrderButton } from "@/components/ManualOrderButton";
 
 
 type PauseGetResponse = {
