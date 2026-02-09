@@ -5,7 +5,7 @@ import type { IBrokerAdapter } from "../broker/IBrokerAdapter.js";
 import { logTag } from "../lib/logTags";
 
 export type ExecuteBracketInput = {
-  execKey: string;
+  execKey: string; // deterministic idempotency key
   userId: string;
   brokerName: string;
 
@@ -29,10 +29,7 @@ export async function executeBracket(params: {
 }) {
   const { prisma, broker, input } = params;
 
-  /* ------------------------------------------------------------------ */
-  /* 1) Idempotency                                                      */
-  /* ------------------------------------------------------------------ */
-
+  // 1) Idempotency check
   const existing = await prisma.execution.findUnique({
     where: { execKey: input.execKey },
   });
@@ -42,10 +39,12 @@ export async function executeBracket(params: {
       execKey: input.execKey,
       executionId: existing.id,
       status: existing.status,
+      entryOrderId: existing.entryOrderId ?? null,
     });
     return existing;
   }
 
+  // 2) Create intent row
   const exec = await prisma.execution.create({
     data: {
       execKey: input.execKey,
@@ -63,85 +62,162 @@ export async function executeBracket(params: {
     },
   });
 
-  const placeOrder = (broker as any).placeOrder;
-  if (typeof placeOrder !== "function") {
-    throw new Error("Broker does not support placeOrder()");
-  }
+  // 3) Place ENTRY (always entry-only for ProjectX)
+  const placeEntryFn = (broker as any).placeOrder;
 
-  /* ------------------------------------------------------------------ */
-  /* 2) ENTRY                                                           */
-  /* ------------------------------------------------------------------ */
-
-  const entryRes = await placeOrder.call(broker, {
+  const entryReq = {
     contractId: input.contractId,
     side: input.side,
     size: input.qty,
     type: input.entryType,
     customTag: input.customTag ?? input.execKey,
-  });
+  };
 
-  const entryOrderId = String(entryRes.orderId);
-
-  await prisma.execution.update({
-    where: { id: exec.id },
-    data: {
-      entryOrderId,
-      status: "ENTRY_SUBMITTED",
-    },
-  });
-
-  logTag("[projectx-worker] ENTRY_SUBMITTED", {
+  console.log("[executeBracket] BROKER_CALL_BEGIN", {
     execKey: input.execKey,
-    entryOrderId,
+    broker: (broker as any)?.name ?? null,
+    mode: "ENTRY_ONLY_THEN_BRACKETS",
+    req: entryReq,
   });
 
-  /* ------------------------------------------------------------------ */
-  /* 3) STOP LOSS (separate order)                                      */
-  /* ------------------------------------------------------------------ */
+  try {
+    if (typeof placeEntryFn !== "function") {
+      const msg = "Broker does not support placeOrder (entry)";
+      await prisma.execution.update({
+        where: { id: exec.id },
+        data: { status: "FAILED", error: msg },
+      });
+      throw new Error(msg);
+    }
 
-  if (input.stopLossTicks && input.stopLossTicks > 0) {
-    await placeOrder.call(broker, {
-      contractId: input.contractId,
-      side: input.side === "buy" ? "sell" : "buy",
-      size: input.qty,
-      type: "stop",
-      stopPrice: Math.abs(input.stopLossTicks),
-      customTag: `sl:${entryOrderId}`,
+    const entryRes = await placeEntryFn.call(broker, entryReq);
+
+    console.log("[executeBracket] BROKER_CALL_OK", {
+      execKey: input.execKey,
+      entryRes,
     });
-  }
 
-  /* ------------------------------------------------------------------ */
-  /* 4) TAKE PROFIT (separate order)                                    */
-  /* ------------------------------------------------------------------ */
+    const entryOrderId =
+      entryRes?.orderId != null ? String(entryRes.orderId) : null;
 
-  if (input.takeProfitTicks && input.takeProfitTicks > 0) {
-    await placeOrder.call(broker, {
-      contractId: input.contractId,
-      side: input.side === "buy" ? "sell" : "buy",
-      size: input.qty,
-      type: "limit",
-      limitPrice: Math.abs(input.takeProfitTicks),
-      customTag: `tp:${entryOrderId}`,
+    const updatedAfterEntry = await prisma.execution.update({
+      where: { id: exec.id },
+      data: {
+        entryOrderId,
+        status: "ORDER_SUBMITTED",
+        meta: { brokerResponse: entryRes, note: "entry_submitted" },
+      },
     });
+
+    logTag("[projectx-worker] ORDER_SUBMITTED", {
+      execKey: input.execKey,
+      executionId: updatedAfterEntry.id,
+      broker: (broker as any)?.name ?? null,
+      contractId: input.contractId,
+      symbol: input.symbol ?? null,
+      side: input.side,
+      qty: input.qty,
+      entryType: input.entryType,
+      stopLossTicks: input.stopLossTicks ?? null,
+      takeProfitTicks: input.takeProfitTicks ?? null,
+      entryOrderId: entryOrderId,
+    });
+
+    // 4) Place SL/TP as a separate immediate step (ProjectX requirement)
+    const sl = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
+    const tp = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+
+    const wantsBrackets =
+      (sl != null && Number.isFinite(sl) && sl > 0) ||
+      (tp != null && Number.isFinite(tp) && tp > 0);
+
+    const placeBracketsAfterEntryFn = (broker as any).placeBracketsAfterEntry;
+
+    if (wantsBrackets) {
+      if (typeof placeBracketsAfterEntryFn !== "function") {
+        console.log("[executeBracket] BRACKETS_SKIPPED", {
+          execKey: input.execKey,
+          reason: "broker has no placeBracketsAfterEntry()",
+          entryOrderId,
+          sl,
+          tp,
+        });
+        return updatedAfterEntry;
+      }
+
+      console.log("[executeBracket] BRACKETS_BEGIN", {
+        execKey: input.execKey,
+        entryOrderId,
+        sl,
+        tp,
+      });
+
+      const bracketRes = await placeBracketsAfterEntryFn.call(broker, {
+        entryOrderId,
+        contractId: input.contractId,
+        side: input.side,
+        size: input.qty,
+        stopLossTicks: sl,
+        takeProfitTicks: tp,
+        customTag: input.customTag ?? "manual",
+      });
+
+      console.log("[executeBracket] BRACKETS_OK", {
+        execKey: input.execKey,
+        bracketRes,
+      });
+
+      const updatedAfterBrackets = await prisma.execution.update({
+        where: { id: exec.id },
+        data: {
+          status: "BRACKETS_SUBMITTED",
+          meta: {
+            ...(updatedAfterEntry.meta as any),
+            brackets: bracketRes,
+            note2: "brackets_submitted_after_entry",
+          },
+        },
+      });
+
+      logTag("[projectx-worker] BRACKETS_SUBMITTED", {
+        execKey: input.execKey,
+        executionId: updatedAfterBrackets.id,
+        broker: (broker as any)?.name ?? null,
+        contractId: input.contractId,
+        side: input.side,
+        qty: input.qty,
+        stopLossTicks: sl,
+        takeProfitTicks: tp,
+        entryOrderId,
+      });
+
+      return updatedAfterBrackets;
+    }
+
+    return updatedAfterEntry;
+  } catch (e: any) {
+    const errMsg = e?.message ? String(e.message) : String(e);
+
+    console.error("[executeBracket] FAIL", {
+      execKey: input.execKey,
+      err: errMsg,
+      stack: e?.stack ? String(e.stack) : null,
+    });
+
+    await prisma.execution.update({
+      where: { id: exec.id },
+      data: {
+        status: "FAILED",
+        error: errMsg,
+        meta: {
+          brokerError: {
+            message: errMsg,
+            stack: e?.stack ? String(e.stack) : null,
+          },
+        },
+      },
+    });
+
+    throw e;
   }
-
-  /* ------------------------------------------------------------------ */
-  /* 5) Final state                                                     */
-  /* ------------------------------------------------------------------ */
-
-  const finalExec = await prisma.execution.update({
-    where: { id: exec.id },
-    data: {
-      status: "BRACKET_SUBMITTED",
-    },
-  });
-
-  logTag("[projectx-worker] BRACKET_SUBMITTED", {
-    execKey: input.execKey,
-    entryOrderId,
-    stopLossTicks: input.stopLossTicks ?? null,
-    takeProfitTicks: input.takeProfitTicks ?? null,
-  });
-
-  return finalExec;
 }

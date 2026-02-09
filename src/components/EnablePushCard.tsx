@@ -56,6 +56,7 @@ type Diag = {
   swRegistrations: { scope: string; scriptURL: string }[];
 
   fetchWorker?: FetchDiag;
+  fetchUpdaterWorker?: FetchDiag;
   fetchManifest?: FetchDiag;
   fetchIcon192?: FetchDiag;
 
@@ -262,8 +263,9 @@ async function collectDiagnostics(extra?: {
     errors.push(`SW registrations error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  const [fetchWorker, fetchManifest, fetchIcon192, oneSignalLive] = await Promise.all([
+  const [fetchWorker, fetchUpdaterWorker, fetchManifest, fetchIcon192, oneSignalLive] = await Promise.all([
     safeFetchDiag("/OneSignalSDKWorker.js"),
+    safeFetchDiag("/OneSignalSDKUpdaterWorker.js"),
     safeFetchDiag("/manifest.json"),
     safeFetchDiag("/icons/icon-192.png"),
     readOneSignalLive(),
@@ -284,6 +286,7 @@ async function collectDiagnostics(extra?: {
     swController,
     swRegistrations,
     fetchWorker,
+    fetchUpdaterWorker,
     fetchManifest,
     fetchIcon192,
     swRegisterAttempt: extra?.swRegisterAttempt,

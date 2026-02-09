@@ -36,13 +36,11 @@ export async function startAblyExecListener(params: {
     throw new Error("[ABLY_EXEC] Missing clerkUserId");
   }
 
-  // ✅ Listen on the per-user channel (this matches the rest of Aura)
   const channelName = `aura:exec:${clerkUserId}`;
   const ch = client.channels.get(channelName);
 
   const handler = async (msg: Ably.Types.Message) => {
     try {
-      // ✅ Raw log (no guessing)
       const data: any = msg.data;
 
       params.log("[ABLY_EXEC] RAW", {
@@ -51,18 +49,8 @@ export async function startAblyExecListener(params: {
         hasData: Boolean(data),
         dataType: typeof data,
         keys: data && typeof data === "object" ? Object.keys(data) : null,
-        manualTokenLen:
-          data && typeof data === "object" && typeof data.manualToken === "string"
-            ? data.manualToken.length
-            : data && typeof data === "object" && typeof data.token === "string"
-              ? data.token.length
-              : 0,
       });
 
-      // Accept multiple shapes (backwards compatible)
-      // Shape A: { type:"manualOrder", payload:{...} }
-      // Shape B: { payload:{...} }
-      // Shape C: payload directly
       let p: any = null;
 
       if (data && data.type === "manualOrder" && data.payload) {
@@ -74,7 +62,6 @@ export async function startAblyExecListener(params: {
       }
 
       if (!isManualOrderPayload(p)) {
-        // Not a manual order we understand; ignore safely
         return;
       }
 
@@ -90,9 +77,11 @@ export async function startAblyExecListener(params: {
     }
   };
 
-  // ✅ Subscribe to both names we’ve used historically
+  // ✅ Subscribe to ALL historical names we’ve used (dot + underscore)
   ch.subscribe("exec", handler);
+  ch.subscribe("exec.manual.bracket", handler);
   ch.subscribe("exec.manual_bracket", handler);
+  ch.subscribe("exec.manualBracket", handler);
 
   params.log("[ABLY_EXEC] listening", { channelName });
 }
