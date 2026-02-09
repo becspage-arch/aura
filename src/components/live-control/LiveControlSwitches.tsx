@@ -176,7 +176,6 @@ export function LiveControlSwitches() {
               </div>
               <div className="aura-control-help">
                 Prevents new trades. Data still runs.
-                <ManualOrderButton />
               </div>
             </div>
 
@@ -219,6 +218,8 @@ export function LiveControlSwitches() {
             </div>
           </div>
         </div>
+
+        <ManualOrderButton />
 
         {/* Kill switch */}
         <div className={`aura-card-muted ${disabled ? "aura-disabled" : ""}`}>
