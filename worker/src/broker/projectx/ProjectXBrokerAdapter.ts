@@ -220,6 +220,21 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     }
 
     const accounts = json?.accounts ?? [];
+    console.log(
+      "[projectx-adapter] accounts returned",
+      JSON.stringify(
+        accounts.map(a => ({
+          id: a.id,
+          name: a.name,
+          balance: a.balance,
+          canTrade: a.canTrade,
+          isVisible: a.isVisible,
+          simulated: a.simulated,
+        })),
+        null,
+        2
+      )
+    );
 
     const preferredName = process.env.PROJECTX_ACCOUNT_NAME?.trim();
     const preferredIdRaw = process.env.PROJECTX_ACCOUNT_ID?.trim();
