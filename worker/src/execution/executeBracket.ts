@@ -59,36 +59,49 @@ export async function executeBracket(params: {
     },
   });
 
-  // 2) Submit order via broker
-  const placeFn = (broker as any).placeOrderWithBrackets;
-  if (typeof placeFn !== "function") {
-    const msg = "Broker does not support placeOrderWithBrackets";
-    console.error("[executeBracket] UNSUPPORTED", { broker: (broker as any)?.name ?? null, msg });
-    await prisma.execution.update({
-      where: { id: exec.id },
-      data: { status: "FAILED", error: msg },
-    });
-    throw new Error(msg);
-  }
+  // 2) Submit ENTRY ONLY (because Topstep Position Brackets mode requires 2-step)
+  const placeEntryFn = (broker as any).placeOrder;
+  const placeWithBracketsFn = (broker as any).placeOrderWithBrackets;
 
-  const req = {
+  const entryReq = {
     contractId: input.contractId,
     side: input.side,
     size: input.qty,
     type: input.entryType,
-    stopLossTicks: input.stopLossTicks ?? null,
-    takeProfitTicks: input.takeProfitTicks ?? null,
     customTag: input.customTag ?? input.execKey,
   };
 
   console.log("[executeBracket] BROKER_CALL_BEGIN", {
     execKey: input.execKey,
     broker: (broker as any)?.name ?? null,
-    req,
+    mode: "ENTRY_ONLY",
+    req: entryReq,
   });
 
   try {
-    const res = await placeFn.call(broker, req);
+    let res: any;
+
+    if (typeof placeEntryFn === "function") {
+      res = await placeEntryFn.call(broker, entryReq);
+    } else if (typeof placeWithBracketsFn === "function") {
+      // Fallback: call bracket method but force NO brackets
+      res = await placeWithBracketsFn.call(broker, {
+        ...entryReq,
+        stopLossTicks: null,
+        takeProfitTicks: null,
+      });
+    } else {
+      const msg = "Broker does not support placeOrder or placeOrderWithBrackets";
+      console.error("[executeBracket] UNSUPPORTED", {
+        broker: (broker as any)?.name ?? null,
+        msg,
+      });
+      await prisma.execution.update({
+        where: { id: exec.id },
+        data: { status: "FAILED", error: msg },
+      });
+      throw new Error(msg);
+    }
 
     console.log("[executeBracket] BROKER_CALL_OK", {
       execKey: input.execKey,
@@ -100,7 +113,7 @@ export async function executeBracket(params: {
       data: {
         entryOrderId: res?.orderId != null ? String(res.orderId) : null,
         status: "ORDER_SUBMITTED",
-        meta: { brokerResponse: res },
+        meta: { brokerResponse: res, note: "entry_only" },
       },
     });
 
@@ -120,8 +133,9 @@ export async function executeBracket(params: {
       side: input.side,
       qty: input.qty,
       entryType: input.entryType,
-      stopLossTicks: input.stopLossTicks ?? null,
-      takeProfitTicks: input.takeProfitTicks ?? null,
+      // We are intentionally NOT submitting brackets in this mode:
+      stopLossTicks: null,
+      takeProfitTicks: null,
       entryOrderId: updated.entryOrderId ?? null,
     });
 
@@ -139,7 +153,12 @@ export async function executeBracket(params: {
       data: {
         status: "FAILED",
         error: errMsg,
-        meta: { brokerError: { message: errMsg, stack: e?.stack ? String(e.stack) : null } },
+        meta: {
+          brokerError: {
+            message: errMsg,
+            stack: e?.stack ? String(e.stack) : null,
+          },
+        },
       },
     });
 
