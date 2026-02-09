@@ -1,7 +1,8 @@
+// src/app/app/settings/page.tsx
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { EnablePushCard } from "@/components/EnablePushCard";
+import { PushStatusRow } from "@/components/PushStatusRow";
 
 export default function SettingsPage() {
   return (
@@ -13,10 +14,11 @@ export default function SettingsPage() {
           <Link href="/app/strategy" className="aura-link aura-pill">
             Strategy
           </Link>
-          .  Your Live execution and charts live in{" "}
+          . Your Live execution and charts live in{" "}
           <Link href="/app/live-control" className="aura-link aura-pill">
             Live Control
           </Link>
+          .
         </p>
       </div>
 
@@ -86,7 +88,6 @@ export default function SettingsPage() {
 
           <div className="aura-divider" />
 
-          {/* IMPORTANT: this row is NOT disabled */}
           <div className="aura-card-muted aura-control-row">
             <div className="aura-control-meta">
               <div className="aura-control-title">Manage copy trading</div>
@@ -151,7 +152,6 @@ export default function SettingsPage() {
             </div>
 
             <div className="aura-mt-12 aura-pill-group">
-              {/* placeholders for now */}
               <button
                 type="button"
                 className="aura-pill-toggle aura-disabled"
@@ -240,7 +240,21 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <EnablePushCard />
+                <div className="aura-card-muted aura-control-row">
+                  <div className="aura-control-meta">
+                    <div className="aura-control-title">Phone notifications</div>
+                    <div className="aura-control-help">
+                      Open the dedicated page to enable push inside the installed Aura app.
+                    </div>
+                  </div>
+
+                  <div className="aura-control-right">
+                    <PushStatusRow />
+                    <Link href="/app/push" className="aura-btn">
+                      Open
+                    </Link>
+                  </div>
+                </div>
               </div>
 
               {/* Email */}
