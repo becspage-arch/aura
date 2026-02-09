@@ -3,11 +3,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getPushStatus, requestPushPermission } from "@/lib/onesignal/client";
+import { registerRootServiceWorker } from "@/lib/onesignal/registerServiceWorker";
 
 type PushStatus = {
   permission: string;
   subscribed: boolean;
   subscriptionId?: string | null;
+};
+
+type FetchDiag = {
+  ok: boolean;
+  status: number;
+  redirected: boolean;
+  finalUrl: string;
+  contentType: string;
+  snippet: string;
+  error?: string;
 };
 
 type Diag = {
@@ -17,13 +28,28 @@ type Diag = {
   isStandalone: boolean;
   notificationPermission: string;
 
-  oneSignalGlobalType: string; // "array(queue)" | "object" | "undefined"
+  oneSignalGlobalType: string; // "array(queue)" | "object" | "function" | "undefined"
   oneSignalHasUserModel: boolean;
 
   oneSignalOptedIn: string; // stringified
   oneSignalSubscriptionId: string; // stringified
 
+  swSupported: boolean;
+  swController: boolean;
   swRegistrations: { scope: string; scriptURL: string }[];
+
+  // NEW: prove what the browser actually receives for these files
+  fetchWorker?: FetchDiag;
+  fetchManifest?: FetchDiag;
+
+  // NEW: capture any SW registration error explicitly
+  swRegisterAttempt?: {
+    ok: boolean;
+    scope?: string;
+    scriptURL?: string;
+    error?: string;
+  };
+
   errors: string[];
 };
 
@@ -38,7 +64,37 @@ function isStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches;
 }
 
-async function collectDiagnostics(): Promise<Diag> {
+async function safeFetchDiag(path: string): Promise<FetchDiag> {
+  try {
+    const res = await fetch(path, { cache: "no-store" });
+    const contentType = res.headers.get("content-type") || "";
+    const text = await res.text().catch(() => "");
+    const snippet = text.slice(0, 140).replace(/\s+/g, " ").trim();
+
+    return {
+      ok: res.ok,
+      status: res.status,
+      redirected: res.redirected,
+      finalUrl: res.url,
+      contentType,
+      snippet,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      status: 0,
+      redirected: false,
+      finalUrl: path,
+      contentType: "",
+      snippet: "",
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+async function collectDiagnostics(extra?: {
+  swRegisterAttempt?: Diag["swRegisterAttempt"];
+}): Promise<Diag> {
   const errors: string[] = [];
 
   const pageUrl = typeof window !== "undefined" ? window.location.href : "unknown";
@@ -78,9 +134,12 @@ async function collectDiagnostics(): Promise<Diag> {
     errors.push(`OneSignal read error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  const swSupported = typeof navigator !== "undefined" && "serviceWorker" in navigator;
+  const swController = !!(typeof navigator !== "undefined" && navigator.serviceWorker?.controller);
+
   let swRegistrations: { scope: string; scriptURL: string }[] = [];
   try {
-    if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+    if (swSupported && navigator.serviceWorker) {
       const regs = await navigator.serviceWorker.getRegistrations();
       swRegistrations = regs.map((r) => ({
         scope: r.scope,
@@ -97,6 +156,12 @@ async function collectDiagnostics(): Promise<Diag> {
     errors.push(`SW registrations error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  // Fetch checks (these catch redirects-to-/gate and wrong content-types)
+  const [fetchWorker, fetchManifest] = await Promise.all([
+    safeFetchDiag("/OneSignalSDKWorker.js"),
+    safeFetchDiag("/manifest.json"),
+  ]);
+
   return {
     pageUrl,
     origin,
@@ -107,7 +172,12 @@ async function collectDiagnostics(): Promise<Diag> {
     oneSignalHasUserModel,
     oneSignalOptedIn,
     oneSignalSubscriptionId,
+    swSupported,
+    swController,
     swRegistrations,
+    fetchWorker,
+    fetchManifest,
+    swRegisterAttempt: extra?.swRegisterAttempt,
     errors,
   };
 }
@@ -142,13 +212,35 @@ export function EnablePushCard() {
     setLoading(true);
     setError(null);
 
+    let swAttempt: Diag["swRegisterAttempt"] | undefined;
+
     try {
+      // 0) Explicit SW register (so we can capture the real iOS error)
+      try {
+        const reg = await registerRootServiceWorker();
+        swAttempt = {
+          ok: true,
+          scope: reg?.scope,
+          scriptURL:
+            reg?.active?.scriptURL ||
+            reg?.installing?.scriptURL ||
+            reg?.waiting?.scriptURL ||
+            "(no active scriptURL)",
+        };
+      } catch (e) {
+        swAttempt = { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+
+      // 1) Now run OneSignal permission + opt-in
       const res = await Promise.race([
         requestPushPermission(),
         new Promise<{ enabled: boolean; subscriptionId?: string | null }>((_, reject) =>
-            setTimeout(() => reject(new Error("Enable timed out. Tap Diagnostics → Collect and paste it here.")), 15000)
+          setTimeout(
+            () => reject(new Error("Enable timed out. Tap Diagnostics → Collect and paste it here.")),
+            15000
+          )
         ),
-        ]);
+      ]);
 
       if (res.enabled && res.subscriptionId) {
         const r = await fetch("/api/push/subscribe", {
@@ -168,10 +260,10 @@ export function EnablePushCard() {
       }
 
       await refresh();
-      setDiag(await collectDiagnostics());
+      setDiag(await collectDiagnostics({ swRegisterAttempt: swAttempt }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      setDiag(await collectDiagnostics());
+      setDiag(await collectDiagnostics({ swRegisterAttempt: swAttempt }));
     } finally {
       setLoading(false);
     }
@@ -290,7 +382,7 @@ export function EnablePushCard() {
         </div>
       </div>
 
-      {/* DIAGNOSTICS (Fact 3 + Fact 4) */}
+      {/* DIAGNOSTICS */}
       <div className="aura-card-muted">
         <div className="aura-control-title">Diagnostics (copy + paste to me)</div>
 
