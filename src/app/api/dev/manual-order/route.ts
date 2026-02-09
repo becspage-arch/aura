@@ -16,24 +16,53 @@ export async function POST(req: Request) {
       ? Number(body.takeProfitTicks)
       : 20;
 
-    const apiKey = process.env.ABLY_API_KEY;
-    if (!apiKey) {
+    const ablyKey = (process.env.ABLY_API_KEY || "").trim();
+    if (!ablyKey) {
       return NextResponse.json(
-        { ok: false, error: "Missing ABLY_API_KEY on the app server" },
+        { ok: false, error: "Missing ABLY_API_KEY on app server" },
         { status: 500 }
       );
     }
 
-    const ably = new Ably.Rest({ key: apiKey });
-    const channel = ably.channels.get("aura:exec");
+    // IMPORTANT: this must match the worker's AURA_CLERK_USER_ID
+    const clerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
+    if (!clerkUserId) {
+      return NextResponse.json(
+        { ok: false, error: "Missing AURA_CLERK_USER_ID on app server" },
+        { status: 500 }
+      );
+    }
 
-    const cmd = {
-      type: "manualOrder",
-      ts: new Date().toISOString(),
-      payload: { contractId, side, size, stopLossTicks, takeProfitTicks },
+    // IMPORTANT: must match worker MANUAL_EXEC_TOKEN
+    const manualToken = (process.env.MANUAL_EXEC_TOKEN || "").trim();
+    if (!manualToken) {
+      return NextResponse.json(
+        { ok: false, error: "Missing MANUAL_EXEC_TOKEN on app server" },
+        { status: 500 }
+      );
+    }
+
+    const ably = new Ably.Realtime({ key: ablyKey });
+    await new Promise<void>((resolve, reject) => {
+      ably.connection.on("connected", () => resolve());
+      ably.connection.on("failed", () => reject(new Error("Ably connection failed")));
+    });
+
+    const ch = ably.channels.get(`aura:exec:${clerkUserId}`);
+
+    const payload = {
+      token: manualToken,
+      clerkUserId,
+      contractId,
+      side,
+      size,
+      stopLossTicks,
+      takeProfitTicks,
     };
 
-    await channel.publish("exec", cmd);
+    await ch.publish("exec.manual_bracket", payload);
+
+    ably.close();
 
     return NextResponse.json({
       ok: true,

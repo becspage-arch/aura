@@ -5,6 +5,7 @@ import { Inter, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { OneSignalInit } from "@/components/OneSignalInit";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -50,7 +51,10 @@ export default function RootLayout({
 
       <body className={`${inter.variable} ${geistMono.variable} aura-body`}>
         <ClerkProvider afterSignInUrl="/app" afterSignUpUrl="/app">
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <OneSignalInit />
+            {children}
+          </ThemeProvider>
         </ClerkProvider>
       </body>
     </html>
