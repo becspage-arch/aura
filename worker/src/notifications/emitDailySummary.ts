@@ -1,5 +1,5 @@
 // worker/src/notifications/emitDailySummary.ts
-import { notify } from "../../../src/lib/notifications/notify"; // if this import path doesn't work in your repo, tell me (we'll adjust)
+// **** This needs fixing for future.... was giving error on build..... import { notify } from "./notify.js";
 import type { SessionSummaryEvent } from "../../../src/lib/notifications/events";
 
 type EmitDailySummaryParams = {

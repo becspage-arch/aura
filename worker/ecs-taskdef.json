@@ -1,0 +1,38 @@
+{
+  "family": "aura-worker",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::074184607195:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "aura-worker",
+      "image": "074184607195.dkr.ecr.eu-west-2.amazonaws.com/aura-worker:latest",
+      "essential": true,
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "BROKER", "value": "projectx" },
+        { "name": "DRY_RUN", "value": "false" },
+
+        { "name": "DATABASE_URL", "value": "postgresql://neondb_owner:npg_9WvkzQ5YZpbj@ep-billowing-butterfly-abv4rzo7-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require" },
+        { "name": "DIRECT_URL", "value": "postgresql://neondb_owner:npg_9WvkzQ5YZpbj@ep-billowing-butterfly-abv4rzo7.eu-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require" },
+        { "name": "ABLY_API_KEY", "value": "jZ2p0A.DBvrgQ:VmCWyC75C3W5XQbnxgIb7hqfZcJUIb95RE7faOR0pgQ" },
+
+        { "name": "PROJECTX_USERNAME", "value": "becspage@gmail.com" },
+        { "name": "PROJECTX_API_KEY", "value": "ytX6O1yyIOONrXtQx3lX9rlawLJH5HTd560p456bryU=" },
+        { "name": "PROJECTX_CONTRACT_ID", "value": "CON.F.US.MGC.J26" },
+        { "name": "PROJECTX_USER_DEBUG", "value": "1" },
+        { "name": "AURA_CLERK_USER_ID", "value": "user_387asGLZmlfszECvR8osGQTu2lD" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aura/worker",
+          "awslogs-region": "eu-west-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

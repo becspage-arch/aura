@@ -18,6 +18,19 @@ export default clerkMiddleware((auth, req) => {
   }
 
   /* =====================================================
+     ALWAYS ALLOW SERVICE WORKERS + PWA ASSETS
+     (must not be gated or redirected)
+     ===================================================== */
+
+  if (
+    pathname === "/OneSignalSDKWorker.js" ||
+    pathname === "/OneSignalSDKUpdaterWorker.js" ||
+    pathname === "/manifest.json"
+  ) {
+    return NextResponse.next();
+  }
+
+  /* =====================================================
      ALWAYS ALLOW API DATA ENDPOINTS (DEV ONLY, LOCALHOST)
      ===================================================== */
 

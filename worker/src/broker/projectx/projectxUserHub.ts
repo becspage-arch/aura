@@ -73,6 +73,32 @@ export class ProjectXUserHub {
     });
 
     await conn.start();
+    // After conn.start()
+    if (accountId != null) {
+      const candidates: Array<{ name: string; args: any[] }> = [
+        { name: "SubscribeUserAccount", args: [accountId] },
+        { name: "SubscribeAccount", args: [accountId] },
+        { name: "Subscribe", args: [accountId] },
+        { name: "JoinAccount", args: [accountId] },
+        { name: "SubscribeUser", args: [accountId] },
+        { name: "SubscribeOrders", args: [accountId] },
+        { name: "SubscribeTrades", args: [accountId] },
+        { name: "SubscribePositions", args: [accountId] },
+      ];
+
+      for (const c of candidates) {
+        try {
+          const res = await conn.invoke(c.name as any, ...c.args);
+          console.log("[projectx-user] invoke ok", { method: c.name, res });
+        } catch (e) {
+          console.warn("[projectx-user] invoke failed", {
+            method: c.name,
+            err: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+    }
+
     console.log("[projectx-user] connected");
 
     const wrap =
@@ -111,16 +137,27 @@ export class ProjectXUserHub {
     conn.on("GatewayUserPosition", wrap("GatewayUserPosition", onPosition));
     conn.on("gatewayuserposition", wrap("GatewayUserPosition", onPosition));
 
-    // Subscribe to account-scoped streams (some implementations require this)
-    // If your docs show different method names, we’ll adjust to match.
-    if (typeof accountId === "number" && Number.isFinite(accountId)) {
+    // Optional: account-scoped subscribe (ONLY if TopstepX supports it in your environment)
+    // Default OFF to avoid noisy failures.
+    const shouldSubscribe =
+      process.env.PROJECTX_USER_SUBSCRIBE === "1" &&
+      typeof accountId === "number" &&
+      Number.isFinite(accountId);
+
+    if (shouldSubscribe) {
       try {
         const res = await conn.invoke("SubscribeUserAccount", accountId);
         console.log("[projectx-user] subscribed account", { accountId, res });
       } catch (e) {
-        console.warn("[projectx-user] SubscribeUserAccount failed (may be optional)", {
+        console.warn("[projectx-user] SubscribeUserAccount failed", {
           accountId,
           err: e instanceof Error ? e.message : String(e),
+        });
+      }
+    } else {
+      if (process.env.PROJECTX_USER_SUBSCRIBE === "1") {
+        console.warn("[projectx-user] subscribe requested but accountId invalid", {
+          accountId,
         });
       }
     }
