@@ -73,7 +73,24 @@ export class ProjectXUserHub {
     });
 
     await conn.start();
-    // After conn.start()
+
+    // -------------------------------------------------
+    // TEMP DEBUG — log *any* event the hub emits
+    // -------------------------------------------------
+    (conn as any).onclose((err: any) => {
+      console.warn("[projectx-user] connection closed", err);
+    });
+
+    (conn as any).on("*", (...args: any[]) => {
+      console.log("[projectx-user] RAW EVENT", {
+        at: new Date().toISOString(),
+        args,
+      });
+    });
+
+    // -------------------------------------------------
+    // Probe which subscribe methods actually exist
+    // -------------------------------------------------
     if (accountId != null) {
       const candidates: Array<{ name: string; args: any[] }> = [
         { name: "SubscribeUserAccount", args: [accountId] },
@@ -102,7 +119,10 @@ export class ProjectXUserHub {
     console.log("[projectx-user] connected");
 
     const wrap =
-      (name: "GatewayUserOrder" | "GatewayUserTrade" | "GatewayUserPosition", fn?: (p: any) => Promise<void> | void) =>
+      (
+        name: "GatewayUserOrder" | "GatewayUserTrade" | "GatewayUserPosition",
+        fn?: (p: any) => Promise<void> | void
+      ) =>
       async (...args: any[]) => {
         this.lastEventAtMs = Date.now();
         const payload = args.length >= 1 ? args[args.length - 1] : null;
@@ -123,11 +143,14 @@ export class ProjectXUserHub {
         try {
           await fn(unwrapped);
         } catch (e) {
-          console.error(`[projectx-user] ${name} handler failed (non-fatal)`, e);
+          console.error(
+            `[projectx-user] ${name} handler failed (non-fatal)`,
+            e
+          );
         }
       };
 
-    // Wire handlers (case variations)
+    // Known (but possibly unused) event names
     conn.on("GatewayUserOrder", wrap("GatewayUserOrder", onOrder));
     conn.on("gatewayuserorder", wrap("GatewayUserOrder", onOrder));
 
@@ -137,34 +160,11 @@ export class ProjectXUserHub {
     conn.on("GatewayUserPosition", wrap("GatewayUserPosition", onPosition));
     conn.on("gatewayuserposition", wrap("GatewayUserPosition", onPosition));
 
-    // Optional: account-scoped subscribe (ONLY if TopstepX supports it in your environment)
-    // Default OFF to avoid noisy failures.
-    const shouldSubscribe =
-      process.env.PROJECTX_USER_SUBSCRIBE === "1" &&
-      typeof accountId === "number" &&
-      Number.isFinite(accountId);
-
-    if (shouldSubscribe) {
-      try {
-        const res = await conn.invoke("SubscribeUserAccount", accountId);
-        console.log("[projectx-user] subscribed account", { accountId, res });
-      } catch (e) {
-        console.warn("[projectx-user] SubscribeUserAccount failed", {
-          accountId,
-          err: e instanceof Error ? e.message : String(e),
-        });
-      }
-    } else {
-      if (process.env.PROJECTX_USER_SUBSCRIBE === "1") {
-        console.warn("[projectx-user] subscribe requested but accountId invalid", {
-          accountId,
-        });
-      }
-    }
-
     if (!this.heartbeatTimer) {
       this.heartbeatTimer = setInterval(() => {
-        const ageMs = this.lastEventAtMs ? Date.now() - this.lastEventAtMs : null;
+        const ageMs = this.lastEventAtMs
+          ? Date.now() - this.lastEventAtMs
+          : null;
         console.log("[projectx-user] heartbeat", { lastEventAgeMs: ageMs });
       }, 10_000);
     }

@@ -6,6 +6,10 @@ declare global {
     OneSignalDeferred?: any[];
     OneSignal?: any;
     __auraOneSignalInited?: boolean;
+
+    // for diagnostics
+    __auraOsInitInfo?: any;
+    __auraPushLastChange?: any;
   }
 }
 
@@ -26,9 +30,14 @@ function browserPermission(): string {
   return (window.Notification?.permission || "unknown").toString();
 }
 
-/**
- * v16 init uses OneSignalDeferred
- */
+function safeJson(obj: any) {
+  try {
+    return JSON.parse(JSON.stringify(obj));
+  } catch {
+    return String(obj);
+  }
+}
+
 export async function ensureOneSignalLoaded() {
   if (typeof window === "undefined") return;
 
@@ -46,81 +55,127 @@ export async function ensureOneSignalLoaded() {
   window.OneSignalDeferred.push(async function (OneSignal: any) {
     await OneSignal.init({
       appId,
-
-      // ✅ v16 key (NOT safari_web_id)
       safariWebId,
-
-      // ✅ keep explicit SW paths
       serviceWorkerPath: "/OneSignalSDKWorker.js",
       serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
-
       notifyButton: { enable: false },
-
-      // local dev only
       allowLocalhostAsSecureOrigin: true,
     });
+
+    // Capture baseline init info for diagnostics
+    try {
+      const isPushSupported = await OneSignal.Notifications.isPushSupported();
+      const osPermission = await OneSignal.Notifications.permission; // OneSignal’s own permission state
+      window.__auraOsInitInfo = {
+        initialized: OneSignal.initialized,
+        isPushSupported,
+        osPermission,
+        browserPermission: browserPermission(),
+        onesignalId: OneSignal?.User?.onesignalId ?? null,
+        subId: OneSignal?.User?.PushSubscription?.id ?? null,
+        token: OneSignal?.User?.PushSubscription?.token ?? null,
+      };
+    } catch (e) {
+      window.__auraOsInitInfo = { error: e instanceof Error ? e.message : String(e) };
+    }
+
+    // Recommended: listen for subscription changes
+    try {
+      OneSignal.User.PushSubscription.addEventListener("change", (event: any) => {
+        window.__auraPushLastChange = safeJson({
+          previous: event?.previous,
+          current: event?.current,
+        });
+      });
+    } catch (e) {
+      window.__auraPushLastChange = { error: e instanceof Error ? e.message : String(e) };
+    }
   });
 
-  // Wait a tick so the init handler can run in the same session
+  // allow the pushed init callback to run
   await sleep(0);
 }
 
-async function readSubscriptionId(OneSignal: any): Promise<string | null> {
-  try {
-    const id = OneSignal?.User?.PushSubscription?.id;
-    if (!id) return null;
-    return String(id);
-  } catch {
-    return null;
-  }
-}
-
-async function waitForSubscriptionId(OneSignal: any, timeoutMs: number) {
+async function waitForIdViaListener(OneSignal: any, timeoutMs: number) {
   const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const id = await readSubscriptionId(OneSignal);
-    if (id) return id;
-    await sleep(250);
-  }
-  return null;
+
+  // quick check first
+  const existing = OneSignal?.User?.PushSubscription?.id;
+  if (existing) return String(existing);
+
+  return await new Promise<string | null>((resolve) => {
+    let done = false;
+
+    const stop = () => {
+      done = true;
+      try {
+        OneSignal?.User?.PushSubscription?.removeEventListener?.("change", onChange);
+      } catch {
+        // ignore
+      }
+    };
+
+    const onChange = (event: any) => {
+      const id = event?.current?.id;
+      if (id) {
+        stop();
+        resolve(String(id));
+      }
+    };
+
+    try {
+      OneSignal.User.PushSubscription.addEventListener("change", onChange);
+    } catch {
+      // if removeEventListener isn't supported in this build, we still resolve by timeout/poll
+    }
+
+    const tick = async () => {
+      while (!done && Date.now() - started < timeoutMs) {
+        const id = OneSignal?.User?.PushSubscription?.id;
+        if (id) {
+          stop();
+          resolve(String(id));
+          return;
+        }
+        await sleep(250);
+      }
+      stop();
+      resolve(null);
+    };
+
+    tick();
+  });
 }
 
 export async function requestPushPermission() {
   await ensureOneSignalLoaded();
 
-  return await new Promise<{ enabled: boolean; subscriptionId?: string | null }>(
-    (resolve) => {
-      window.OneSignalDeferred!.push(async function (OneSignal: any) {
-        // Ensure init fully applied before we prompt
-        // (important for iOS PWA)
-        try {
-          await OneSignal.login?.("anon"); // harmless; ensures user model ready if supported
-        } catch {
-          // ignore
-        }
+  return await new Promise<{ enabled: boolean; subscriptionId?: string | null }>((resolve) => {
+    window.OneSignalDeferred!.push(async function (OneSignal: any) {
+      // 1) request browser permission
+      await OneSignal.Notifications.requestPermission();
 
-        // 1) Ask browser permission
-        await OneSignal.Notifications.requestPermission();
+      const perm = browserPermission();
+      const enabled = perm === "granted";
 
-        const perm = browserPermission();
-        const enabled = perm === "granted";
+      if (!enabled) {
+        resolve({ enabled: false, subscriptionId: null });
+        return;
+      }
 
-        // 2) Opt-in at OneSignal level
-        if (enabled) {
-          try {
-            await OneSignal.User.PushSubscription.optIn();
-          } catch {
-            // ignore
-          }
-        }
+      // 2) opt-in with OneSignal
+      try {
+        await OneSignal.User.PushSubscription.optIn();
+      } catch {
+        // ignore
+      }
 
-        // 3) Wait for real id
-        const subscriptionId = enabled ? await waitForSubscriptionId(OneSignal, 15000) : null;
+      // 3) wait for subscription id via listener (more reliable on iOS)
+      const subscriptionId = await waitForIdViaListener(OneSignal, 30000);
 
-        resolve({ enabled, subscriptionId });
-      });
-    }
-  );
+      resolve({ enabled: true, subscriptionId });
+    });
+  });
 }
 
 export async function getPushStatus() {
@@ -134,16 +189,10 @@ export async function getPushStatus() {
     window.OneSignalDeferred!.push(async function (OneSignal: any) {
       const permission = browserPermission();
 
-      let subscribed = false;
-      let subscriptionId: string | null = null;
-
-      try {
-        subscribed = !!OneSignal?.User?.PushSubscription?.optedIn;
-      } catch {
-        subscribed = false;
-      }
-
-      subscriptionId = await readSubscriptionId(OneSignal);
+      const subscribed = !!OneSignal?.User?.PushSubscription?.optedIn;
+      const subscriptionId = OneSignal?.User?.PushSubscription?.id
+        ? String(OneSignal.User.PushSubscription.id)
+        : null;
 
       resolve({ permission, subscribed, subscriptionId });
     });

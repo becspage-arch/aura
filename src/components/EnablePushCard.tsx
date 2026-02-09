@@ -28,27 +28,29 @@ type Diag = {
   isStandalone: boolean;
   notificationPermission: string;
 
-  oneSignalGlobalType: string; // "array(queue)" | "object" | "function" | "undefined"
+  oneSignalGlobalType: string;
   oneSignalHasUserModel: boolean;
 
-  oneSignalOptedIn: string; // stringified
-  oneSignalSubscriptionId: string; // stringified
+  oneSignalOptedIn: string;
+  oneSignalSubscriptionId: string;
 
   swSupported: boolean;
   swController: boolean;
   swRegistrations: { scope: string; scriptURL: string }[];
 
-  // NEW: prove what the browser actually receives for these files
   fetchWorker?: FetchDiag;
   fetchManifest?: FetchDiag;
 
-  // NEW: capture any SW registration error explicitly
   swRegisterAttempt?: {
     ok: boolean;
     scope?: string;
     scriptURL?: string;
     error?: string;
   };
+
+  // ✅ add these
+  osInitInfo?: any;
+  pushLastChange?: any;
 
   errors: string[];
 };
@@ -178,6 +180,11 @@ async function collectDiagnostics(extra?: {
     fetchWorker,
     fetchManifest,
     swRegisterAttempt: extra?.swRegisterAttempt,
+
+    // ✅ add these
+    osInitInfo: typeof window !== "undefined" ? (window as any).__auraOsInitInfo ?? null : null,
+    pushLastChange: typeof window !== "undefined" ? (window as any).__auraPushLastChange ?? null : null,
+
     errors,
   };
 }
