@@ -2,7 +2,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getPushStatus, requestPushPermission } from "@/lib/onesignal/client";
+import {
+  getPushStatus,
+  requestPushPermission,
+  ensureOneSignalLoaded,
+} from "@/lib/onesignal/client";
 import { registerRootServiceWorker } from "@/lib/onesignal/registerServiceWorker";
 
 type PushStatus = {
@@ -21,6 +25,22 @@ type FetchDiag = {
   error?: string;
 };
 
+type OneSignalLiveInfo = {
+  ok: boolean;
+  error?: string;
+
+  initialized?: boolean;
+  isPushSupported?: boolean;
+
+  osPermission?: string | null;
+  browserPermission?: string;
+
+  onesignalId?: string | null;
+  subscriptionId?: string | null;
+  token?: string | null;
+  optedIn?: boolean | null;
+};
+
 type Diag = {
   pageUrl: string;
   origin: string;
@@ -28,11 +48,11 @@ type Diag = {
   isStandalone: boolean;
   notificationPermission: string;
 
-  oneSignalGlobalType: string;
+  oneSignalGlobalType: string; // "array(queue)" | "object" | "function" | "undefined"
   oneSignalHasUserModel: boolean;
 
-  oneSignalOptedIn: string;
-  oneSignalSubscriptionId: string;
+  oneSignalOptedIn: string; // stringified
+  oneSignalSubscriptionId: string; // stringified
 
   swSupported: boolean;
   swController: boolean;
@@ -48,7 +68,10 @@ type Diag = {
     error?: string;
   };
 
-  // ✅ add these
+  // NEW: live OneSignal read at the moment diagnostics are collected
+  oneSignalLive?: OneSignalLiveInfo;
+
+  // still keep these (may or may not be populated)
   osInitInfo?: any;
   pushLastChange?: any;
 
@@ -64,6 +87,11 @@ function isStandalone() {
   if (typeof window === "undefined") return false;
   if ((window.navigator as any).standalone) return true;
   return window.matchMedia("(display-mode: standalone)").matches;
+}
+
+function browserPermission(): string {
+  if (typeof window === "undefined") return "unknown";
+  return (window.Notification?.permission || "unknown").toString();
 }
 
 async function safeFetchDiag(path: string): Promise<FetchDiag> {
@@ -90,6 +118,84 @@ async function safeFetchDiag(path: string): Promise<FetchDiag> {
       contentType: "",
       snippet: "",
       error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+async function readOneSignalLive(): Promise<OneSignalLiveInfo> {
+  try {
+    await ensureOneSignalLoaded();
+
+    const w = window as any;
+    w.OneSignalDeferred = w.OneSignalDeferred || [];
+
+    return await new Promise<OneSignalLiveInfo>((resolve) => {
+      w.OneSignalDeferred.push(async (OneSignal: any) => {
+        try {
+          const info: OneSignalLiveInfo = {
+            ok: true,
+            initialized: !!OneSignal?.initialized,
+            browserPermission: browserPermission(),
+          };
+
+          try {
+            info.isPushSupported = await OneSignal.Notifications.isPushSupported();
+          } catch {
+            info.isPushSupported = undefined;
+          }
+
+          try {
+            info.osPermission = String(await OneSignal.Notifications.permission);
+          } catch {
+            info.osPermission = null;
+          }
+
+          try {
+            info.onesignalId = OneSignal?.User?.onesignalId ?? null;
+          } catch {
+            info.onesignalId = null;
+          }
+
+          try {
+            info.subscriptionId = OneSignal?.User?.PushSubscription?.id
+              ? String(OneSignal.User.PushSubscription.id)
+              : null;
+          } catch {
+            info.subscriptionId = null;
+          }
+
+          try {
+            info.token = OneSignal?.User?.PushSubscription?.token
+              ? String(OneSignal.User.PushSubscription.token)
+              : null;
+          } catch {
+            info.token = null;
+          }
+
+          try {
+            info.optedIn =
+              typeof OneSignal?.User?.PushSubscription?.optedIn === "boolean"
+                ? OneSignal.User.PushSubscription.optedIn
+                : null;
+          } catch {
+            info.optedIn = null;
+          }
+
+          resolve(info);
+        } catch (e) {
+          resolve({
+            ok: false,
+            error: e instanceof Error ? e.message : String(e),
+            browserPermission: browserPermission(),
+          });
+        }
+      });
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+      browserPermission: browserPermission(),
     };
   }
 }
@@ -126,8 +232,8 @@ async function collectDiagnostics(extra?: {
 
   try {
     if (oneSignalAny && !Array.isArray(oneSignalAny)) {
-      oneSignalOptedIn = String(await oneSignalAny.User.PushSubscription.optedIn);
-      oneSignalSubscriptionId = String(await oneSignalAny.User.PushSubscription.id);
+      oneSignalOptedIn = String(oneSignalAny.User.PushSubscription.optedIn);
+      oneSignalSubscriptionId = String(oneSignalAny.User.PushSubscription.id);
     } else {
       oneSignalOptedIn = "OneSignal not ready (still queue)";
       oneSignalSubscriptionId = "OneSignal not ready (still queue)";
@@ -158,10 +264,10 @@ async function collectDiagnostics(extra?: {
     errors.push(`SW registrations error: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  // Fetch checks (these catch redirects-to-/gate and wrong content-types)
-  const [fetchWorker, fetchManifest] = await Promise.all([
+  const [fetchWorker, fetchManifest, oneSignalLive] = await Promise.all([
     safeFetchDiag("/OneSignalSDKWorker.js"),
     safeFetchDiag("/manifest.json"),
+    readOneSignalLive(),
   ]);
 
   return {
@@ -181,7 +287,8 @@ async function collectDiagnostics(extra?: {
     fetchManifest,
     swRegisterAttempt: extra?.swRegisterAttempt,
 
-    // ✅ add these
+    oneSignalLive,
+
     osInitInfo: typeof window !== "undefined" ? (window as any).__auraOsInitInfo ?? null : null,
     pushLastChange: typeof window !== "undefined" ? (window as any).__auraPushLastChange ?? null : null,
 
@@ -222,7 +329,7 @@ export function EnablePushCard() {
     let swAttempt: Diag["swRegisterAttempt"] | undefined;
 
     try {
-      // 0) Explicit SW register (so we can capture the real iOS error)
+      // 0) Explicit SW register
       try {
         const reg = await registerRootServiceWorker();
         swAttempt = {
@@ -238,13 +345,13 @@ export function EnablePushCard() {
         swAttempt = { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
 
-      // 1) Now run OneSignal permission + opt-in
+      // 1) OneSignal permission + opt-in
       const res = await Promise.race([
         requestPushPermission(),
         new Promise<{ enabled: boolean; subscriptionId?: string | null }>((_, reject) =>
           setTimeout(
             () => reject(new Error("Enable timed out. Tap Diagnostics → Collect and paste it here.")),
-            15000
+            20000
           )
         ),
       ]);
@@ -297,7 +404,6 @@ export function EnablePushCard() {
   const ios = isIOS();
   const standalone = isStandalone();
 
-  // Only "Enabled" when we have a real OneSignal subscription id
   const isEnabled = status.permission === "granted" && !!status.subscriptionId;
 
   const diagText = useMemo(() => {
@@ -307,7 +413,6 @@ export function EnablePushCard() {
 
   return (
     <div className="aura-grid-gap-12">
-      {/* STEP 1 */}
       <div className="aura-card-muted">
         <div className="aura-control-title">Step 1 – Add Aura to your device</div>
 
@@ -337,7 +442,6 @@ export function EnablePushCard() {
         </div>
       </div>
 
-      {/* STEP 2 */}
       <div className="aura-card-muted">
         <div className="aura-control-title">Step 2 – Enable notifications</div>
 
@@ -365,7 +469,6 @@ export function EnablePushCard() {
         </div>
       </div>
 
-      {/* STEP 3 */}
       <div className="aura-card-muted">
         <div className="aura-control-title">Step 3 – Send a test notification</div>
 
@@ -389,7 +492,6 @@ export function EnablePushCard() {
         </div>
       </div>
 
-      {/* DIAGNOSTICS */}
       <div className="aura-card-muted">
         <div className="aura-control-title">Diagnostics (copy + paste to me)</div>
 
@@ -417,7 +519,7 @@ export function EnablePushCard() {
                 try {
                   await navigator.clipboard.writeText(diagText);
                 } catch {
-                  // clipboard can fail on iOS - still renders text for manual copy
+                  // ignore
                 }
               }}
             >
@@ -431,7 +533,6 @@ export function EnablePushCard() {
         ) : null}
       </div>
 
-      {/* ERROR */}
       {error ? (
         <div className="aura-card-muted aura-error-block">
           <div className="aura-control-title">Something went wrong</div>
