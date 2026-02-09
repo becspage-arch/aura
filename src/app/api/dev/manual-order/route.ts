@@ -1,5 +1,6 @@
 // src/app/api/dev/manual-order/route.ts
 import { NextResponse } from "next/server";
+import Ably from "ably";
 
 export async function POST(req: Request) {
   try {
@@ -15,8 +16,28 @@ export async function POST(req: Request) {
       ? Number(body.takeProfitTicks)
       : 20;
 
+    const apiKey = process.env.ABLY_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { ok: false, error: "Missing ABLY_API_KEY on the app server" },
+        { status: 500 }
+      );
+    }
+
+    const ably = new Ably.Rest({ key: apiKey });
+    const channel = ably.channels.get("aura:exec");
+
+    const cmd = {
+      type: "manualOrder",
+      ts: new Date().toISOString(),
+      payload: { contractId, side, size, stopLossTicks, takeProfitTicks },
+    };
+
+    await channel.publish("exec", cmd);
+
     return NextResponse.json({
       ok: true,
+      published: true,
       order: { contractId, side, size, stopLossTicks, takeProfitTicks },
     });
   } catch (e) {

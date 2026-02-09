@@ -1,10 +1,13 @@
-import { env, DRY_RUN, CQG_ENABLED } from "./env.js";
+import { env, DRY_RUN } from "./env.js";
 import { db, checkDb } from "./db.js";
 import { createAblyRealtime } from "./ably.js";
 import { acquireLock, refreshLock, releaseLock } from "./locks.js";
 import { randomUUID } from "crypto";
 import { startBrokerFeed } from "./broker/startBrokerFeed.js";
 import { startDailyScheduler } from "./notifications/dailyScheduler.js";
+import { startAblyExecListener } from "./exec/ablyExecListener.js";
+import { executeBracket } from "./execution/executeBracket.js";
+import type { IBrokerAdapter } from "./broker/IBrokerAdapter.js";
 
 async function main() {
   console.log(`[${env.WORKER_NAME}] boot`, {
@@ -46,17 +49,24 @@ async function main() {
   process.once("SIGINT", () => void cleanupLock().finally(() => process.exit(0)));
   process.once("SIGTERM", () => void cleanupLock().finally(() => process.exit(0)));
 
-  // 3) Connect to Ably (lifecycle + UI only)
+  // 3) Expected user id for this worker
+  const expectedClerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
+  if (!expectedClerkUserId) {
+    throw new Error(`[${env.WORKER_NAME}] Missing AURA_CLERK_USER_ID`);
+  }
+
+  // 4) Connect to Ably (lifecycle + broker + exec)
   const ably = createAblyRealtime();
   await new Promise<void>((resolve, reject) => {
     ably.connection.on("connected", () => resolve());
-    ably.connection.on("failed", () =>
-      reject(new Error("Ably connection failed"))
-    );
+    ably.connection.on("failed", () => reject(new Error("Ably connection failed")));
   });
   console.log(`[${env.WORKER_NAME}] Ably connected`);
 
-  // 3b) Start daily summary scheduler (Phase 1 completion)
+  const uiChannel = ably.channels.get(`aura:ui:${expectedClerkUserId}`);
+  const brokerChannel = ably.channels.get(`aura:broker:${expectedClerkUserId}`);
+
+  // 4b) Start daily summary scheduler (Phase 1 completion)
   startDailyScheduler({
     tz: "Europe/London",
     onRun: async () => {
@@ -68,42 +78,78 @@ async function main() {
     },
   });
 
-  // 4) Start broker feed (broker owns execution)
-  const expectedClerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
-  if (!expectedClerkUserId) {
-    throw new Error(
-      `[${env.WORKER_NAME}] Missing AURA_CLERK_USER_ID`
-    );
+  // 5) Wire Ably exec listener → executeBracket()
+  const ablyKey = (process.env.ABLY_API_KEY || "").trim();
+  if (!ablyKey) {
+    throw new Error(`[${env.WORKER_NAME}] Missing ABLY_API_KEY`);
   }
 
-  const brokerChannel = ably.channels.get(`aura:broker:${expectedClerkUserId}`);
+  let brokerRef: IBrokerAdapter | null = null;
 
-  try {
-    await startBrokerFeed(async (event) => {
-      await brokerChannel.publish(event.name, event);
-
-      if (event.name === "candle.15s.closed" && event.data) {
-        const d: any = event.data;
-
-        await uiChannel.publish("aura", {
-          type: "candle_closed",
-          ts: event.ts,
-          data: {
-            symbol: String(d.contractId),
-            timeframe: "15s",
-            time: Math.floor(Number(d.t0) / 1000),
-            open: Number(d.o),
-            high: Number(d.h),
-            low: Number(d.l),
-            close: Number(d.c),
-          },
-        });
+  await startAblyExecListener({
+    ablyApiKey: ablyKey,
+    log: (msg, extra) => console.log(msg, extra ?? ""),
+    placeManualBracket: async (p) => {
+      if (!brokerRef) {
+        throw new Error("Broker not ready yet (brokerRef is null)");
       }
 
-      console.log(`[${env.WORKER_NAME}] published broker event`, {
-        name: event.name,
-        broker: event.broker,
+      const execKey = `manual:${expectedClerkUserId}:${Date.now()}:${p.contractId}:${p.side}:${p.size}:${p.stopLossTicks}:${p.takeProfitTicks}`;
+
+      await executeBracket({
+        prisma: db,
+        broker: brokerRef,
+        input: {
+          execKey,
+          userId: expectedClerkUserId,
+          brokerName: (brokerRef as any)?.name ?? "projectx",
+          contractId: p.contractId,
+          side: p.side,
+          qty: p.size,
+          entryType: "market",
+          stopLossTicks: p.stopLossTicks,
+          takeProfitTicks: p.takeProfitTicks,
+          customTag: "manual",
+        },
       });
+    },
+  });
+
+  // 6) Start broker feed (and capture broker instance when ready)
+  try {
+    await startBrokerFeed({
+      onBrokerReady: (b) => {
+        brokerRef = b;
+        console.log(`[${env.WORKER_NAME}] broker ready for exec`, {
+          name: (b as any)?.name ?? null,
+        });
+      },
+      emitSafe: async (event) => {
+        await brokerChannel.publish(event.name, event);
+
+        if (event.name === "candle.15s.closed" && event.data) {
+          const d: any = event.data;
+
+          await uiChannel.publish("aura", {
+            type: "candle_closed",
+            ts: event.ts,
+            data: {
+              symbol: String(d.contractId),
+              timeframe: "15s",
+              time: Math.floor(Number(d.t0) / 1000),
+              open: Number(d.o),
+              high: Number(d.h),
+              low: Number(d.l),
+              close: Number(d.c),
+            },
+          });
+        }
+
+        console.log(`[${env.WORKER_NAME}] published broker event`, {
+          name: event.name,
+          broker: event.broker,
+        });
+      },
     });
   } catch (e) {
     console.error(`[${env.WORKER_NAME}] broker start failed`, e);
