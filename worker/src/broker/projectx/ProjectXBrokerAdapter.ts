@@ -638,6 +638,303 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     return { orderId: parsed.orderId, raw: parsed };
   }
 
+    /**
+   * ProjectX "2-call" brackets:
+   * 1) ENTRY is already placed via placeOrder()
+   * 2) We then place TWO separate exit orders:
+   *    - Stop order (SL)
+   *    - Limit order (TP)
+   *
+   * NOTE: ProjectX API does not provide an "attach by entryOrderId" bracket endpoint in docs,
+   * so we must place explicit exit orders with absolute prices.
+   */
+  async placeBracketsAfterEntry(input: {
+    entryOrderId: string | null;
+    contractId: string;
+    side: "buy" | "sell";
+    size: number;
+    stopLossTicks?: number | null;
+    takeProfitTicks?: number | null;
+    customTag?: string | null;
+  }): Promise<{
+    ok: boolean;
+    refPrice: number;
+    tickSize: number;
+    stopOrderId?: number | null;
+    takeProfitOrderId?: number | null;
+  }> {
+    if (!this.token) throw new Error("Cannot place brackets without ProjectX token");
+    if (!this.accountId) throw new Error("Cannot place brackets without selected ProjectX account");
+
+    const contractId = String(input.contractId || "").trim();
+    if (!contractId) throw new Error("placeBracketsAfterEntry: contractId missing");
+
+    const size = Number(input.size);
+    if (!Number.isFinite(size) || size <= 0) {
+      throw new Error(`placeBracketsAfterEntry: invalid size ${String(input.size)}`);
+    }
+
+    const sl = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
+    const tp = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+
+    const slAbs = sl != null && Number.isFinite(sl) ? Math.floor(Math.abs(sl)) : null;
+    const tpAbs = tp != null && Number.isFinite(tp) ? Math.floor(Math.abs(tp)) : null;
+
+    const wantsSL = slAbs != null && slAbs > 0;
+    const wantsTP = tpAbs != null && tpAbs > 0;
+
+    if (!wantsSL && !wantsTP) {
+      console.log("[projectx-adapter] brackets skipped (no sl/tp requested)", {
+        contractId,
+        entryOrderId: input.entryOrderId ?? null,
+      });
+      return {
+        ok: true,
+        refPrice: NaN,
+        tickSize: this.contractTickSize ?? NaN,
+        stopOrderId: null,
+        takeProfitOrderId: null,
+      };
+    }
+
+    // --- Ensure we have tickSize for this contract ---
+    let tickSize = this.contractTickSize;
+
+    // If we don't have it yet (or might be for a different contract), fetch it on-demand.
+    if (!tickSize || !Number.isFinite(tickSize)) {
+      const res = await fetch("https://api.topstepx.com/api/Contract/searchById", {
+        method: "POST",
+        headers: {
+          accept: "text/plain",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ contractId }),
+      });
+
+      const text = await res.text();
+      const json = parseJsonOrNull(text);
+      const c = json?.contract ?? null;
+
+      const ts =
+        typeof c?.tickSize === "number" ? c.tickSize : Number(c?.tickSize ?? NaN);
+
+      if (!Number.isFinite(ts)) {
+        throw new Error(
+          `placeBracketsAfterEntry: could not resolve tickSize for contractId=${contractId}`
+        );
+      }
+
+      tickSize = ts;
+      this.contractTickSize = ts;
+
+      console.log("[projectx-adapter] tickSize resolved", {
+        contractId,
+        tickSize,
+      });
+    }
+
+    // --- Get a reference price near "now" ---
+    // We do NOT have a documented "get fill price by orderId" endpoint.
+    // So we use the latest bar close as a reference price for bracket prices.
+    // This is sufficient for proving SL/TP creation in the UI.
+    const live =
+      this.accountSimulated == null ? true : this.accountSimulated === false;
+
+    const end = new Date();
+    const start = new Date(end.getTime() - 2 * 60 * 1000);
+
+    const barsRes = await fetch("https://api.topstepx.com/api/History/retrieveBars", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({
+        contractId,
+        live,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        unit: 1,
+        unitNumber: 15,
+        limit: 5,
+        includePartialBar: true,
+      }),
+    });
+
+    const barsText = await barsRes.text();
+    const barsJson = parseJsonOrNull(barsText);
+    const bars = Array.isArray(barsJson?.bars) ? barsJson.bars : [];
+
+    const lastBar = bars.length ? bars[bars.length - 1] : null;
+    const refPriceRaw = lastBar?.c ?? lastBar?.C ?? null;
+    const refPrice = typeof refPriceRaw === "number" ? refPriceRaw : Number(refPriceRaw);
+
+    if (!Number.isFinite(refPrice)) {
+      console.error("[projectx-adapter] retrieveBars failed (cannot compute brackets)", {
+        status: barsRes.status,
+        ok: barsRes.ok,
+        success: barsJson?.success,
+        errorCode: barsJson?.errorCode,
+        errorMessage: barsJson?.errorMessage ?? null,
+        barsCount: bars.length,
+      });
+      throw new Error("placeBracketsAfterEntry: cannot determine reference price for brackets");
+    }
+
+    const isLong = input.side === "buy";
+
+    const slPrice =
+      wantsSL ? (isLong ? refPrice - slAbs! * tickSize : refPrice + slAbs! * tickSize) : null;
+
+    const tpPrice =
+      wantsTP ? (isLong ? refPrice + tpAbs! * tickSize : refPrice - tpAbs! * tickSize) : null;
+
+    // Exit orders are always the OPPOSITE side
+    const exitSide = isLong ? 1 : 0; // 1=Ask(sell), 0=Bid(buy)
+
+    // Order types: 4=Stop, 1=Limit
+    let stopOrderId: number | null = null;
+    let takeProfitOrderId: number | null = null;
+
+    const baseTag = (input.customTag || "brackets").trim() || "brackets";
+    const entryTagPart = input.entryOrderId ? `:${input.entryOrderId}` : "";
+
+    if (wantsSL && slPrice != null) {
+      const body = {
+        accountId: this.accountId,
+        contractId,
+        type: 4, // Stop
+        side: exitSide,
+        size,
+        limitPrice: null,
+        stopPrice: slPrice,
+        trailPrice: null,
+        customTag: `${baseTag}:SL${entryTagPart}`,
+      };
+
+      console.log("[projectx-adapter] place SL exit (separate order)", {
+        contractId,
+        type: body.type,
+        side: body.side,
+        size: body.size,
+        stopPrice: body.stopPrice,
+        customTag: body.customTag,
+        refPrice,
+        tickSize,
+        slTicks: slAbs,
+      });
+
+      const res = await fetch("https://api.topstepx.com/api/Order/place", {
+        method: "POST",
+        headers: {
+          accept: "text/plain",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.token}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const text = await res.text();
+      const parsed = parseJsonOrNull(text) as PlaceOrderResponse | null;
+
+      console.log("[projectx-adapter] SL exit response", {
+        status: res.status,
+        ok: res.ok,
+        success: parsed?.success,
+        errorCode: parsed?.errorCode,
+        errorMessage: parsed?.errorMessage ?? null,
+        orderId: parsed?.orderId ?? null,
+      });
+
+      if (!res.ok || !parsed?.success || !parsed?.orderId) {
+        throw new Error(
+          `ProjectX SL exit Order/place failed (HTTP ${res.status})${
+            parsed?.errorCode != null ? ` code=${parsed.errorCode}` : ""
+          }${parsed?.errorMessage ? ` msg=${parsed.errorMessage}` : ""}`
+        );
+      }
+
+      stopOrderId = parsed.orderId;
+    }
+
+    if (wantsTP && tpPrice != null) {
+      const body = {
+        accountId: this.accountId,
+        contractId,
+        type: 1, // Limit
+        side: exitSide,
+        size,
+        limitPrice: tpPrice,
+        stopPrice: null,
+        trailPrice: null,
+        customTag: `${baseTag}:TP${entryTagPart}`,
+      };
+
+      console.log("[projectx-adapter] place TP exit (separate order)", {
+        contractId,
+        type: body.type,
+        side: body.side,
+        size: body.size,
+        limitPrice: body.limitPrice,
+        customTag: body.customTag,
+        refPrice,
+        tickSize,
+        tpTicks: tpAbs,
+      });
+
+      const res = await fetch("https://api.topstepx.com/api/Order/place", {
+        method: "POST",
+        headers: {
+          accept: "text/plain",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.token}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const text = await res.text();
+      const parsed = parseJsonOrNull(text) as PlaceOrderResponse | null;
+
+      console.log("[projectx-adapter] TP exit response", {
+        status: res.status,
+        ok: res.ok,
+        success: parsed?.success,
+        errorCode: parsed?.errorCode,
+        errorMessage: parsed?.errorMessage ?? null,
+        orderId: parsed?.orderId ?? null,
+      });
+
+      if (!res.ok || !parsed?.success || !parsed?.orderId) {
+        throw new Error(
+          `ProjectX TP exit Order/place failed (HTTP ${res.status})${
+            parsed?.errorCode != null ? ` code=${parsed.errorCode}` : ""
+          }${parsed?.errorMessage ? ` msg=${parsed.errorMessage}` : ""}`
+        );
+      }
+
+      takeProfitOrderId = parsed.orderId;
+    }
+
+    console.log("[projectx-adapter] brackets placed (separate exit orders)", {
+      contractId,
+      entryOrderId: input.entryOrderId ?? null,
+      refPrice,
+      tickSize,
+      stopOrderId,
+      takeProfitOrderId,
+    });
+
+    return {
+      ok: true,
+      refPrice,
+      tickSize,
+      stopOrderId,
+      takeProfitOrderId,
+    };
+  }
+
   startKeepAlive(): void {
     if (!this.token) {
       throw new Error("Cannot start keepalive without ProjectX token");
