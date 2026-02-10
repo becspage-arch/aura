@@ -159,7 +159,7 @@ export async function executeBracket(params: {
         size: input.qty,
         stopLossTicks: sl,
         takeProfitTicks: tp,
-        customTag: input.customTag ?? "manual",
+        customTag: input.customTag ?? input.execKey,
       });
 
       console.log("[executeBracket] BRACKETS_OK", {

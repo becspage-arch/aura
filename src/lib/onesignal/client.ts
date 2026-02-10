@@ -33,89 +33,25 @@ async function withOneSignal<T>(fn: (OneSignal: any) => Promise<T>): Promise<T> 
   });
 }
 
-function readSubId(OneSignal: any): string | null {
-  const id =
-    OneSignal?.User?.PushSubscription?.id ??
-    OneSignal?.User?.PushSubscription?.getId?.() ??
-    null;
-
-  return id ? String(id) : null;
-}
-
-function readToken(OneSignal: any): string | null {
-  const tok =
-    OneSignal?.User?.PushSubscription?.token ??
-    OneSignal?.User?.PushSubscription?.getToken?.() ??
-    null;
-
-  return tok ? String(tok) : null;
-}
-
-async function waitForSubReady(params: {
-  OneSignal: any;
-  timeoutMs: number;
-}): Promise<{ subscriptionId: string | null; token: string | null }> {
-  const { OneSignal, timeoutMs } = params;
+async function waitForSubscriptionId(OneSignal: any, timeoutMs: number): Promise<string | null> {
   const started = Date.now();
 
-  // Fast path
-  const existingId = readSubId(OneSignal);
-  const existingTok = readToken(OneSignal);
-  if (existingId || existingTok) {
-    return { subscriptionId: existingId, token: existingTok };
-  }
+  const readId = () => {
+    const sub = OneSignal?.User?.PushSubscription ?? null;
+    const id = sub?.id ?? (typeof sub?.getId === "function" ? sub.getId() : null);
+    return id ? String(id) : null;
+  };
 
-  // Prefer official change event when available
-  const sub = OneSignal?.User?.PushSubscription;
-  if (sub?.addEventListener) {
-    return await new Promise((resolve) => {
-      let done = false;
+  const existing = readId();
+  if (existing) return existing;
 
-      const finish = () => {
-        if (done) return;
-        done = true;
-        try {
-          sub.removeEventListener?.("change", onChange);
-        } catch {
-          // ignore
-        }
-        resolve({ subscriptionId: readSubId(OneSignal), token: readToken(OneSignal) });
-      };
-
-      const onChange = () => {
-        const id = readSubId(OneSignal);
-        const tok = readToken(OneSignal);
-        if (id || tok) finish();
-      };
-
-      sub.addEventListener("change", onChange);
-
-      const tick = async () => {
-        while (!done && Date.now() - started < timeoutMs) {
-          const id = readSubId(OneSignal);
-          const tok = readToken(OneSignal);
-          if (id || tok) {
-            finish();
-            return;
-          }
-          await sleep(250);
-        }
-        finish();
-      };
-
-      void tick();
-    });
-  }
-
-  // Fallback polling
   while (Date.now() - started < timeoutMs) {
-    const id = readSubId(OneSignal);
-    const tok = readToken(OneSignal);
-    if (id || tok) return { subscriptionId: id, token: tok };
+    const id = readId();
+    if (id) return id;
     await sleep(250);
   }
 
-  return { subscriptionId: null, token: null };
+  return null;
 }
 
 export async function requestPushPermission() {
@@ -125,20 +61,57 @@ export async function requestPushPermission() {
 
     const perm = browserPermission();
     const enabled = perm === "granted";
-    if (!enabled) {
-      return { enabled: false, subscriptionId: null as string | null };
-    }
+    if (!enabled) return { enabled: false, subscriptionId: null as string | null };
 
-    // 2) Explicitly opt-in so OneSignal actually creates the subscription (critical on iOS PWA)
+    // 2) Explicitly opt-in (THIS is what actually triggers OneSignal to create a device/subscription)
+    // iOS PWA can show permission=granted but will not produce a OneSignal subscription unless optIn is called.
     try {
-      await OneSignal?.User?.PushSubscription?.optIn?.();
+      await OneSignal.User.PushSubscription.optIn();
     } catch {
-      // If optIn isn't available for some reason, keep going and rely on wait.
+      // Even if this throws, we still try to read id below
     }
 
-    // 3) Wait for OneSignal to actually generate subscription id/token (iOS can be slow)
-    const ready = await waitForSubReady({ OneSignal, timeoutMs: 120000 }); // 2 minutes
-    return { enabled: true, subscriptionId: ready.subscriptionId };
+    // 3) Wait for a real subscription id:
+    // - change listener (best)
+    // - polling fallback (necessary on iOS when the event is flaky)
+    const sub = OneSignal?.User?.PushSubscription ?? null;
+
+    const byEvent = new Promise<string | null>((resolve) => {
+      if (!sub?.addEventListener) return resolve(null);
+
+      const onChange = (event: any) => {
+        const id = event?.current?.id ? String(event.current.id) : null;
+        if (id) {
+          try {
+            sub.removeEventListener?.("change", onChange);
+          } catch {
+            // ignore
+          }
+          resolve(id);
+        }
+      };
+
+      sub.addEventListener("change", onChange);
+
+      // Safety timeout for event path
+      setTimeout(() => {
+        try {
+          sub.removeEventListener?.("change", onChange);
+        } catch {
+          // ignore
+        }
+        resolve(null);
+      }, 30000);
+    });
+
+    const byPoll = waitForSubscriptionId(OneSignal, 90000);
+
+    const subscriptionId = (await Promise.race([byEvent, byPoll])) ?? (await byPoll);
+
+    return {
+      enabled: true,
+      subscriptionId,
+    };
   });
 }
 
@@ -146,9 +119,14 @@ export async function getPushStatus() {
   return await withOneSignal(async (OneSignal) => {
     const permission = browserPermission();
 
-    const subscribed = !!OneSignal?.User?.PushSubscription?.optedIn;
+    const sub = OneSignal?.User?.PushSubscription ?? null;
 
-    const id = readSubId(OneSignal);
+    const subscribed = !!sub?.optedIn;
+
+    const id =
+      sub?.id ??
+      (typeof sub?.getId === "function" ? sub.getId() : null) ??
+      null;
 
     return {
       permission,
