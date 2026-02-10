@@ -131,7 +131,7 @@ async function main() {
           entryType: "market",
           stopLossTicks: p.stopLossTicks,
           takeProfitTicks: p.takeProfitTicks,
-          customTag: "manual",
+          customTag: null,
         },
       });
     },
