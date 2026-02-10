@@ -1,3 +1,4 @@
+// src/app/onesignal-test/page.tsx
 "use client";
 
 import Script from "next/script";
@@ -7,6 +8,10 @@ declare global {
   interface Window {
     OneSignalDeferred?: any[];
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 export default function OneSignalTestPage() {
@@ -24,44 +29,116 @@ export default function OneSignalTestPage() {
 
       window.OneSignalDeferred = window.OneSignalDeferred || [];
 
-      await new Promise<void>((resolve) => {
-        window.OneSignalDeferred!.push(async function (OneSignal: any) {
-          await OneSignal.init({
-            appId,
-            safari_web_id: safariWebId,
-            serviceWorkerPath: "/OneSignalSDKWorker.js",
-            serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
-            notifyButton: { enable: false },
-            allowLocalhostAsSecureOrigin: true,
-          });
+      await new Promise<void>((resolve, reject) => {
+        window.OneSignalDeferred!.push(async (OneSignal: any) => {
+          try {
+            await OneSignal.init({
+              appId,
+              safari_web_id: safariWebId, // IMPORTANT: snake_case for v16 config
+              serviceWorkerPath: "/OneSignalSDKWorker.js",
+              serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
+              serviceWorkerParam: { scope: "/" },
+              notifyButton: { enable: false },
+              allowLocalhostAsSecureOrigin: false,
+            });
 
-          // Must be triggered by user click (this function is called by button)
-          await OneSignal.Notifications.requestPermission();
-          await OneSignal.User.PushSubscription.optIn();
+            const browserPerm = (window.Notification?.permission || "unknown").toString();
 
-          const subId =
-            OneSignal?.User?.PushSubscription?.id ??
-            (await OneSignal?.User?.PushSubscription?.getId?.()) ??
-            null;
+            // Must be triggered by user click (this function is called by button)
+            await OneSignal.Notifications.requestPermission();
 
-          const onesignalId = OneSignal?.User?.onesignalId ?? null;
+            const sub = OneSignal?.User?.PushSubscription;
+            if (!sub?.addEventListener) {
+              throw new Error("PushSubscription listener not available (unexpected for v16)");
+            }
 
-          const browserPerm = (window.Notification?.permission || "unknown").toString();
+            // Wait for a REAL subscription (id/token) from iOS.
+            // Do NOT call optIn() here - it can set optedIn=true before iOS supplies token/id.
+            let done = false;
 
-          setLog(
-            JSON.stringify(
-              {
-                browserPermission: browserPerm,
-                onesignalId,
-                subscriptionId: subId,
-                optedIn: OneSignal?.User?.PushSubscription?.optedIn ?? null,
-              },
-              null,
-              2
-            )
-          );
+            const resultPromise = new Promise<any>((res) => {
+              const onChange = (event: any) => {
+                const id = event?.current?.id ? String(event.current.id) : null;
+                const token = event?.current?.token ? String(event.current.token) : null;
+                const optedIn = typeof event?.current?.optedIn === "boolean" ? event.current.optedIn : null;
 
-          resolve();
+                if ((id || token) && !done) {
+                  done = true;
+                  try {
+                    sub.removeEventListener?.("change", onChange);
+                  } catch {
+                    // ignore
+                  }
+                  res({ id, token, optedIn, via: "pushSubscription.change" });
+                }
+              };
+
+              sub.addEventListener("change", onChange);
+
+              // Also poll, because iOS sometimes doesn’t emit promptly
+              (async () => {
+                for (let i = 0; i < 120 && !done; i++) {
+                  const id = sub?.id ?? (await sub?.getId?.()) ?? null;
+                  const token = sub?.token ?? (await sub?.getToken?.()) ?? null;
+                  const optedIn = typeof sub?.optedIn === "boolean" ? sub.optedIn : null;
+
+                  if ((id || token) && !done) {
+                    done = true;
+                    try {
+                      sub.removeEventListener?.("change", onChange);
+                    } catch {
+                      // ignore
+                    }
+                    res({
+                      id: id ? String(id) : null,
+                      token: token ? String(token) : null,
+                      optedIn,
+                      via: "polling",
+                    });
+                    return;
+                  }
+
+                  await sleep(500);
+                }
+
+                if (!done) {
+                  done = true;
+                  try {
+                    sub.removeEventListener?.("change", onChange);
+                  } catch {
+                    // ignore
+                  }
+                  res({ id: null, token: null, optedIn: sub?.optedIn ?? null, via: "timeout" });
+                }
+              })().catch(() => {
+                // ignore
+              });
+            });
+
+            const onesignalId = OneSignal?.User?.onesignalId ?? null;
+
+            const result = await resultPromise;
+
+            setLog(
+              JSON.stringify(
+                {
+                  browserPermission: (window.Notification?.permission || "unknown").toString(),
+                  browserPermBeforeRequest: browserPerm,
+                  onesignalId,
+                  subscriptionId: result.id,
+                  token: result.token,
+                  optedIn: result.optedIn,
+                  resolvedBy: result.via,
+                },
+                null,
+                2
+              )
+            );
+
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
         });
       });
     } catch (e) {
@@ -74,7 +151,7 @@ export default function OneSignalTestPage() {
       <h1 style={{ fontSize: 20, fontWeight: 700 }}>OneSignal Subscribe Test</h1>
 
       <p style={{ marginTop: 8, opacity: 0.8 }}>
-        This page is only for isolating the subscription problem.
+        This page only checks whether iOS produces a real OneSignal subscription (id/token).
       </p>
 
       <button
