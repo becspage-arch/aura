@@ -11,10 +11,10 @@ export async function POST(req: Request) {
     const size = Number.isFinite(Number(body.size)) ? Number(body.size) : 1;
     const stopLossTicks = Number.isFinite(Number(body.stopLossTicks))
       ? Number(body.stopLossTicks)
-      : 20;
+      : 45;
     const takeProfitTicks = Number.isFinite(Number(body.takeProfitTicks))
       ? Number(body.takeProfitTicks)
-      : 20;
+      : 45;
 
     const ablyKey = (process.env.ABLY_API_KEY || "").trim();
     if (!ablyKey) {

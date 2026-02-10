@@ -489,6 +489,17 @@ export function EnablePushCard() {
   }, []);
 
   async function enableOnThisDevice() {
+    // 🚫 Native app guard — disable web push inside Capacitor
+    const isNative =
+      typeof window !== "undefined" &&
+      !!(window as any).Capacitor &&
+      (window as any).Capacitor.isNativePlatform?.();
+
+    if (isNative) {
+      alert("Native app detected. Web push is disabled here.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 

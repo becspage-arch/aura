@@ -738,8 +738,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     // We do NOT have a documented "get fill price by orderId" endpoint.
     // So we use the latest bar close as a reference price for bracket prices.
     // This is sufficient for proving SL/TP creation in the UI.
-    const live =
-      this.accountSimulated == null ? true : this.accountSimulated === false;
+    const live = true;
 
     const end = new Date();
     const start = new Date(end.getTime() - 2 * 60 * 1000);

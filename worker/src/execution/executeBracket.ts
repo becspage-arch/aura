@@ -3,6 +3,7 @@
 import { PrismaClient, OrderSide } from "@prisma/client";
 import type { IBrokerAdapter } from "../broker/IBrokerAdapter.js";
 import { logTag } from "../lib/logTags";
+import { createHash } from "crypto";
 
 export type ExecuteBracketInput = {
   execKey: string; // deterministic idempotency key
@@ -19,25 +20,17 @@ export type ExecuteBracketInput = {
   stopLossTicks?: number | null;
   takeProfitTicks?: number | null;
 
+  // optional user-provided tag (keep short if you use it)
   customTag?: string | null;
 };
 
-// Small, deterministic hash so tags stay SHORT and stable.
-// (ProjectX can behave badly with long / complex tags; and tags must be unique per account.)
-function fnv1aHex(input: string): string {
-  let h = 0x811c9dc5; // 2166136261
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 0x01000193); // 16777619
-  }
-  // Convert to unsigned 32-bit hex
-  return (h >>> 0).toString(16).padStart(8, "0");
+function jsonSafe<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v));
 }
 
-function buildSafeProjectXTag(execKey: string): string {
-  // Keep it short, alnum + a couple safe chars, unique per execKey.
-  // Example: aura-1a2b3c4d
-  return `aura-${fnv1aHex(execKey)}`;
+function makeBrokerTag(execKey: string): string {
+  const h = createHash("sha1").update(execKey).digest("hex").slice(0, 8);
+  return `aura-${h}`; // short + unique enough for ProjectX
 }
 
 export async function executeBracket(params: {
@@ -46,6 +39,11 @@ export async function executeBracket(params: {
   input: ExecuteBracketInput;
 }) {
   const { prisma, broker, input } = params;
+
+  // ALWAYS use a short tag for broker calls (ProjectX can 500 on long tags)
+  const brokerTag = (input.customTag && input.customTag.trim().length > 0)
+    ? input.customTag.trim()
+    : makeBrokerTag(input.execKey);
 
   // 1) Idempotency check
   const existing = await prisma.execution.findUnique({
@@ -62,12 +60,6 @@ export async function executeBracket(params: {
     return existing;
   }
 
-  // Always use a short, deterministic tag for ProjectX.
-  // We do NOT trust user-provided tags (e.g. "manual") because:
-  // - tags must be unique per account
-  // - long tags have triggered ProjectX HTTP 500 (empty body) in your logs
-  const safeCustomTag = buildSafeProjectXTag(input.execKey);
-
   // 2) Create intent row
   const exec = await prisma.execution.create({
     data: {
@@ -81,21 +73,20 @@ export async function executeBracket(params: {
       entryType: input.entryType,
       stopLossTicks: input.stopLossTicks ?? null,
       takeProfitTicks: input.takeProfitTicks ?? null,
-      customTag: safeCustomTag,
+      customTag: brokerTag, // store the actual broker tag we used
       status: "INTENT_CREATED",
     },
   });
 
-  // 3) Place ENTRY (ENTRY MUST NOT include SL/TP fields for ProjectX)
+  // 3) Place ENTRY (always entry-only for ProjectX)
   const placeEntryFn = (broker as any).placeOrder;
 
-  const entryReq: Record<string, unknown> = {
+  const entryReq = {
     contractId: input.contractId,
     side: input.side,
     size: input.qty,
     type: input.entryType,
-    // Keep tag short + safe
-    customTag: safeCustomTag,
+    customTag: brokerTag,
   };
 
   console.log("[executeBracket] BROKER_CALL_BEGIN", {
@@ -130,7 +121,7 @@ export async function executeBracket(params: {
       data: {
         entryOrderId,
         status: "ORDER_SUBMITTED",
-        meta: { brokerResponse: entryRes, note: "entry_submitted" },
+        meta: { brokerResponse: jsonSafe(entryRes), note: "entry_submitted" },
       },
     });
 
@@ -146,14 +137,12 @@ export async function executeBracket(params: {
       stopLossTicks: input.stopLossTicks ?? null,
       takeProfitTicks: input.takeProfitTicks ?? null,
       entryOrderId: entryOrderId,
-      customTag: safeCustomTag,
+      customTag: brokerTag,
     });
 
     // 4) Place SL/TP as a separate immediate step (ProjectX requirement)
-    const sl =
-      input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
-    const tp =
-      input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+    const sl = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
+    const tp = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
 
     const wantsBrackets =
       (sl != null && Number.isFinite(sl) && sl > 0) ||
@@ -178,7 +167,6 @@ export async function executeBracket(params: {
         entryOrderId,
         sl,
         tp,
-        customTag: safeCustomTag,
       });
 
       const bracketRes = await placeBracketsAfterEntryFn.call(broker, {
@@ -188,8 +176,7 @@ export async function executeBracket(params: {
         size: input.qty,
         stopLossTicks: sl,
         takeProfitTicks: tp,
-        // Keep same safe tag for downstream correlation
-        customTag: safeCustomTag,
+        customTag: brokerTag,
       });
 
       console.log("[executeBracket] BRACKETS_OK", {
@@ -203,7 +190,7 @@ export async function executeBracket(params: {
           status: "BRACKETS_SUBMITTED",
           meta: {
             ...(updatedAfterEntry.meta as any),
-            brackets: bracketRes,
+            brackets: jsonSafe(bracketRes),
             note2: "brackets_submitted_after_entry",
           },
         },
@@ -219,7 +206,7 @@ export async function executeBracket(params: {
         stopLossTicks: sl,
         takeProfitTicks: tp,
         entryOrderId,
-        customTag: safeCustomTag,
+        customTag: brokerTag,
       });
 
       return updatedAfterBrackets;
