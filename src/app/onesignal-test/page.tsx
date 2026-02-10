@@ -28,7 +28,7 @@ export default function OneSignalTestPage() {
         window.OneSignalDeferred!.push(async function (OneSignal: any) {
           await OneSignal.init({
             appId,
-            safariWebId,
+            safari_web_id: safariWebId,
             serviceWorkerPath: "/OneSignalSDKWorker.js",
             serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
             notifyButton: { enable: false },
