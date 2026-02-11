@@ -12,11 +12,34 @@ export function TestEmailButton() {
 
     try {
       const res = await fetch("/api/notifications/test-email", { method: "POST" });
-      const data = await res.json();
 
-      if (!res.ok || !data?.ok) {
+      const contentType = res.headers.get("content-type") || "";
+      const raw = await res.text();
+
+      let data: any = null;
+      if (contentType.includes("application/json")) {
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          // fall through (we'll show raw below)
+        }
+      }
+
+      if (!res.ok) {
         setStatus("error");
-        setMessage(data?.error ?? "Failed to send test email");
+
+        // If it's JSON, show the API error. If it's HTML/other, show a short snippet.
+        const msg =
+          data?.error ??
+          (raw ? raw.slice(0, 180) : `HTTP ${res.status} with empty response`);
+
+        setMessage(`HTTP ${res.status}: ${msg}`);
+        return;
+      }
+
+      if (!data?.ok) {
+        setStatus("error");
+        setMessage(data?.error ?? "Unexpected response");
         return;
       }
 
