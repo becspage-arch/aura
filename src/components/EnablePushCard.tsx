@@ -505,11 +505,19 @@ export function EnablePushCard() {
     let swAttempt: Diag["swRegisterAttempt"] | undefined;
 
     try {
-      const { isNativeCapacitor } = await import("@/lib/platform/isNative");
-      if (isNativeCapacitor()) {
+      // Only block web push inside *real* native apps.
+      // (Some builds accidentally expose a Capacitor stub on web.)
+      const cap: any = (window as any).Capacitor;
+      const isNativeReal =
+        !!cap &&
+        typeof cap.isNativePlatform === "function" &&
+        cap.isNativePlatform() === true;
+
+      if (isNativeReal) {
         setError("Native push is not wired yet. Continue to Step 4.");
         return;
       }
+
       const res = await requestPushPermission();
 
       if (res.enabled && res.subscriptionId) {
