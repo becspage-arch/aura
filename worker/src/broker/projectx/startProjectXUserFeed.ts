@@ -200,43 +200,65 @@ export async function startProjectXUserFeed(params: {
 
       const execKey = `projectx:close:${ident.clerkUserId}:${symbol}:${refOrderId}:${closeKey}`;
 
-      await db.trade.upsert({
-        where: { execKey },
-        create: {
+      try {
+        console.log("[projectx-user] TRADE_UPSERT_ATTEMPT", {
           clerkUserId: ident.clerkUserId,
+          outcome,
+          pnl,
+          isFlat: true,
           execKey,
+        });
 
-          symbol,
-          contractId,
+        await db.trade.upsert({
+          where: { execKey },
+          create: {
+            clerkUserId: ident.clerkUserId,
+            execKey,
 
-          side,                 // "BUY" | "SELL" (matches OrderSide enum)
-          qty: qtyNum,
+            symbol,
+            contractId,
 
-          openedAt: closedAt,   // we don't have open time reliably yet
-          closedAt,
-          durationSec: null,
+            side, // "BUY" | "SELL"
+            qty: qtyNum,
 
-          plannedStopTicks: null,
-          plannedTakeProfitTicks: null,
-          plannedRiskUsd: null,
-          plannedRR: null,
+            openedAt: closedAt,
+            closedAt,
+            durationSec: null,
 
-          entryPriceAvg: entryPrice,
-          exitPriceAvg: exitPrice,
-          realizedPnlTicks: 0,
-          realizedPnlUsd: pnl,
-          rrAchieved: rrAchieved ?? null,
+            plannedStopTicks: null,
+            plannedTakeProfitTicks: null,
+            plannedRiskUsd: null,
+            plannedRR: null,
 
-          exitReason: "UNKNOWN",
+            entryPriceAvg: entryPrice,
+            exitPriceAvg: exitPrice,
+            realizedPnlTicks: 0,
+            realizedPnlUsd: pnl,
+            rrAchieved: rrAchieved ?? null,
+
+            exitReason: "UNKNOWN",
+            outcome,
+          },
+          update: {
+            closedAt,
+            realizedPnlUsd: pnl,
+            outcome,
+            rrAchieved: rrAchieved ?? null,
+          },
+        });
+
+        console.log("[projectx-user] TRADE_UPSERT_OK", {
+          clerkUserId: ident.clerkUserId,
           outcome,
-        },
-        update: {
-          closedAt,
-          realizedPnlUsd: pnl,
-          outcome,
-          rrAchieved: rrAchieved ?? null,
-        },
-      });
+          pnl,
+          execKey,
+        });
+      } catch (e) {
+        console.error("[projectx-user] TRADE_UPSERT_FAILED", {
+          execKey,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
 
       // Optional: mark executions “position closed” if we can correlate (best-effort)
       const orderId = toStr(payload?.orderId ?? payload?.entryOrderId ?? payload?.id);

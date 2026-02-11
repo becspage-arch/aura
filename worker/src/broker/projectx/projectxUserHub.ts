@@ -136,7 +136,7 @@ export class ProjectXUserHub {
             head: args.slice(0, 2),
           });
           console.log(
-            `[projectx-user] ${name} payload ${JSON.stringify(unwrapped)}`
+            `[projectx-user] POS_PAYLOAD_JSON ${name} ${JSON.stringify(unwrapped)}`
           );
         }
 
