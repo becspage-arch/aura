@@ -427,7 +427,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     });
   }
 
-  private async fetchOrderById(orderId: string): Promise<any | null> {
+  async fetchOrderById(orderId: string): Promise<any | null> {
     if (!this.token) throw new Error("fetchOrderById: no token");
     if (!this.accountId) throw new Error("fetchOrderById: no accountId");
 
