@@ -114,21 +114,40 @@ export async function startProjectXUserFeed(params: {
         },
       });
 
-      // Detect a “closed” / flat position.
-      // Different payloads use different fields; we check a few common ones.
-      const qty =
+      // Debug: log raw position payload + our "flat detection" inputs
+      console.log(
+        "[projectx-user] POS_PAYLOAD_JSON GatewayUserPosition",
+        JSON.stringify(payload)
+      );
+
+      const qtyDebug =
         toNum(payload?.qty) ??
         toNum(payload?.quantity) ??
         toNum(payload?.positionQty) ??
         toNum(payload?.netQty) ??
+        toNum(payload?.netPosition) ??
+        toNum(payload?.position) ??
         null;
 
-      const isFlat =
-        (typeof qty === "number" && qty === 0) ||
+      const isFlatDebug =
+        (typeof qtyDebug === "number" && qtyDebug === 0) ||
         payload?.isFlat === true ||
         payload?.closed === true ||
-        payload?.status === "CLOSED";
+        payload?.status === "CLOSED" ||
+        payload?.positionStatus === "CLOSED" ||
+        payload?.marketPosition === "Flat" ||
+        payload?.marketPosition === 0;
 
+      console.log("[projectx-user] POS_FLAT_DEBUG", {
+        qtyDebug,
+        status: payload?.status,
+        positionStatus: payload?.positionStatus,
+        marketPosition: payload?.marketPosition,
+        isFlatDebug,
+      });
+
+      // Only treat as closed when we are confident it's flat/closed
+      const isFlat = isFlatDebug;
       if (!isFlat) return;
 
       // Compute realized PnL if supplied, else default 0 for now.
@@ -144,7 +163,6 @@ export async function startProjectXUserFeed(params: {
       // rrAchieved: only store if your payload includes it; otherwise null
       const rrAchieved = toNum(payload?.rrAchieved);
 
-      // Create/Upsert a Trade row on close (schema requires many fields)
       const closedAt = new Date();
 
       const contractId =
@@ -153,6 +171,7 @@ export async function startProjectXUserFeed(params: {
         toStr(payload?.symbolId) ??
         null;
 
+      // Avoid ?? with || ambiguity by splitting
       const envSymbol = (process.env.PROJECTX_SYMBOL ?? "").trim();
 
       const symbol =
@@ -161,14 +180,15 @@ export async function startProjectXUserFeed(params: {
         (envSymbol || contractId || "UNKNOWN");
 
       const sideRaw = toStr(payload?.side) ?? toStr(payload?.entrySide) ?? null;
-      const side =
-        (sideRaw || "").toLowerCase().includes("sell") ? "SELL" : "BUY";
+      const side = (sideRaw || "").toLowerCase().includes("sell") ? "SELL" : "BUY";
 
+      // Use qty from payload if present; otherwise fallback to qtyDebug; otherwise 0
       const qtyNum =
         toNum(payload?.qty) ??
         toNum(payload?.quantity) ??
         toNum(payload?.positionQty) ??
         toNum(payload?.netQty) ??
+        qtyDebug ??
         0;
 
       const entryPrice =
@@ -221,7 +241,7 @@ export async function startProjectXUserFeed(params: {
             side, // "BUY" | "SELL"
             qty: qtyNum,
 
-            openedAt: closedAt,
+            openedAt: closedAt, // we don't have open time reliably yet
             closedAt,
             durationSec: null,
 
