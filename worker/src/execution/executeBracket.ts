@@ -33,6 +33,88 @@ function makeBrokerTag(execKey: string): string {
   return `aura-${h}`; // short + unique enough for ProjectX
 }
 
+async function ocoWatchAndCancel(params: {
+  broker: any;
+  execKey: string;
+  stopOrderId: string | null;
+  tpOrderId: string | null;
+  tag: string;
+}) {
+  const { broker, execKey, stopOrderId, tpOrderId, tag } = params;
+
+  if (!stopOrderId || !tpOrderId) return;
+  if (typeof broker.fetchOrderById !== "function") return;
+  if (typeof broker.cancelOrder !== "function") return;
+
+  const start = Date.now();
+  const timeoutMs = 10 * 60 * 1000; // 10 minutes
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const sl = await broker.fetchOrderById(stopOrderId);
+      const tp = await broker.fetchOrderById(tpOrderId);
+
+  function isFilled(o: any): boolean {
+    if (!o) return false;
+
+    const rawStatus = o?.status ?? o?.orderStatus ?? o?.state ?? null;
+    const status = rawStatus == null ? "" : String(rawStatus).toUpperCase();
+
+    if (status.includes("FILL")) return true;
+    if (status === "2" || status === "FILLED" || status === "COMPLETE") return true;
+
+    const filledQty = Number(
+      o?.filledQty ??
+        o?.filledQuantity ??
+        o?.filledSize ??
+        o?.quantityFilled ??
+        o?.fillQty ??
+        NaN
+    );
+
+    const totalQty = Number(
+      o?.qty ?? o?.quantity ?? o?.size ?? o?.orderQty ?? NaN
+    );
+
+    if (Number.isFinite(filledQty) && filledQty > 0) {
+      if (!Number.isFinite(totalQty)) return true;
+      if (filledQty >= totalQty) return true;
+    }
+
+    const filledPrice = Number(o?.filledPrice ?? o?.avgFillPrice ?? NaN);
+    if (Number.isFinite(filledPrice) && filledPrice > 0) return true;
+
+    return false;
+  }
+
+  const slFilled = isFilled(sl);
+  const tpFilled = isFilled(tp);
+
+      if (slFilled && !tpFilled) {
+        console.log("[executeBracket] OCO_CANCEL_TP", { execKey, tpOrderId, tag });
+        await broker.cancelOrder(tpOrderId, "OCO:SL_FILLED");
+        return;
+      }
+
+      if (tpFilled && !slFilled) {
+        console.log("[executeBracket] OCO_CANCEL_SL", { execKey, stopOrderId, tag });
+        await broker.cancelOrder(stopOrderId, "OCO:TP_FILLED");
+        return;
+      }
+    } catch (e: any) {
+      console.warn("[executeBracket] OCO_WATCH_ERR", {
+        execKey,
+        err: e?.message ? String(e.message) : String(e),
+      });
+    }
+
+    await sleep(1000);
+  }
+
+  console.warn("[executeBracket] OCO_WATCH_TIMEOUT", { execKey, tag });
+}
+
 export async function executeBracket(params: {
   prisma: PrismaClient;
   broker: IBrokerAdapter;
@@ -187,7 +269,11 @@ export async function executeBracket(params: {
       const updatedAfterBrackets = await prisma.execution.update({
         where: { id: exec.id },
         data: {
-          status: "BRACKETS_SUBMITTED",
+          status: "BRACKET_SUBMITTED",
+          stopOrderId:
+            bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null,
+          tpOrderId:
+            bracketRes?.takeProfitOrderId != null ? String(bracketRes.takeProfitOrderId) : null,
           meta: {
             ...(updatedAfterEntry.meta as any),
             brackets: jsonSafe(bracketRes),
@@ -196,7 +282,7 @@ export async function executeBracket(params: {
         },
       });
 
-      logTag("[projectx-worker] BRACKETS_SUBMITTED", {
+      logTag("[projectx-worker] BRACKET_SUBMITTED", {
         execKey: input.execKey,
         executionId: updatedAfterBrackets.id,
         broker: (broker as any)?.name ?? null,
@@ -207,6 +293,14 @@ export async function executeBracket(params: {
         takeProfitTicks: tp,
         entryOrderId,
         customTag: brokerTag,
+      });
+
+      void ocoWatchAndCancel({
+        broker,
+        execKey: input.execKey,
+        stopOrderId: updatedAfterBrackets.stopOrderId ?? null,
+        tpOrderId: updatedAfterBrackets.tpOrderId ?? null,
+        tag: brokerTag,
       });
 
       return updatedAfterBrackets;

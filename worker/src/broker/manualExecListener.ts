@@ -145,6 +145,16 @@ export async function startManualExecListener(params: {
     const stopLossTicks = asNumber(payload.stopLossTicks);
     const takeProfitTicks = asNumber(payload.takeProfitTicks);
 
+    logTag(`[${params.env.WORKER_NAME}] MANUAL_EXEC_PARSED`, {
+      channelName,
+      payloadExecKey: asString(payload.execKey),
+      contractId,
+      side,
+      qty,
+      stopLossTicks,
+      takeProfitTicks,
+    });
+
     if (stopLossTicks == null || stopLossTicks <= 0) {
       return reject(params.env, "invalid_stopLossTicks", {
         channelName,
@@ -186,11 +196,9 @@ export async function startManualExecListener(params: {
     const entryType = asEntryType(payload.entryType);
     const symbol = asString(payload.symbol);
 
-    const execKey =
-      asString(payload.execKey) ||
-      `manual:${clerkUserId}:${Date.now()}:${Math.floor(Math.random() * 1e6)}`;
+    const execKey = `manual:${clerkUserId}:${Date.now()}:${contractId}:${side}:${qty}:${stopLossTicks}:${takeProfitTicks}`;
 
-    const customTag = asString(payload.customTag) || execKey;
+    const customTag = asString(payload.customTag) || null;
 
     if (params.DRY_RUN) {
       console.log("[manual-exec] DRY_RUN would execute", {

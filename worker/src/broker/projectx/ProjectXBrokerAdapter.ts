@@ -1,6 +1,7 @@
 // worker/src/broker/projectx/ProjectXBrokerAdapter.ts
 
 import type { IBrokerAdapter } from "../IBrokerAdapter.js";
+import { logTag } from "../../lib/logTags";
 
 type ValidateResponse = {
   success?: boolean;
@@ -27,6 +28,19 @@ type AccountSearchResponse = {
 
 type PlaceOrderResponse = {
   orderId?: number;
+  success?: boolean;
+  errorCode?: number;
+  errorMessage?: string | null;
+};
+
+type OrderSearchResponse = {
+  orders?: any[];
+  success?: boolean;
+  errorCode?: number;
+  errorMessage?: string | null;
+};
+
+type CancelOrderResponse = {
   success?: boolean;
   errorCode?: number;
   errorMessage?: string | null;
@@ -413,6 +427,69 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     });
   }
 
+  private async fetchOrderById(orderId: string): Promise<any | null> {
+    if (!this.token) throw new Error("fetchOrderById: no token");
+    if (!this.accountId) throw new Error("fetchOrderById: no accountId");
+
+    const end = new Date();
+    const start = new Date(end.getTime() - 60 * 60 * 1000); // last 60 mins
+
+    const res = await fetch("https://api.topstepx.com/api/Order/search", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({
+        accountId: this.accountId,
+        startTimestamp: start.toISOString(),
+        endTimestamp: end.toISOString(),
+      }),
+    });
+
+    const text = await res.text();
+    const json = parseJsonOrNull(text) as OrderSearchResponse | null;
+    const orders = Array.isArray(json?.orders) ? json!.orders : [];
+
+    const idNum = Number(orderId);
+    const found = orders.find((o: any) => Number(o?.id) === idNum) ?? null;
+
+    return found;
+  }
+
+  async cancelOrder(orderId: string, reason?: string): Promise<boolean> {
+    if (!this.token) throw new Error("cancelOrder: no token");
+    if (!this.accountId) throw new Error("cancelOrder: no accountId");
+
+    const body = { accountId: this.accountId, orderId: Number(orderId) };
+
+    const res = await fetch("https://api.topstepx.com/api/Order/cancel", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const text = await res.text();
+    const json = parseJsonOrNull(text) as CancelOrderResponse | null;
+
+    console.log("[projectx-adapter] cancelOrder", {
+      orderId,
+      reason: reason ?? null,
+      status: res.status,
+      ok: res.ok,
+      success: json?.success,
+      errorCode: json?.errorCode,
+      errorMessage: json?.errorMessage ?? null,
+    });
+
+    return Boolean(res.ok && json?.success);
+  }
+
   async warmup(): Promise<void> {
     await this.validateToken();
     await this.fetchActiveAccounts();
@@ -766,9 +843,114 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     const barsJson = parseJsonOrNull(barsText);
     const bars = Array.isArray(barsJson?.bars) ? barsJson.bars : [];
 
-    const lastBar = bars.length ? bars[bars.length - 1] : null;
-    const refPriceRaw = lastBar?.c ?? lastBar?.C ?? null;
-    const refPrice = typeof refPriceRaw === "number" ? refPriceRaw : Number(refPriceRaw);
+// --- Get a reference price: prefer the ENTRY filled price from Order/search ---
+// If we use retrieveBars and it returns 0/NaN, brackets will be nonsense.
+let refPrice: number | null = null;
+
+// 1) Try Order/search for the entry order (best source for the actual fill)
+if (input.entryOrderId) {
+  try {
+    const end = new Date();
+    const start = new Date(end.getTime() - 10 * 60 * 1000);
+
+    const res = await fetch("https://api.topstepx.com/api/Order/search", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({
+        accountId: this.accountId,
+        startTimestamp: start.toISOString(),
+        endTimestamp: end.toISOString(),
+      }),
+    });
+
+    const text = await res.text();
+    const json = parseJsonOrNull(text);
+    const orders = Array.isArray(json?.orders) ? json.orders : [];
+
+    const entryIdNum = Number(input.entryOrderId);
+    const found = orders.find((o: any) => Number(o?.id) === entryIdNum) ?? null;
+
+    const filledRaw = found?.filledPrice ?? null;
+    const filledPrice = typeof filledRaw === "number" ? filledRaw : Number(filledRaw);
+
+    if (Number.isFinite(filledPrice) && filledPrice > 0) {
+      refPrice = filledPrice;
+    }
+
+    console.log("[projectx-adapter] entry fill lookup", {
+      entryOrderId: input.entryOrderId,
+      found: Boolean(found),
+      filledPrice: Number.isFinite(filledPrice) ? filledPrice : null,
+      status: found?.status ?? null,
+      type: found?.type ?? null,
+      side: found?.side ?? null,
+    });
+  } catch (e) {
+    console.warn("[projectx-adapter] entry fill lookup failed", {
+      entryOrderId: input.entryOrderId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+// 2) Fallback: latest bar close (only if it’s sane)
+if (refPrice == null) {
+  const live = true;
+
+  const end = new Date();
+  const start = new Date(end.getTime() - 2 * 60 * 1000);
+
+  const barsRes = await fetch("https://api.topstepx.com/api/History/retrieveBars", {
+    method: "POST",
+    headers: {
+      accept: "text/plain",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${this.token}`,
+    },
+    body: JSON.stringify({
+      contractId,
+      live,
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      unit: 1,
+      unitNumber: 15,
+      limit: 5,
+      includePartialBar: true,
+    }),
+  });
+
+  const barsText = await barsRes.text();
+  const barsJson = parseJsonOrNull(barsText);
+  const bars = Array.isArray(barsJson?.bars) ? barsJson.bars : [];
+
+  const lastBar = bars.length ? bars[bars.length - 1] : null;
+  const refPriceRaw = lastBar?.c ?? lastBar?.C ?? null;
+  const barClose = typeof refPriceRaw === "number" ? refPriceRaw : Number(refPriceRaw);
+
+  if (Number.isFinite(barClose) && barClose > 0) {
+    refPrice = barClose;
+  }
+
+  console.log("[projectx-adapter] bars refPrice fallback", {
+    status: barsRes.status,
+    ok: barsRes.ok,
+    barsCount: bars.length,
+    barClose: Number.isFinite(barClose) ? barClose : null,
+  });
+}
+
+// 3) Hard stop if still bad (prevents placing -4.5 / 4.5 nonsense)
+if (refPrice == null || !Number.isFinite(refPrice) || refPrice <= 0) {
+  throw new Error(
+    `placeBracketsAfterEntry: cannot determine valid refPrice (got ${String(refPrice)}) for contractId=${contractId} entryOrderId=${String(
+      input.entryOrderId
+    )}`
+  );
+}
 
     if (!Number.isFinite(refPrice)) {
       console.error("[projectx-adapter] retrieveBars failed (cannot compute brackets)", {
@@ -813,16 +995,17 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
         customTag: `${baseTag}:SL${entryTagPart}`,
       };
 
-      console.log("[projectx-adapter] place SL exit (separate order)", {
+      logTag("[projectx-adapter] SL_EXIT_PRICES", {
         contractId,
-        type: body.type,
-        side: body.side,
-        size: body.size,
-        stopPrice: body.stopPrice,
-        customTag: body.customTag,
+        entryOrderId: input.entryOrderId ?? null,
+        isLong,
+        exitSide,
+        size,
+        slTicks: slAbs,
         refPrice,
         tickSize,
-        slTicks: slAbs,
+        stopPrice: slPrice,
+        customTag: body.customTag,
       });
 
       const res = await fetch("https://api.topstepx.com/api/Order/place", {
@@ -871,16 +1054,17 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
         customTag: `${baseTag}:TP${entryTagPart}`,
       };
 
-      console.log("[projectx-adapter] place TP exit (separate order)", {
+      logTag("[projectx-adapter] TP_EXIT_PRICES", {
         contractId,
-        type: body.type,
-        side: body.side,
-        size: body.size,
-        limitPrice: body.limitPrice,
-        customTag: body.customTag,
+        entryOrderId: input.entryOrderId ?? null,
+        isLong,
+        exitSide,
+        size,
+        tpTicks: tpAbs,
         refPrice,
         tickSize,
-        tpTicks: tpAbs,
+        limitPrice: tpPrice,
+        customTag: body.customTag,
       });
 
       const res = await fetch("https://api.topstepx.com/api/Order/place", {
