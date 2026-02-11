@@ -153,12 +153,12 @@ export async function startProjectXUserFeed(params: {
         toStr(payload?.symbolId) ??
         null;
 
+      const envSymbol = (process.env.PROJECTX_SYMBOL ?? "").trim();
+
       const symbol =
         toStr(payload?.symbol) ??
         toStr(payload?.symbolId) ??
-        (process.env.PROJECTX_SYMBOL || "").trim() ||
-        contractId ||
-        "UNKNOWN";
+        (envSymbol || contractId || "UNKNOWN");
 
       const sideRaw = toStr(payload?.side) ?? toStr(payload?.entrySide) ?? null;
       const side =
