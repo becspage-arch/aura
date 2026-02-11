@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getPushStatus, requestPushPermission } from "@/lib/onesignal/client";
-import { registerRootServiceWorker } from "@/lib/onesignal/registerServiceWorker";
 
 type PushStatus = {
   permission: string;
@@ -506,21 +505,6 @@ export function EnablePushCard() {
     let swAttempt: Diag["swRegisterAttempt"] | undefined;
 
     try {
-      try {
-        const reg = await registerRootServiceWorker();
-        swAttempt = {
-          ok: true,
-          scope: reg?.scope,
-          scriptURL:
-            reg?.active?.scriptURL ||
-            reg?.installing?.scriptURL ||
-            reg?.waiting?.scriptURL ||
-            "(no active scriptURL)",
-        };
-      } catch (e) {
-        swAttempt = { ok: false, error: e instanceof Error ? e.message : String(e) };
-      }
-
       const { isNativeCapacitor } = await import("@/lib/platform/isNative");
       if (isNativeCapacitor()) {
         setError("Native push is not wired yet. Continue to Step 4.");
