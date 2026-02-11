@@ -521,6 +521,11 @@ export function EnablePushCard() {
         swAttempt = { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
 
+      const { isNativeCapacitor } = await import("@/lib/platform/isNative");
+      if (isNativeCapacitor()) {
+        setError("Native push is not wired yet. Continue to Step 4.");
+        return;
+      }
       const res = await requestPushPermission();
 
       if (res.enabled && res.subscriptionId) {
