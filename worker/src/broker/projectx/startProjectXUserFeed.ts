@@ -16,6 +16,13 @@ function toStr(v: any): string | null {
   return null;
 }
 
+type ExitPnlCacheRow = {
+  pnlUsd: number;
+  tsMs: number;
+  tradeId?: string | null;
+  orderId?: string | null;
+};
+
 export async function startProjectXUserFeed(params: {
   env: { WORKER_NAME: string };
   DRY_RUN: boolean;
@@ -26,6 +33,43 @@ export async function startProjectXUserFeed(params: {
   token: string;
   accountId?: number | null;
 }) {
+  // Cache the most recent EXIT pnl for a short window so onPosition(close) can use it.
+  // Keyed by accountId + contractId (good enough for now since you trade one instrument).
+  const exitPnlByAcctContract = new Map<string, ExitPnlCacheRow>();
+
+  // De-dupe “close” handling because ProjectX can emit multiple flat position updates.
+  // Keyed by a stable closeKey derived from the position payload.
+  const processedCloseKeys = new Map<string, number>();
+  const CLOSE_DEDUPE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+  function pruneDedupe(nowMs: number) {
+    for (const [k, t] of processedCloseKeys) {
+      if (nowMs - t > CLOSE_DEDUPE_TTL_MS) processedCloseKeys.delete(k);
+    }
+  }
+
+  function makeAcctContractKey(payload: any): string | null {
+    const acct = toStr(payload?.accountId);
+    const contract = toStr(payload?.contractId);
+    if (!acct || !contract) return null;
+    return `${acct}:${contract}`;
+  }
+
+  function makeStableCloseKey(payload: any): string {
+    // Prefer fields that stay the same across repeated “flat” updates
+    const posId = toStr(payload?.id) ?? "nopos";
+    const created =
+      toStr(payload?.creationTimestamp) ??
+      toStr(payload?.createdAt) ??
+      toStr(payload?.timestamp) ??
+      "nocreated";
+    const type = toStr(payload?.type) ?? "notype";
+    const size = toStr(payload?.size) ?? "nosize";
+    const acct = toStr(payload?.accountId) ?? "noacct";
+    const contract = toStr(payload?.contractId) ?? "nocontract";
+    return `pxclose:${acct}:${contract}:${posId}:${created}:${type}:${size}`;
+  }
+
   const hub = new ProjectXUserHub({
     token: params.token,
     accountId: params.accountId ?? null,
@@ -82,6 +126,23 @@ export async function startProjectXUserFeed(params: {
         },
       });
 
+      // Cache EXIT profitAndLoss so onPosition(close) can use it.
+      // From your logs: exit fills include profitAndLoss, entry fills do not.
+      const pnl = toNum(payload?.profitAndLoss);
+      if (typeof pnl === "number") {
+        const key = makeAcctContractKey(payload);
+        if (key) {
+          exitPnlByAcctContract.set(key, {
+            pnlUsd: pnl,
+            tsMs: Date.now(),
+            tradeId: toStr(payload?.id),
+            orderId: toStr(payload?.orderId),
+          });
+
+          console.log("[projectx-user] EXIT_PNL_CACHED", { key, pnlUsd: pnl });
+        }
+      }
+
       // Correlate to Execution if possible
       const orderId = toStr(payload?.orderId ?? payload?.parentOrderId ?? payload?.id);
       const customTag = toStr(payload?.customTag ?? payload?.tag);
@@ -113,40 +174,83 @@ export async function startProjectXUserFeed(params: {
         },
       });
 
-      // Debug: log raw POSITION payload
+      // Debug: log raw position payload + our "flat detection" inputs
       console.log(
         "[projectx-user] POS_PAYLOAD_JSON GatewayUserPosition",
         JSON.stringify(payload)
       );
 
-      // ✅ ProjectX position updates use `size` (not qty/netQty/etc.)
-      const posSize = toNum(payload?.size);
+      const qtyDebug =
+        toNum(payload?.qty) ??
+        toNum(payload?.quantity) ??
+        toNum(payload?.positionQty) ??
+        toNum(payload?.netQty) ??
+        toNum(payload?.netPosition) ??
+        toNum(payload?.position) ??
+        null;
 
-      const isFlat =
-        (typeof posSize === "number" && posSize === 0) ||
+      const isFlatDebug =
+        (typeof qtyDebug === "number" && qtyDebug === 0) ||
         payload?.isFlat === true ||
         payload?.closed === true ||
         payload?.status === "CLOSED" ||
         payload?.positionStatus === "CLOSED" ||
         payload?.marketPosition === "Flat" ||
-        payload?.marketPosition === 0;
+        payload?.marketPosition === 0 ||
+        payload?.size === 0;
 
       console.log("[projectx-user] POS_FLAT_DEBUG", {
-        posSize,
+        qtyDebug,
+        size: payload?.size,
+        type: payload?.type,
         status: payload?.status,
         positionStatus: payload?.positionStatus,
         marketPosition: payload?.marketPosition,
-        isFlat,
+        isFlatDebug,
       });
 
-      if (!isFlat) return;
+      if (!isFlatDebug) return;
 
-      // Compute realized PnL if supplied, else default 0 for now.
-      const pnl =
+      // De-dupe repeated “flat” updates
+      const nowMs = Date.now();
+      pruneDedupe(nowMs);
+
+      const closeKeyStable = makeStableCloseKey(payload);
+      if (processedCloseKeys.has(closeKeyStable)) {
+        console.log("[projectx-user] CLOSE_DEDUPED", { closeKeyStable });
+        return;
+      }
+      processedCloseKeys.set(closeKeyStable, nowMs);
+
+      // PnL: prefer position payload, else use cached exit pnl (recent)
+      const pnlFromPos =
         toNum(payload?.realizedPnlUsd) ??
         toNum(payload?.realizedPnl) ??
         toNum(payload?.pnl) ??
-        0;
+        null;
+
+      let pnl: number = 0;
+      if (typeof pnlFromPos === "number") {
+        pnl = pnlFromPos;
+      } else {
+        const key = makeAcctContractKey(payload);
+        const cached = key ? exitPnlByAcctContract.get(key) : null;
+
+        // Only trust if it’s very recent (position close arrives right after the exit fill)
+        const MAX_AGE_MS = 2 * 60 * 1000; // 2 minutes
+        if (cached && nowMs - cached.tsMs <= MAX_AGE_MS) {
+          pnl = cached.pnlUsd;
+          console.log("[projectx-user] PNL_FROM_CACHED_EXIT", {
+            key,
+            pnlUsd: pnl,
+            cachedTradeId: cached.tradeId ?? null,
+            cachedOrderId: cached.orderId ?? null,
+          });
+        } else {
+          pnl = 0;
+          console.log("[projectx-user] PNL_MISSING_DEFAULT_0", { key, cached: !!cached });
+        }
+      }
 
       const outcome = pnl > 0 ? "WIN" : pnl < 0 ? "LOSS" : "BREAKEVEN";
       const rrAchieved = toNum(payload?.rrAchieved);
@@ -160,7 +264,6 @@ export async function startProjectXUserFeed(params: {
         null;
 
       const envSymbol = (process.env.PROJECTX_SYMBOL ?? "").trim();
-
       const symbol =
         toStr(payload?.symbol) ??
         toStr(payload?.symbolId) ??
@@ -169,23 +272,20 @@ export async function startProjectXUserFeed(params: {
       const sideRaw = toStr(payload?.side) ?? toStr(payload?.entrySide) ?? null;
       const side = (sideRaw || "").toLowerCase().includes("sell") ? "SELL" : "BUY";
 
-      // For a CLOSED position, payload.size will usually be 0.
-      // So qty should come from something else if present; otherwise fallback to 0.
-      // (We still store *something* so schema is satisfied.)
+      // On close payload, size is 0, so qty is not reliable.
+      // Keep qtyNum as 1 by default if missing (since your trades are 1-lots right now).
       const qtyNum =
         toNum(payload?.qty) ??
         toNum(payload?.quantity) ??
         toNum(payload?.positionQty) ??
         toNum(payload?.netQty) ??
-        0;
+        1;
 
       const entryPrice =
         toNum(payload?.entryPriceAvg) ??
         toNum(payload?.avgEntryPrice) ??
         toNum(payload?.entryPrice) ??
         toNum(payload?.avgPrice) ??
-        // ProjectX position payloads often use averagePrice
-        toNum(payload?.averagePrice) ??
         0;
 
       const exitPrice =
@@ -195,26 +295,15 @@ export async function startProjectXUserFeed(params: {
         toNum(payload?.closePrice) ??
         0;
 
-      const closeKey =
-        toStr(payload?.closedAt) ??
-        toStr(payload?.timestamp) ??
-        toStr(payload?.ts) ??
-        String(closedAt.getTime());
-
-      const refOrderId =
-        toStr(payload?.entryOrderId) ??
-        toStr(payload?.orderId) ??
-        toStr(payload?.id) ??
-        "noorder";
-
-      const execKey = `projectx:close:${ident.clerkUserId}:${symbol}:${refOrderId}:${closeKey}`;
+      // Use stable close key so we upsert the same row on repeats
+      const execKey = `projectx:close:${ident.clerkUserId}:${symbol}:${closeKeyStable}`;
 
       try {
         console.log("[projectx-user] TRADE_UPSERT_ATTEMPT", {
           clerkUserId: ident.clerkUserId,
           outcome,
           pnl,
-          isFlat: true,
+          closeKeyStable,
           execKey,
         });
 
@@ -227,10 +316,10 @@ export async function startProjectXUserFeed(params: {
             symbol,
             contractId,
 
-            side, // "BUY" | "SELL"
+            side,
             qty: qtyNum,
 
-            openedAt: closedAt, // we don't have open time reliably yet
+            openedAt: closedAt, // not available reliably yet
             closedAt,
             durationSec: null,
 
@@ -269,7 +358,7 @@ export async function startProjectXUserFeed(params: {
         });
       }
 
-      // Optional: mark executions “position closed” if we can correlate (best-effort)
+      // Best-effort: mark executions “position closed” if we can correlate
       const orderId = toStr(payload?.orderId ?? payload?.entryOrderId ?? payload?.id);
       if (orderId) {
         await db.execution.updateMany({
