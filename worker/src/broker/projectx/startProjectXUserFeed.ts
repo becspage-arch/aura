@@ -32,7 +32,6 @@ export async function startProjectXUserFeed(params: {
     debugInvocations: process.env.PROJECTX_USER_DEBUG === "1",
 
     onOrder: async (payload) => {
-      // Always log raw
       const db = params.getPrisma();
       const ident = await params.getUserIdentityForWorker();
 
@@ -114,23 +113,17 @@ export async function startProjectXUserFeed(params: {
         },
       });
 
-      // Debug: log raw position payload + our "flat detection" inputs
+      // Debug: log raw POSITION payload
       console.log(
         "[projectx-user] POS_PAYLOAD_JSON GatewayUserPosition",
         JSON.stringify(payload)
       );
 
-      const qtyDebug =
-        toNum(payload?.qty) ??
-        toNum(payload?.quantity) ??
-        toNum(payload?.positionQty) ??
-        toNum(payload?.netQty) ??
-        toNum(payload?.netPosition) ??
-        toNum(payload?.position) ??
-        null;
+      // ✅ ProjectX position updates use `size` (not qty/netQty/etc.)
+      const posSize = toNum(payload?.size);
 
-      const isFlatDebug =
-        (typeof qtyDebug === "number" && qtyDebug === 0) ||
+      const isFlat =
+        (typeof posSize === "number" && posSize === 0) ||
         payload?.isFlat === true ||
         payload?.closed === true ||
         payload?.status === "CLOSED" ||
@@ -139,15 +132,13 @@ export async function startProjectXUserFeed(params: {
         payload?.marketPosition === 0;
 
       console.log("[projectx-user] POS_FLAT_DEBUG", {
-        qtyDebug,
+        posSize,
         status: payload?.status,
         positionStatus: payload?.positionStatus,
         marketPosition: payload?.marketPosition,
-        isFlatDebug,
+        isFlat,
       });
 
-      // Only treat as closed when we are confident it's flat/closed
-      const isFlat = isFlatDebug;
       if (!isFlat) return;
 
       // Compute realized PnL if supplied, else default 0 for now.
@@ -157,10 +148,7 @@ export async function startProjectXUserFeed(params: {
         toNum(payload?.pnl) ??
         0;
 
-      // Outcome from pnl
       const outcome = pnl > 0 ? "WIN" : pnl < 0 ? "LOSS" : "BREAKEVEN";
-
-      // rrAchieved: only store if your payload includes it; otherwise null
       const rrAchieved = toNum(payload?.rrAchieved);
 
       const closedAt = new Date();
@@ -171,7 +159,6 @@ export async function startProjectXUserFeed(params: {
         toStr(payload?.symbolId) ??
         null;
 
-      // Avoid ?? with || ambiguity by splitting
       const envSymbol = (process.env.PROJECTX_SYMBOL ?? "").trim();
 
       const symbol =
@@ -182,13 +169,14 @@ export async function startProjectXUserFeed(params: {
       const sideRaw = toStr(payload?.side) ?? toStr(payload?.entrySide) ?? null;
       const side = (sideRaw || "").toLowerCase().includes("sell") ? "SELL" : "BUY";
 
-      // Use qty from payload if present; otherwise fallback to qtyDebug; otherwise 0
+      // For a CLOSED position, payload.size will usually be 0.
+      // So qty should come from something else if present; otherwise fallback to 0.
+      // (We still store *something* so schema is satisfied.)
       const qtyNum =
         toNum(payload?.qty) ??
         toNum(payload?.quantity) ??
         toNum(payload?.positionQty) ??
         toNum(payload?.netQty) ??
-        qtyDebug ??
         0;
 
       const entryPrice =
@@ -196,6 +184,8 @@ export async function startProjectXUserFeed(params: {
         toNum(payload?.avgEntryPrice) ??
         toNum(payload?.entryPrice) ??
         toNum(payload?.avgPrice) ??
+        // ProjectX position payloads often use averagePrice
+        toNum(payload?.averagePrice) ??
         0;
 
       const exitPrice =
@@ -205,7 +195,6 @@ export async function startProjectXUserFeed(params: {
         toNum(payload?.closePrice) ??
         0;
 
-      // stable-ish idempotency key for "this close event"
       const closeKey =
         toStr(payload?.closedAt) ??
         toStr(payload?.timestamp) ??
