@@ -135,3 +135,20 @@ export async function getPushStatus() {
     };
   });
 }
+
+export async function getOneSignalIds() {
+  return await withOneSignal(async (OneSignal) => {
+    const onesignalId = OneSignal?.User?.onesignalId ?? null;
+
+    const sub = OneSignal?.User?.PushSubscription ?? null;
+    const subscriptionId =
+      sub?.id ??
+      (typeof sub?.getId === "function" ? sub.getId() : null) ??
+      null;
+
+    return {
+      onesignalId: onesignalId ? String(onesignalId) : null,
+      subscriptionId: subscriptionId ? String(subscriptionId) : null,
+    };
+  });
+}

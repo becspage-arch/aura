@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getPushStatus, requestPushPermission } from "@/lib/onesignal/client";
+import { getPushStatus, requestPushPermission, getOneSignalIds } from "@/lib/onesignal/client";
 
 type PushStatus = {
   permission: string;
@@ -521,10 +521,15 @@ export function EnablePushCard() {
       const res = await requestPushPermission();
 
       if (res.enabled && res.subscriptionId) {
+        const ids = await getOneSignalIds();
+
         const r = await fetch("/api/push/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subscriptionId: res.subscriptionId }),
+          body: JSON.stringify({
+            subscriptionId: res.subscriptionId,
+            onesignalId: ids.onesignalId,
+          }),
         });
 
         if (!r.ok) {
