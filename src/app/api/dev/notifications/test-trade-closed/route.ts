@@ -11,6 +11,9 @@ export async function POST() {
     }
 
     const clerkUserId = user.id;
+        if (clerkUserId !== process.env.AURA_CLERK_USER_ID) {
+    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    }
 
     // Ensure we have the email saved (safety)
     const toEmail =
