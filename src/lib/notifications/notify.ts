@@ -80,12 +80,14 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
     });
   }
 
-  // -----------------------------
-  // Session summary → Email
-  // -----------------------------
-  if (event.type === "session_summary") {
-    await sendEmailSessionSummary(event);
-  }
+// -----------------------------
+// Session summary → Email (later)
+// -----------------------------
+if (event.type === "session_summary") {
+  // v1: we don't have recipient email wiring here yet.
+  // We'll re-enable once we store user email prefs + recipient lookup.
+  // await sendEmailSessionSummary(event, toEmail);
+}
 
   return { ok: true as const, skipped: false as const, key };
 }
