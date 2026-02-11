@@ -342,6 +342,7 @@ model OneSignalPushSubscription {
   id             String   @id @default(cuid())
   userId         String
   subscriptionId String   @unique
+  onesignalId    String?  @unique
   createdAt      DateTime @default(now())
   lastSeenAt     DateTime @updatedAt
 
