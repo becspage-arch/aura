@@ -5,11 +5,19 @@ import type { NotificationEvent } from "./events";
 import { notificationIdempotencyKey } from "./events";
 import { publishInAppNotification } from "./inApp";
 import { sendPushTradeClosed } from "./push";
-import { sendEmailSessionSummary } from "./email";
+import { sendEmail } from "./email";
 
 type NotifyDeps = {
   prisma: PrismaClient;
 };
+
+async function getUserEmailByClerkUserId(prisma: PrismaClient, clerkUserId: string) {
+  const user = await prisma.userProfile.findUnique({
+    where: { clerkUserId },
+    select: { email: true },
+  });
+  return user?.email ?? null;
+}
 
 /**
  * notify(event)
@@ -34,7 +42,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   }
 
   // -----------------------------
-  // Trade closed → In-app + Push
+  // Trade closed → In-app + Push + Email (if available)
   // -----------------------------
   if (event.type === "trade_closed") {
     const pnl = event.realisedPnlUsd;
@@ -58,6 +66,22 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
 
     // Push notification (stubbed for now)
     await sendPushTradeClosed(event);
+
+    // Email (only if user has an email stored in UserProfile)
+    const toEmail = await getUserEmailByClerkUserId(prisma, event.userId);
+
+    if (toEmail) {
+      const subject = `Aura – Trade Closed (${event.symbol})`;
+
+      const html =
+        event.result === "win"
+          ? `<h2>Trade closed ✅</h2><p>WIN ${sign}$${Math.abs(pnl).toFixed(0)} on ${event.symbol}</p>`
+          : event.result === "loss"
+          ? `<h2>Trade closed</h2><p>LOSS -$${Math.abs(pnl).toFixed(0)} on ${event.symbol}</p>`
+          : `<h2>Trade closed</h2><p>BREAKEVEN $0 on ${event.symbol}</p>`;
+
+      await sendEmail({ to: toEmail, subject, html });
+    }
   }
 
   // -----------------------------
@@ -65,8 +89,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   // -----------------------------
   if (event.type === "trade_opened") {
     const dir = event.direction === "long" ? "🟦 ENTERED LONG" : "🟥 ENTERED SHORT";
-    const px =
-      typeof event.entryPrice === "number" ? ` @ ${event.entryPrice}` : "";
+    const px = typeof event.entryPrice === "number" ? ` @ ${event.entryPrice}` : "";
 
     const title = "Aura - Trade Opened";
     const body = `${dir} ${event.size}x ${event.symbol}${px}`;
@@ -80,14 +103,12 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
     });
   }
 
-// -----------------------------
-// Session summary → Email (later)
-// -----------------------------
-if (event.type === "session_summary") {
-  // v1: we don't have recipient email wiring here yet.
-  // We'll re-enable once we store user email prefs + recipient lookup.
-  // await sendEmailSessionSummary(event, toEmail);
-}
+  // -----------------------------
+  // Session summary → Email (later)
+  // -----------------------------
+  if (event.type === "session_summary") {
+    // v1: not wired yet
+  }
 
   return { ok: true as const, skipped: false as const, key };
 }
