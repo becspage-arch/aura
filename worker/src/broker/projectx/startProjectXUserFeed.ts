@@ -144,15 +144,97 @@ export async function startProjectXUserFeed(params: {
       // rrAchieved: only store if your payload includes it; otherwise null
       const rrAchieved = toNum(payload?.rrAchieved);
 
-      // Create a Trade row on close.
-      // This matches what your /api/stats expects to read.
-      await db.trade.create({
-        data: {
+      // Create/Upsert a Trade row on close (schema requires many fields)
+      const closedAt = new Date();
+
+      const contractId =
+        toStr(payload?.contractId) ??
+        toStr(payload?.instrumentId) ??
+        toStr(payload?.symbolId) ??
+        null;
+
+      const symbol =
+        toStr(payload?.symbol) ??
+        toStr(payload?.symbolId) ??
+        (process.env.PROJECTX_SYMBOL || "").trim() ||
+        contractId ||
+        "UNKNOWN";
+
+      const sideRaw = toStr(payload?.side) ?? toStr(payload?.entrySide) ?? null;
+      const side =
+        (sideRaw || "").toLowerCase().includes("sell") ? "SELL" : "BUY";
+
+      const qtyNum =
+        toNum(payload?.qty) ??
+        toNum(payload?.quantity) ??
+        toNum(payload?.positionQty) ??
+        toNum(payload?.netQty) ??
+        0;
+
+      const entryPrice =
+        toNum(payload?.entryPriceAvg) ??
+        toNum(payload?.avgEntryPrice) ??
+        toNum(payload?.entryPrice) ??
+        toNum(payload?.avgPrice) ??
+        0;
+
+      const exitPrice =
+        toNum(payload?.exitPriceAvg) ??
+        toNum(payload?.avgExitPrice) ??
+        toNum(payload?.exitPrice) ??
+        toNum(payload?.closePrice) ??
+        0;
+
+      // stable-ish idempotency key for "this close event"
+      const closeKey =
+        toStr(payload?.closedAt) ??
+        toStr(payload?.timestamp) ??
+        toStr(payload?.ts) ??
+        String(closedAt.getTime());
+
+      const refOrderId =
+        toStr(payload?.entryOrderId) ??
+        toStr(payload?.orderId) ??
+        toStr(payload?.id) ??
+        "noorder";
+
+      const execKey = `projectx:close:${ident.clerkUserId}:${symbol}:${refOrderId}:${closeKey}`;
+
+      await db.trade.upsert({
+        where: { execKey },
+        create: {
           clerkUserId: ident.clerkUserId,
-          closedAt: new Date(),
+          execKey,
+
+          symbol,
+          contractId,
+
+          side,                 // "BUY" | "SELL" (matches OrderSide enum)
+          qty: qtyNum,
+
+          openedAt: closedAt,   // we don't have open time reliably yet
+          closedAt,
+          durationSec: null,
+
+          plannedStopTicks: null,
+          plannedTakeProfitTicks: null,
+          plannedRiskUsd: null,
+          plannedRR: null,
+
+          entryPriceAvg: entryPrice,
+          exitPriceAvg: exitPrice,
+          realizedPnlTicks: 0,
+          realizedPnlUsd: pnl,
+          rrAchieved: rrAchieved ?? null,
+
+          exitReason: "UNKNOWN",
+          outcome,
+        },
+        update: {
+          closedAt,
           realizedPnlUsd: pnl,
           outcome,
-          rrAchieved: rrAchieved,
+          rrAchieved: rrAchieved ?? null,
         },
       });
 

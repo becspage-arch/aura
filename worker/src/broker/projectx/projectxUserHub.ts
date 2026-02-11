@@ -135,7 +135,9 @@ export class ProjectXUserHub {
             headTypes: args.slice(0, 3).map((a) => typeof a),
             head: args.slice(0, 2),
           });
-          console.log(`[projectx-user] ${name} payload`, unwrapped);
+          console.log(
+            `[projectx-user] ${name} payload ${JSON.stringify(unwrapped)}`
+          );
         }
 
         if (!fn) return;
