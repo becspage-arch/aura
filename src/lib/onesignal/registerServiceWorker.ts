@@ -7,7 +7,11 @@ export async function registerRootServiceWorker() {
   if (!window.isSecureContext) throw new Error("Not a secure context");
 
   const existing = await navigator.serviceWorker.getRegistrations();
-  if (existing.length > 0) return existing[0];
+  const found = existing.find((r) =>
+    (r.active?.scriptURL || r.installing?.scriptURL || r.waiting?.scriptURL || "")
+      .includes("/OneSignalSDKWorker.js")
+  );
+  if (found) return found;
 
   // Must be a direct 200 JS response (no redirects, no HTML).
   return await navigator.serviceWorker.register("/OneSignalSDKWorker.js", {

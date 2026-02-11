@@ -25,9 +25,6 @@ export function OneSignalInit() {
       try {
         await OneSignal.init({
           appId,
-          // Ensure it uses your root worker (which you already serve correctly)
-          serviceWorkerPath: "/OneSignalSDKWorker.js",
-          serviceWorkerParam: { scope: "/" },
         });
 
         window.__auraOneSignalInit = { ok: true, ts: new Date().toISOString() };
