@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { PushStatusRow } from "@/components/PushStatusRow";
+import { TestEmailButton } from "@/components/TestEmailButton";
 
 export default function SettingsPage() {
   return (
@@ -258,14 +259,15 @@ export default function SettingsPage() {
               </div>
 
               {/* Email */}
-              <div className="aura-card-muted aura-control-row aura-disabled">
+              <div className="aura-card-muted aura-grid-gap-12">
                 <div className="aura-control-meta">
                   <div className="aura-control-title">Email</div>
                   <div className="aura-control-help">
-                    Daily/session summaries and high-priority alerts (coming soon).
+                    Test sending now. (We’ll add preferences + daily/session summaries next.)
                   </div>
                 </div>
-                <span className="aura-select-pill">Coming soon</span>
+
+                <TestEmailButton />
               </div>
             </div>
           </div>
