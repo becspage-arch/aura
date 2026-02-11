@@ -42,7 +42,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   }
 
   // -----------------------------
-  // Trade closed → In-app + Push + Email (if available)
+  // Trade closed → In-app + Push + Email (polished)
   // -----------------------------
   if (event.type === "trade_closed") {
     const pnl = event.realisedPnlUsd;
@@ -71,14 +71,163 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
     const toEmail = await getUserEmailByClerkUserId(prisma, event.userId);
 
     if (toEmail) {
-      const subject = `Aura – Trade Closed (${event.symbol})`;
+      const trade = await prisma.trade.findUnique({
+        where: { id: event.tradeId },
+        select: {
+          id: true,
+          symbol: true,
+          side: true,
+          qty: true,
+          openedAt: true,
+          closedAt: true,
+          entryPriceAvg: true,
+          exitPriceAvg: true,
+          realizedPnlUsd: true,
+          outcome: true,
+        },
+      });
 
-      const html =
-        event.result === "win"
-          ? `<h2>Trade closed ✅</h2><p>WIN ${sign}$${Math.abs(pnl).toFixed(0)} on ${event.symbol}</p>`
-          : event.result === "loss"
-          ? `<h2>Trade closed</h2><p>LOSS -$${Math.abs(pnl).toFixed(0)} on ${event.symbol}</p>`
-          : `<h2>Trade closed</h2><p>BREAKEVEN $0 on ${event.symbol}</p>`;
+      const appOrigin = "https://tradeaura.net";
+      const viewUrl = `${appOrigin}/app/trades/${event.tradeId}`;
+
+      const pnlUsd = Number(
+        (trade?.realizedPnlUsd as any)?.toNumber?.() ??
+          trade?.realizedPnlUsd ??
+          event.realisedPnlUsd
+      );
+
+      const isWin = event.result === "win";
+      const isLoss = event.result === "loss";
+
+      const badgeText = isWin ? "WIN" : isLoss ? "LOSS" : "BREAKEVEN";
+      const badgeBg = isWin ? "#1b3a2a" : isLoss ? "#3a1b1b" : "#2a2a2a";
+      const badgeBorder = isWin ? "#2f8a57" : isLoss ? "#b23a3a" : "#555555";
+
+      const symbol = trade?.symbol ?? event.symbol;
+
+      const side = (trade?.side ?? "").toString().toUpperCase();
+      const direction = side === "SELL" ? "Short" : "Long";
+
+      const qty = Number((trade?.qty as any)?.toNumber?.() ?? trade?.qty ?? 0);
+
+      const entryPx = Number(
+        (trade?.entryPriceAvg as any)?.toNumber?.() ?? trade?.entryPriceAvg ?? NaN
+      );
+      const exitPx = Number(
+        (trade?.exitPriceAvg as any)?.toNumber?.() ?? trade?.exitPriceAvg ?? NaN
+      );
+
+      const fmtMoney = (v: number) => {
+        const s = v > 0 ? "+" : v < 0 ? "-" : "";
+        return `${s}$${Math.abs(v).toFixed(2)}`;
+      };
+
+      const fmtPrice = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "—");
+
+      const closedAtIso =
+        trade?.closedAt?.toISOString?.() ??
+        event.exitTs ??
+        event.ts ??
+        new Date().toISOString();
+
+      const subject = `Aura – ${badgeText} on ${symbol} (${fmtMoney(pnlUsd)})`;
+
+      const html = `
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+  Aura trade closed: ${badgeText} ${fmtMoney(pnlUsd)} on ${symbol}.
+</div>
+
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#0b0b0b;margin:0;padding:0;">
+  <tr>
+    <td align="center" style="padding:28px 16px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="width:100%;max-width:640px;">
+        <!-- Header -->
+        <tr>
+          <td style="padding:0 0 14px 0;">
+            <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; letter-spacing:0.3px; color:#f5f5f5; font-size:18px; font-weight:700;">
+              Aura
+              <span style="color:#d6b25e;">•</span>
+              Trade Closed
+            </div>
+            <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; color:#b5b5b5; font-size:12px; margin-top:6px;">
+              ${new Date(closedAtIso).toLocaleString("en-GB", { timeZone: "Europe/London" })} (UK)
+            </div>
+          </td>
+        </tr>
+
+        <!-- Card -->
+        <tr>
+          <td style="background:#141414;border:1px solid #222;border-radius:16px;padding:18px;">
+            <!-- Badge row -->
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td align="left">
+                  <span style="display:inline-block;padding:6px 10px;border-radius:999px;background:${badgeBg};border:1px solid ${badgeBorder};color:#f5f5f5;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;font-size:12px;font-weight:700;">
+                    ${badgeText}
+                  </span>
+                </td>
+                <td align="right" style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#d6b25e;font-size:14px;font-weight:700;">
+                  ${fmtMoney(pnlUsd)}
+                </td>
+              </tr>
+            </table>
+
+            <div style="height:12px;"></div>
+
+            <!-- Summary -->
+            <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#f5f5f5;font-size:18px;font-weight:700;line-height:1.25;">
+              ${direction} ${qty ? `${qty}x ` : ""}${symbol}
+            </div>
+            <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#b5b5b5;font-size:13px;margin-top:8px;line-height:1.45;">
+              Entry <span style="color:#f5f5f5;">${fmtPrice(entryPx)}</span>
+              <span style="color:#444;padding:0 8px;">•</span>
+              Exit <span style="color:#f5f5f5;">${fmtPrice(exitPx)}</span>
+            </div>
+
+            <div style="height:14px;"></div>
+
+            <!-- Divider -->
+            <div style="height:1px;background:#222;"></div>
+
+            <div style="height:14px;"></div>
+
+            <!-- CTA -->
+            <table role="presentation" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <a href="${viewUrl}"
+                     style="display:inline-block;background:#d6b25e;color:#0b0b0b;text-decoration:none;
+                            font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+                            font-size:13px;font-weight:700;padding:10px 14px;border-radius:12px;">
+                    View trade
+                  </a>
+                </td>
+                <td style="padding-left:12px;">
+                  <span style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#777;font-size:12px;">
+                    Trade ID: <span style="color:#aaa;">${event.tradeId}</span>
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:14px 2px 0 2px;">
+            <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#777;font-size:11px;line-height:1.45;">
+              You’re receiving this because trade notifications are enabled for your Aura account.
+              <br />
+              Trading involves risk. Past performance does not guarantee future results.
+            </div>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+`;
 
       await sendEmail({ to: toEmail, subject, html });
     }
