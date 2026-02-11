@@ -271,6 +271,11 @@ export async function startProjectXUserFeed(params: {
     },
   });
 
+  console.log("[projectx-user] START_PROJECTX_USERFEED_BOOT", {
+    worker: params.env.WORKER_NAME,
+    at: new Date().toISOString(),
+  });
+
   await hub.start();
 
   console.log("[projectx-user] started", {
