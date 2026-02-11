@@ -1,6 +1,7 @@
 // src/app/api/dev/manual-order/route.ts
 import { NextResponse } from "next/server";
 import Ably from "ably";
+import { publishInAppNotification } from "@/lib/notifications/inApp";
 
 export async function POST(req: Request) {
   try {
@@ -56,6 +57,14 @@ export async function POST(req: Request) {
       "exec.manual_bracket",
       payload
     );
+
+    await publishInAppNotification(clerkUserId, {
+      type: "trade_opened",
+      title: "Aura - Manual Order",
+      body: "Manual order submitted ✅",
+      ts: new Date().toISOString(),
+      deepLink: "/app/trades",
+    });
 
     return NextResponse.json({
       ok: true,
