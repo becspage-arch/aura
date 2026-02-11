@@ -1,5 +1,6 @@
 // worker/src/broker/projectx/startProjectXUserFeed.ts
 import { ProjectXUserHub } from "./projectxUserHub.js";
+import { emitNotifyEvent } from "../../notifications/emitNotifyEvent.js";
 
 function toNum(v: any): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -303,6 +304,20 @@ export async function startProjectXUserFeed(params: {
 
       const execKey = `projectx:close:${ident.clerkUserId}:${symbol}:${refOrderId}:${closeKey}`;
 
+      // Dedupe: only emit notify the first time we see this execKey
+      let existed: { id: string } | null = null;
+      try {
+        existed = await db.trade.findUnique({
+          where: { execKey },
+          select: { id: true },
+        });
+      } catch (e) {
+        console.warn("[projectx-user] TRADE_FIND_UNIQUE_FAILED (non-fatal)", {
+          execKey,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+
       try {
         console.log("[projectx-user] TRADE_UPSERT_ATTEMPT", {
           clerkUserId: ident.clerkUserId,
@@ -311,7 +326,7 @@ export async function startProjectXUserFeed(params: {
           execKey,
         });
 
-        await db.trade.upsert({
+        const trade = await db.trade.upsert({
           where: { execKey },
           create: {
             clerkUserId: ident.clerkUserId,
@@ -354,7 +369,42 @@ export async function startProjectXUserFeed(params: {
           outcome,
           pnl,
           execKey,
+          tradeId: trade.id,
         });
+
+        // Emit notification event to the app (which will send email + in-app) ONLY on first creation
+        if (!existed) {
+          try {
+            await emitNotifyEvent({
+              type: "trade_closed",
+              ts: new Date().toISOString(),
+
+              userId: ident.clerkUserId,
+
+              tradeId: trade.id,
+              accountId: String(payload?.accountId ?? params.accountId ?? "unknown"),
+              symbol,
+
+              direction: side === "BUY" ? "long" : "short",
+
+              // v1: we don't yet have true entry/exit timestamps here
+              entryTs: closedAt.toISOString(),
+              exitTs: closedAt.toISOString(),
+
+              realisedPnlUsd: pnl,
+              result: pnl > 0 ? "win" : pnl < 0 ? "loss" : "breakeven",
+            });
+          } catch (e) {
+            console.warn("[projectx-user] NOTIFY_EMIT_FAILED", {
+              err: e instanceof Error ? e.message : String(e),
+            });
+          }
+        } else {
+          console.log("[projectx-user] NOTIFY_SKIPPED_ALREADY_EMITTED", {
+            execKey,
+            tradeId: trade.id,
+          });
+        }
       } catch (e) {
         console.error("[projectx-user] TRADE_UPSERT_FAILED", {
           execKey,
