@@ -1,11 +1,11 @@
 // src/app/api/push/subscribe/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-
-import { prisma } from "@/lib/prisma"; // adjust if your prisma client path differs
+import { prisma } from "@/lib/prisma";
 
 type Body = {
   subscriptionId: string;
+  onesignalId?: string | null;
 };
 
 export async function POST(req: Request) {
@@ -26,13 +26,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "MISSING_SUBSCRIPTION_ID" }, { status: 400 });
   }
 
-  // Upsert by subscriptionId:
-  // - If it already exists, ensure it belongs to this user (move it if needed)
-  // - If not, create it
+  const onesignalId = (body.onesignalId || "").trim() || null;
+
   await prisma.oneSignalPushSubscription.upsert({
     where: { subscriptionId },
-    update: { userId },
-    create: { userId, subscriptionId },
+    update: { userId, onesignalId },
+    create: { userId, subscriptionId, onesignalId },
   });
 
   return NextResponse.json({ ok: true });
