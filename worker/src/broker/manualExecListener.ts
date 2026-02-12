@@ -94,8 +94,12 @@ export async function startManualExecListener(params: {
   const channelName = `aura:exec:${params.expectedUser}`;
   const execChannel = client.channels.get(channelName);
 
-  execChannel.subscribe("exec.manual_bracket", async (msg) => {
-    console.log(`[${params.env.WORKER_NAME}] exec.manual_bracket RECEIVED`, msg.data);
+  const handler = async (msg: Ably.Types.Message) => {
+    console.log(`[${params.env.WORKER_NAME}] MANUAL_EXEC_RECEIVED`, {
+      channelName,
+      name: msg.name,
+      hasData: Boolean(msg.data),
+    });
 
     const payload = (msg.data || {}) as ManualExecPayload;
     const safe = sanitizePayload(payload);
@@ -147,6 +151,7 @@ export async function startManualExecListener(params: {
 
     logTag(`[${params.env.WORKER_NAME}] MANUAL_EXEC_PARSED`, {
       channelName,
+      messageName: msg.name,
       payloadExecKey: asString(payload.execKey),
       contractId,
       side,
@@ -183,7 +188,6 @@ export async function startManualExecListener(params: {
       });
     }
 
-    // Safety: ensure worker identity matches payload
     if (ident.clerkUserId !== clerkUserId) {
       return reject(params.env, "worker_user_mismatch", {
         channelName,
@@ -192,12 +196,10 @@ export async function startManualExecListener(params: {
       });
     }
 
-    // --- Build exec input and execute via executeBracket (so ORDER_SUBMITTED tag fires) ---
     const entryType = asEntryType(payload.entryType);
     const symbol = asString(payload.symbol);
 
     const execKey = `manual:${clerkUserId}:${Date.now()}:${contractId}:${side}:${qty}:${stopLossTicks}:${takeProfitTicks}`;
-
     const customTag = asString(payload.customTag) || null;
 
     if (params.DRY_RUN) {
@@ -244,18 +246,6 @@ export async function startManualExecListener(params: {
         },
       });
 
-      const now = new Date().toISOString();
-      const dir = side === "buy" ? "🟦 ENTERED LONG" : "🟥 ENTERED SHORT";
-
-      await publishInAppNotification(clerkUserId, {
-        type: "trade_opened",
-        title: "Aura - Trade Opened",
-        body: `${dir} ${Math.round(qty)}x ${symbol || contractId}`,
-        ts: now,
-        deepLink: "/app/trades",
-      });
-
-      console.log("[manual-exec] MANUAL_ORDER_SUBMITTED", { execKey });
       logTag(`[${params.env.WORKER_NAME}] MANUAL_EXEC_ACCEPTED`, {
         execKey,
         contractId,
@@ -271,7 +261,18 @@ export async function startManualExecListener(params: {
         err: e instanceof Error ? e.message : String(e),
       });
     }
-  });
+  };
+
+  // Subscribe to all names we’ve used historically
+  execChannel.subscribe("exec", handler);
+  execChannel.subscribe("exec.manual.bracket", handler);
+  execChannel.subscribe("exec.manual_bracket", handler);
+  execChannel.subscribe("exec.manualBracket", handler);
+
+  console.log(
+    `[${params.env.WORKER_NAME}] manual execution listening (all manual names)`,
+    { channelName }
+  );
 
   console.log(
     `[${params.env.WORKER_NAME}] manual execution listening (exec.manual_bracket)`,
