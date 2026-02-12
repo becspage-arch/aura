@@ -40,6 +40,23 @@ type OrderSearchResponse = {
   errorMessage?: string | null;
 };
 
+type Position = {
+  id: number;
+  accountId: number;
+  contractId: string;
+  creationTimestamp?: string;
+  type?: number; // 1=long, 2=short (per gateway conventions)
+  size: number;
+  averagePrice?: number;
+};
+
+type PositionSearchResponse = {
+  positions?: Position[];
+  success?: boolean;
+  errorCode?: number;
+  errorMessage?: string | null;
+};
+
 type CancelOrderResponse = {
   success?: boolean;
   errorCode?: number;
@@ -494,6 +511,54 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     });
 
     return Boolean(res.ok && json?.success);
+  }
+
+  /**
+   * Returns net open position size for a contract (signed).
+   * Uses: POST https://api.topstepx.com/api/Position/searchOpen
+   */
+  async getPosition(params: {
+    contractId?: string | null;
+    symbol?: string | null;
+  }): Promise<{ size: number; positions: Position[] }> {
+    if (!this.token) throw new Error("getPosition: no token");
+    if (!this.accountId) throw new Error("getPosition: no accountId");
+
+    const res = await fetch("https://api.topstepx.com/api/Position/searchOpen", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ accountId: this.accountId }),
+    });
+
+    const text = await res.text();
+    const json = parseJsonOrNull(text) as PositionSearchResponse | null;
+
+    if (!res.ok) {
+      throw new Error(
+        `ProjectX Position/searchOpen failed (HTTP ${res.status})${
+          json?.errorMessage ? `: ${json.errorMessage}` : ""
+        }`
+      );
+    }
+
+    const all = Array.isArray(json?.positions) ? json!.positions : [];
+    const contractId = params.contractId ? String(params.contractId).trim() : null;
+
+    const positions = contractId ? all.filter((p) => p.contractId === contractId) : all;
+
+    // Signed net size: type 1 => long (+), type 2 => short (-)
+    const net = positions.reduce((acc, p) => {
+      const sz = Number(p.size ?? 0) || 0;
+      const t = Number(p.type ?? 0);
+      if (t === 2) return acc - Math.abs(sz);
+      return acc + Math.abs(sz);
+    }, 0);
+
+    return { size: net, positions };
   }
 
   async warmup(): Promise<void> {

@@ -89,7 +89,7 @@ export function LiveControlSwitches() {
     const ok = window.confirm(
       nextPaused
         ? "Pause Aura?\n\nAura will keep monitoring the market, but it will not place new trades."
-        : "Run Aura?\n\nAura may start placing trades automatically when signals occur."
+        : "Run Aura?\n\nAura will look for trades according to your strategy settings and start placing trades automatically when signals occur."
     );
     if (!ok) return;
 
