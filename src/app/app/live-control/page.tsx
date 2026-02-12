@@ -53,7 +53,7 @@ export default async function LiveControlPage() {
     <div className="mx-auto max-w-6xl aura-page">
       <div>
         <p className="aura-page-subtitle">
-          Chart-first live monitoring. See what trades were analysed, what was taken, what wasn't and why. Also turn Aura on or off.
+          Turn Aura on or off. See what trades were analysed, what was taken, what wasn't and why. 
         </p>
       </div>
 

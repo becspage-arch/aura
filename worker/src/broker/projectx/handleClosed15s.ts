@@ -1,6 +1,7 @@
 // worker/src/broker/projectx/handleClosed15s.ts
 
 import type { PrismaClient } from "@prisma/client";
+import { Prisma, OrderSide } from "@prisma/client";
 
 import type { CorePlus315Engine } from "../../strategy/coreplus315Engine.js";
 import { buildBracketFromIntent } from "../../trading/buildBracket.js";
@@ -37,10 +38,57 @@ export type HandleClosed15sDeps = {
   rolloverOkLoggedRef: { value: boolean };
 };
 
+function toDec(n: number | null | undefined) {
+  if (n == null) return null;
+  if (!Number.isFinite(Number(n))) return null;
+  return new Prisma.Decimal(Number(n));
+}
+
+function makeSignalKey(params: {
+  strategy: string;
+  userId: string;
+  symbol: string;
+  side: "buy" | "sell";
+  entryTime: number;
+  fvgTime: number;
+}) {
+  // Deterministic and stable across restarts
+  return `${params.strategy}:${params.userId}:${params.symbol}:${params.side}:${params.entryTime}:${params.fvgTime}`;
+}
+
+async function hasOpenTrade(params: {
+  db: PrismaClient;
+  userId: string;
+  brokerName: string;
+  contractId: string;
+  symbol?: string | null;
+}) {
+  const openStatuses: any[] = [
+    "INTENT_CREATED",
+    "ORDER_SUBMITTED",
+    "ORDER_ACCEPTED",
+    "ORDER_FILLED",
+    "BRACKET_SUBMITTED",
+    "BRACKET_ACTIVE",
+    "POSITION_OPEN",
+  ];
+
+  const openCount = await params.db.execution.count({
+    where: {
+      userId: params.userId,
+      brokerName: params.brokerName,
+      contractId: params.contractId,
+      ...(params.symbol ? { symbol: params.symbol } : {}),
+      status: { in: openStatuses },
+    },
+  });
+
+  return openCount > 0;
+}
+
 export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
   return async (params: { source: "rollover" | "forceClose"; closed: { data: any } }) => {
     const closed = params.closed;
-
     const ticks = Number(closed?.data?.ticks ?? 0);
 
     if (!deps.rolloverOkLoggedRef.value && params.source === "rollover" && ticks > 1) {
@@ -50,6 +98,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       );
     }
 
+    // Always emit close events for forceClose / tiny bars, but don’t trade
     if (params.source === "forceClose" || ticks <= 1) {
       await deps.emitSafe({
         name: "candle.15s.closed",
@@ -60,7 +109,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       return;
     }
 
-    // 3a) Persist CLOSED candle
+    // 3a) Persist CLOSED candle + run strategy
     try {
       const db = deps.getPrisma();
 
@@ -132,76 +181,174 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         data: { source: params.source, bracket },
       });
 
+      // -----------------------------
+      // SIGNAL RECORDING (always)
+      // -----------------------------
+      const ident = await deps.getUserIdentityForWorker();
+
+      const signalKey = makeSignalKey({
+        strategy: "coreplus315",
+        userId: ident.userId,
+        symbol,
+        side: intent.side,
+        entryTime: intent.entryTime,
+        fvgTime: intent.fvgTime,
+      });
+
+      // Upsert the signal as DETECTED (idempotent)
+      await db.strategySignal.upsert({
+        where: { signalKey },
+        create: {
+          signalKey,
+          userId: ident.userId,
+          strategy: "coreplus315",
+          brokerName: deps.broker?.name ?? "projectx",
+          symbol,
+          contractId: String(closed?.data?.contractId || (bracket as any).contractId || "").trim() || null,
+          side: intent.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
+          entryTime: intent.entryTime,
+          fvgTime: intent.fvgTime,
+          entryPrice: toDec(intent.entryPrice),
+          stopPrice: toDec(intent.stopPrice),
+          takeProfitPrice: toDec(intent.takeProfitPrice),
+          stopTicks: toDec(intent.stopTicks),
+          tpTicks: toDec(intent.tpTicks),
+          rr: toDec(intent.rr),
+          contracts: Number.isFinite(intent.contracts) ? Number(intent.contracts) : null,
+          riskUsdPlanned: toDec(intent.riskUsdPlanned),
+          status: "DETECTED",
+          meta: {
+            intent,
+            bracket,
+          },
+        },
+        update: {
+          // keep latest meta fresh (helpful for debugging / chart overlay)
+          updatedAt: new Date(),
+          meta: {
+            intent,
+            bracket,
+          },
+          // do NOT overwrite TAKEN/BLOCKED statuses here
+        },
+      });
+
       // ✅ Gate execution after ingest (prevents stale context after pause/resume)
       const { isPaused, isKillSwitched } = await deps.getUserTradingState();
 
+      // Block reasons first (and persist them)
       if (isKillSwitched) {
-        console.warn(`[${deps.env.WORKER_NAME}] KILL SWITCH ACTIVE - intent ignored`);
+        await db.strategySignal.update({
+          where: { signalKey },
+          data: { status: "BLOCKED", blockReason: "KILL_SWITCH" },
+        });
+        console.warn(`[${deps.env.WORKER_NAME}] KILL SWITCH ACTIVE - intent blocked`);
         return;
       }
 
       if (isPaused) {
-        console.log(`[${deps.env.WORKER_NAME}] Trading paused - intent ignored`);
+        await db.strategySignal.update({
+          where: { signalKey },
+          data: { status: "BLOCKED", blockReason: "PAUSED" },
+        });
+        console.log(`[${deps.env.WORKER_NAME}] Trading paused - intent blocked`);
         return;
       }
 
       if (deps.DRY_RUN) {
-        console.log("[exec] DRY_RUN=true — skipping live execution");
+        await db.strategySignal.update({
+          where: { signalKey },
+          data: { status: "BLOCKED", blockReason: "NOT_LIVE_CANDLE" },
+        });
+        console.log("[exec] DRY_RUN=true - intent blocked");
         return;
       }
 
       if (params.source !== "rollover") {
+        await db.strategySignal.update({
+          where: { signalKey },
+          data: { status: "BLOCKED", blockReason: "NOT_LIVE_CANDLE" },
+        });
         console.log("[exec] skipping execution (not a real rollover candle)", {
           source: params.source,
         });
         return;
       }
 
+      // Parse execution inputs from bracket
+      const contractIdFromBracket = String(
+        closed?.data?.contractId || (bracket as any).contractId || ""
+      ).trim();
+
+      const side =
+        String((bracket as any).side || "").toLowerCase() === "sell" ? "sell" : "buy";
+
+      const qty = Number((bracket as any).qty ?? 1);
+
+      const stopLossTicks =
+        (bracket as any)?.stopLossTicks != null
+          ? Number((bracket as any).stopLossTicks)
+          : (bracket as any)?.meta?.stopTicks != null
+            ? Number((bracket as any).meta.stopTicks)
+            : null;
+
+      const takeProfitTicks =
+        (bracket as any)?.takeProfitTicks != null
+          ? Number((bracket as any).takeProfitTicks)
+          : (bracket as any)?.meta?.tpTicks != null
+            ? Number((bracket as any).meta.tpTicks)
+            : null;
+
+      const bracketValid =
+        Boolean(contractIdFromBracket) &&
+        Number.isFinite(qty) &&
+        qty > 0 &&
+        stopLossTicks != null &&
+        takeProfitTicks != null;
+
+      if (!bracketValid) {
+        await db.strategySignal.update({
+          where: { signalKey },
+          data: {
+            status: "BLOCKED",
+            blockReason: "INVALID_BRACKET",
+            meta: { intent, bracket, reason: "invalid_bracket_inputs" },
+          },
+        });
+        console.warn("[exec] invalid bracket - intent blocked", {
+          contractIdFromBracket,
+          qty,
+          stopLossTicks,
+          takeProfitTicks,
+        });
+        return;
+      }
+
+      // Explicit “in trade” block - so we can show it on charts later
+      const inTrade = await hasOpenTrade({
+        db,
+        userId: ident.userId,
+        brokerName: deps.broker.name,
+        contractId: contractIdFromBracket,
+        symbol: (process.env.PROJECTX_SYMBOL || "").trim() || null,
+      });
+
+      if (inTrade) {
+        await db.strategySignal.update({
+          where: { signalKey },
+          data: { status: "BLOCKED", blockReason: "IN_TRADE" },
+        });
+        logTag(`[${deps.env.WORKER_NAME}] SIGNAL_BLOCKED_IN_TRADE`, {
+          signalKey,
+          contractId: contractIdFromBracket,
+          side,
+          qty,
+        });
+        return;
+      }
+
+      // Execute
       try {
-        const ident = await deps.getUserIdentityForWorker();
-
-        const contractIdFromBracket = String(
-          closed?.data?.contractId || (bracket as any).contractId || ""
-        ).trim();
-
-        const side =
-          String((bracket as any).side || "").toLowerCase() === "sell" ? "sell" : "buy";
-
-        const qty = Number((bracket as any).qty ?? 1);
-
-        const stopLossTicks =
-          (bracket as any)?.stopLossTicks != null
-            ? Number((bracket as any).stopLossTicks)
-            : (bracket as any)?.meta?.stopTicks != null
-              ? Number((bracket as any).meta.stopTicks)
-              : null;
-
-        const takeProfitTicks =
-          (bracket as any)?.takeProfitTicks != null
-            ? Number((bracket as any).takeProfitTicks)
-            : (bracket as any)?.meta?.tpTicks != null
-              ? Number((bracket as any).meta.tpTicks)
-              : null;
-
-        if (!contractIdFromBracket) {
-          console.warn("[exec] missing contractId on bracket - cannot execute", bracket);
-          return;
-        }
-
-        if (!Number.isFinite(qty) || qty <= 0) {
-          console.warn("[exec] invalid qty on bracket - cannot execute", { qty, bracket });
-          return;
-        }
-
-        if (stopLossTicks == null || takeProfitTicks == null) {
-          console.warn("[exec] missing SL/TP ticks on bracket - cannot execute", {
-            stopLossTicks,
-            takeProfitTicks,
-            bracket,
-          });
-          return;
-        }
-
         const execKey = `coreplus315:${ident.clerkUserId}:${Date.now()}`;
 
         const row = await executeBracket({
@@ -228,6 +375,23 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         // ✅ Only mark traded after successful submission
         deps.strategy.markActiveFvgTraded({ fvgTime: intent.fvgTime });
 
+        // Mark signal as TAKEN and link it
+        await db.strategySignal.update({
+          where: { signalKey },
+          data: {
+            status: "TAKEN",
+            execKey,
+            executionId: row.id,
+            meta: { intent, bracket, executionId: row.id },
+          },
+        });
+
+        logTag(`[${deps.env.WORKER_NAME}] SIGNAL_TAKEN`, {
+          signalKey,
+          execKey,
+          executionId: row.id,
+        });
+
         console.log("[exec] EXECUTION_SUBMITTED", {
           execKey,
           executionId: row.id,
@@ -238,12 +402,22 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           takeProfitTicks,
         });
       } catch (e) {
+        await db.strategySignal.update({
+          where: { signalKey },
+          data: {
+            status: "BLOCKED",
+            blockReason: "EXECUTION_FAILED",
+            meta: {
+              intent,
+              bracket,
+              error: e instanceof Error ? e.message : String(e),
+            },
+          },
+        });
+
         console.error("[exec] executeBracket failed", e);
 
         try {
-          const ident = await deps.getUserIdentityForWorker();
-          const db = deps.getPrisma();
-
           await db.eventLog.create({
             data: {
               type: "exec.failed",

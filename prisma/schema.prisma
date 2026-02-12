@@ -339,6 +339,71 @@ enum OrderStatus {
   REJECTED
 }
 
+model StrategySignal {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Who / what
+  userId    String
+  strategy  String   // e.g. "coreplus315"
+  brokerName String? // optional, but useful for later
+  symbol    String
+  contractId String?
+
+  side      OrderSide
+
+  // Times (epoch seconds)
+  entryTime Int
+  fvgTime   Int
+
+  // Planned prices (optional but handy for chart overlays)
+  entryPrice       Decimal?
+  stopPrice        Decimal?
+  takeProfitPrice  Decimal?
+
+  // Risk math
+  stopTicks   Decimal?
+  tpTicks     Decimal?
+  rr          Decimal?
+  contracts   Int?
+  riskUsdPlanned Decimal?
+
+  // Outcome
+  status      StrategySignalStatus @default(DETECTED)
+  blockReason StrategyBlockReason?
+
+  // Link to execution when TAKEN
+  execKey     String?
+  executionId String?
+
+  // extra context (FVG top/bottom, retested, debug, bracket etc)
+  meta        Json?
+
+  // Deterministic idempotency key for “same signal”
+  signalKey   String   @unique
+
+  @@index([userId, createdAt])
+  @@index([userId, strategy, createdAt])
+  @@index([symbol, entryTime])
+  @@index([executionId])
+}
+
+enum StrategySignalStatus {
+  DETECTED
+  BLOCKED
+  TAKEN
+}
+
+enum StrategyBlockReason {
+  IN_TRADE
+  PAUSED
+  KILL_SWITCH
+  NOT_LIVE_CANDLE
+  INVALID_BRACKET
+  EXECUTION_FAILED
+}
+
 model NotificationPreferences {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
