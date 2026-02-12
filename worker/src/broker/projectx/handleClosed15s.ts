@@ -147,8 +147,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         return;
       }
 
-      // ✅ Always ingest candles so HTF context stays fresh (even when paused)
-      const intent = deps.strategy.ingestClosed15s({
+      // ✅ Always evaluate candles so HTF context stays fresh (even when paused)
+      const evalRes = (deps.strategy as any).evaluateClosed15s({
         symbol,
         time,
         open: closed.data.o,
@@ -157,7 +157,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         close: closed.data.c,
       });
 
-      if (!intent) {
+      // Nothing to record
+      if (!evalRes || evalRes.kind === "none") {
         const dbg = deps.strategy.getDebugState?.() as any;
         logTag(`[${deps.env.WORKER_NAME}] NO_TRADE_DEBUG`, {
           source: params.source,
@@ -169,31 +170,112 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         return;
       }
 
-      logTag(`[${deps.env.WORKER_NAME}] TRADE_INTENT`, intent);
+      // You said: ignore direction mismatch completely (never store/evaluate)
+      if (evalRes.kind === "blocked" && evalRes.reason === "DIRECTION_MISMATCH") {
+        return;
+      }
 
-      const bracket = buildBracketFromIntent(intent);
-      logTag(`[${deps.env.WORKER_NAME}] BRACKET`, bracket);
+      // We always want a stable signal row key – we can build it from the candidate/intent
+      const candidate =
+        evalRes.kind === "intent" ? evalRes.intent : evalRes.candidate;
 
-      await deps.emitSafe({
-        name: "exec.bracket",
-        ts: new Date().toISOString(),
-        broker: "projectx",
-        data: { source: params.source, bracket },
-      });
+      if (!candidate) {
+        const dbg = deps.strategy.getDebugState?.() as any;
+        logTag(`[${deps.env.WORKER_NAME}] NO_TRADE_DEBUG`, {
+          source: params.source,
+          symbol,
+          time,
+          ticks,
+          engine: dbg ?? null,
+        });
+        return;
+      }
 
-      // -----------------------------
-      // SIGNAL RECORDING (always)
-      // -----------------------------
       const ident = await deps.getUserIdentityForWorker();
 
       const signalKey = makeSignalKey({
         strategy: "coreplus315",
         userId: ident.userId,
         symbol,
-        side: intent.side,
-        entryTime: intent.entryTime,
-        fvgTime: intent.fvgTime,
+        side: candidate.side,
+        entryTime: candidate.entryTime,
+        fvgTime: candidate.fvgTime,
       });
+
+      const bracket = buildBracketFromIntent(candidate);
+
+      // Emit bracket event for UI overlays (even for near-miss blocked signals)
+      await deps.emitSafe({
+        name: "exec.bracket",
+        ts: new Date().toISOString(),
+        broker: "projectx",
+        data: { source: params.source, bracket, signalKey },
+      });
+
+      // -----------------------------
+      // ENGINE-LEVEL “NEAR MISS” (blocked) – record & stop
+      // -----------------------------
+      if (evalRes.kind === "blocked") {
+        await db.strategySignal.upsert({
+          where: { signalKey },
+          create: {
+            signalKey,
+            userId: ident.userId,
+            strategy: "coreplus315",
+            brokerName: deps.broker?.name ?? "projectx",
+            symbol,
+            contractId:
+              String(closed?.data?.contractId || (bracket as any).contractId || "").trim() ||
+              null,
+            side: candidate.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
+            entryTime: candidate.entryTime,
+            fvgTime: candidate.fvgTime,
+            entryPrice: toDec(candidate.entryPrice),
+            stopPrice: toDec(candidate.stopPrice),
+            takeProfitPrice: toDec(candidate.takeProfitPrice),
+            stopTicks: toDec(candidate.stopTicks),
+            tpTicks: toDec(candidate.tpTicks),
+            rr: toDec(candidate.rr),
+            contracts: Number.isFinite(candidate.contracts) ? Number(candidate.contracts) : null,
+            riskUsdPlanned: toDec(candidate.riskUsdPlanned),
+            status: "BLOCKED",
+            blockReason: String(evalRes.reason),
+            meta: {
+              kind: "ENGINE_BLOCK",
+              reason: String(evalRes.reason),
+              candidate,
+              bracket,
+            },
+          },
+          update: {
+            updatedAt: new Date(),
+            // keep status BLOCKED and refresh reason/meta
+            status: "BLOCKED",
+            blockReason: String(evalRes.reason),
+            meta: {
+              kind: "ENGINE_BLOCK",
+              reason: String(evalRes.reason),
+              candidate,
+              bracket,
+            },
+          },
+        });
+
+        logTag(`[${deps.env.WORKER_NAME}] SIGNAL_ENGINE_BLOCKED`, {
+          signalKey,
+          reason: String(evalRes.reason),
+        });
+
+        return;
+      }
+
+      // -----------------------------
+      // INTENT (real candidate) – record as DETECTED, then apply runtime blocks/execution
+      // -----------------------------
+      const intent = evalRes.intent;
+
+      logTag(`[${deps.env.WORKER_NAME}] TRADE_INTENT`, intent);
+      logTag(`[${deps.env.WORKER_NAME}] BRACKET`, bracket);
 
       // Upsert the signal as DETECTED (idempotent)
       await db.strategySignal.upsert({
@@ -204,7 +286,9 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           strategy: "coreplus315",
           brokerName: deps.broker?.name ?? "projectx",
           symbol,
-          contractId: String(closed?.data?.contractId || (bracket as any).contractId || "").trim() || null,
+          contractId:
+            String(closed?.data?.contractId || (bracket as any).contractId || "").trim() ||
+            null,
           side: intent.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
           entryTime: intent.entryTime,
           fvgTime: intent.fvgTime,
@@ -223,13 +307,12 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           },
         },
         update: {
-          // keep latest meta fresh (helpful for debugging / chart overlay)
           updatedAt: new Date(),
           meta: {
             intent,
             bracket,
           },
-          // do NOT overwrite TAKEN/BLOCKED statuses here
+          // don’t overwrite TAKEN/BLOCKED here (runtime blocks below will set BLOCKED explicitly)
         },
       });
 
@@ -258,7 +341,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       if (deps.DRY_RUN) {
         await db.strategySignal.update({
           where: { signalKey },
-          data: { status: "BLOCKED", blockReason: "NOT_LIVE_CANDLE" },
+          data: { status: "BLOCKED", blockReason: "DRY_RUN" },
         });
         console.log("[exec] DRY_RUN=true - intent blocked");
         return;
@@ -336,7 +419,11 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       if (inTrade) {
         await db.strategySignal.update({
           where: { signalKey },
-          data: { status: "BLOCKED", blockReason: "IN_TRADE" },
+          data: {
+            status: "BLOCKED",
+            blockReason: "IN_TRADE",
+            meta: { intent, bracket, reason: "in_trade" },
+          },
         });
         logTag(`[${deps.env.WORKER_NAME}] SIGNAL_BLOCKED_IN_TRADE`, {
           signalKey,
