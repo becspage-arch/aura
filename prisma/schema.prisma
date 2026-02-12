@@ -351,6 +351,7 @@ model NotificationPreferences {
   tradeClosedWins   Boolean @default(true)
   tradeClosedLosses Boolean @default(true)
   dailySummary      Boolean @default(false)
+  strategyStatus    Boolean @default(true)
 
   // (Optional placeholders for later - we can add later if you prefer)
   // tradeOpened Boolean @default(false)
