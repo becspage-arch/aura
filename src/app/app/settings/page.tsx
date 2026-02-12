@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { PushStatusRow } from "@/components/PushStatusRow";
 import { TestEmailButton } from "@/components/TestEmailButton";
+import { NotificationPreferencesPanel } from "@/components/NotificationPreferencesPanel";
 
 export default function SettingsPage() {
   return (
@@ -152,63 +153,8 @@ export default function SettingsPage() {
               Pick the notifications you want. (We’ll wire these to saved preferences next.)
             </div>
 
-            <div className="aura-mt-12 aura-pill-group">
-              <button
-                type="button"
-                className="aura-pill-toggle aura-disabled"
-                aria-pressed="false"
-                title="Coming soon"
-              >
-                <span className="aura-pill-indicator" />
-                <span className="aura-pill-toggle__stack">
-                  <span>Trade opened</span>
-                  <span className="aura-pill-toggle__sublabel">When a position is entered.</span>
-                </span>
-              </button>
+            <NotificationPreferencesPanel />
 
-              <button
-                type="button"
-                className="aura-pill-toggle aura-disabled"
-                aria-pressed="false"
-                title="Coming soon"
-              >
-                <span className="aura-pill-indicator" />
-                <span className="aura-pill-toggle__stack">
-                  <span>Trade closed</span>
-                  <span className="aura-pill-toggle__sublabel">
-                    When a position exits (win/loss/breakeven).
-                  </span>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className="aura-pill-toggle aura-disabled"
-                aria-pressed="false"
-                title="Coming soon"
-              >
-                <span className="aura-pill-indicator" />
-                <span className="aura-pill-toggle__stack">
-                  <span>Kill switch / safety halt</span>
-                  <span className="aura-pill-toggle__sublabel">
-                    High-priority alert if Aura stops trading.
-                  </span>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className="aura-pill-toggle aura-disabled"
-                aria-pressed="false"
-                title="Coming soon"
-              >
-                <span className="aura-pill-indicator" />
-                <span className="aura-pill-toggle__stack">
-                  <span>Daily summary</span>
-                  <span className="aura-pill-toggle__sublabel">End-of-day summary email.</span>
-                </span>
-              </button>
-            </div>
           </div>
 
           <div className="aura-divider" />
