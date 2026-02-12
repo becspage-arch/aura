@@ -19,6 +19,31 @@ async function getUserEmailByClerkUserId(prisma: PrismaClient, clerkUserId: stri
   return user?.email ?? null;
 }
 
+async function getNotificationPrefs(prisma: PrismaClient, clerkUserId: string) {
+  const profile = await prisma.userProfile.findUnique({
+    where: { clerkUserId },
+    select: { id: true },
+  });
+
+  if (!profile) return null;
+
+  return prisma.notificationPreferences.upsert({
+    where: { userId: profile.id },
+    update: {},
+    create: {
+      userId: profile.id,
+      tradeClosedWins: true,
+      tradeClosedLosses: true,
+      dailySummary: false,
+    },
+    select: {
+      tradeClosedWins: true,
+      tradeClosedLosses: true,
+      dailySummary: true,
+    },
+  });
+}
+
 /**
  * notify(event)
  * - Dedupes via NotificationLog.key (unique)
@@ -45,6 +70,15 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   // Trade closed → In-app + Push + Email (polished)
   // -----------------------------
   if (event.type === "trade_closed") {
+    const prefs = await getNotificationPrefs(prisma, event.userId);
+    if (prefs) {
+      const isWin = event.result === "win";
+      const isLoss = event.result === "loss";
+
+      if (isWin && !prefs.tradeClosedWins) return { ok: true as const, skipped: true as const, key };
+      if (isLoss && !prefs.tradeClosedLosses) return { ok: true as const, skipped: true as const, key };
+    }
+
     const pnl = event.realisedPnlUsd;
     const sign = pnl > 0 ? "+" : "";
     const title = "Aura - Trade Closed";
