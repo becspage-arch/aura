@@ -8,6 +8,7 @@ function defaults() {
     tradeClosedWins: true,
     tradeClosedLosses: true,
     dailySummary: false,
+    strategyStatus: true,
   };
 }
 
@@ -32,6 +33,7 @@ export async function GET() {
       tradeClosedWins: true,
       tradeClosedLosses: true,
       dailySummary: true,
+      strategyStatus: true,
     },
   });
 
@@ -57,6 +59,7 @@ export async function PATCH(req: Request) {
     tradeClosedWins: typeof body.tradeClosedWins === "boolean" ? body.tradeClosedWins : undefined,
     tradeClosedLosses: typeof body.tradeClosedLosses === "boolean" ? body.tradeClosedLosses : undefined,
     dailySummary: typeof body.dailySummary === "boolean" ? body.dailySummary : undefined,
+    strategyStatus: typeof body.strategyStatus === "boolean" ? body.strategyStatus : undefined,
   };
 
   const prefs = await prisma.notificationPreferences.upsert({
@@ -67,6 +70,7 @@ export async function PATCH(req: Request) {
       tradeClosedWins: true,
       tradeClosedLosses: true,
       dailySummary: true,
+      strategyStatus: true,
     },
   });
 

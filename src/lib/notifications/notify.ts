@@ -35,11 +35,13 @@ async function getNotificationPrefs(prisma: PrismaClient, clerkUserId: string) {
       tradeClosedWins: true,
       tradeClosedLosses: true,
       dailySummary: false,
+      strategyStatus: true,
     },
     select: {
       tradeClosedWins: true,
       tradeClosedLosses: true,
       dailySummary: true,
+      strategyStatus: true,
     },
   });
 }
@@ -64,6 +66,29 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   if (!created) {
     // Duplicate (already notified) - do nothing.
     return { ok: true as const, skipped: true as const, key };
+  }
+
+  // -----------------------------
+  // Strategy status changed → In-app (and later Push/Email)
+  // -----------------------------
+  if (event.type === "strategy_status_changed") {
+    const prefs = await getNotificationPrefs(prisma, event.userId);
+    if (prefs && prefs.strategyStatus === false) {
+      return { ok: true as const, skipped: true as const, key };
+    }
+
+    const title = "Aura";
+    const body = event.isPaused ? "⏸️ Aura is now paused" : "▶️ Aura is now running";
+
+    await publishInAppNotification(event.userId, {
+      type: "strategy_status_changed",
+      title,
+      body,
+      ts: event.ts,
+      deepLink: "/app/live-control",
+    });
+
+    return { ok: true as const, skipped: false as const, key };
   }
 
   // -----------------------------
@@ -98,7 +123,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       deepLink: `/app/trades/${event.tradeId}`,
     });
 
-    // Push notification 
+    // Push notification
     await sendPushTradeClosed(event, { prisma });
 
     // Email (only if user has an email stored in UserProfile)

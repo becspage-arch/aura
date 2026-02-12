@@ -48,6 +48,19 @@ export type TradeOpenedEvent = {
 };
 
 /**
+ * Strategy status changed (pause/run).
+ * We’ll send this when the user toggles pause.
+ */
+export type StrategyStatusChangedEvent = {
+  type: "strategy_status_changed";
+  ts: string; // ISO timestamp of the state write (use DB updatedAt if possible)
+
+  userId: string;
+
+  isPaused: boolean;
+};
+
+/**
  * Summary for a session/day (we’ll decide later how we define “session”).
  */
 export type SessionSummaryEvent = {
@@ -75,7 +88,11 @@ export type SessionSummaryEvent = {
 /**
  * Union of events our notification system will support (v1).
  */
-export type NotificationEvent = TradeClosedEvent | TradeOpenedEvent | SessionSummaryEvent;
+export type NotificationEvent =
+  | TradeClosedEvent
+  | TradeOpenedEvent
+  | StrategyStatusChangedEvent
+  | SessionSummaryEvent;
 
 /**
  * Idempotency key so we can safely retry without duplicates.
@@ -83,6 +100,13 @@ export type NotificationEvent = TradeClosedEvent | TradeOpenedEvent | SessionSum
 export function notificationIdempotencyKey(e: NotificationEvent): string {
   if (e.type === "trade_closed") return `${e.tradeId}:${e.type}`;
   if (e.type === "trade_opened") return `${e.tradeId}:${e.type}`;
+
+  // strategy status should be unique per user + state + timestamp of the write
+  if (e.type === "strategy_status_changed") {
+    return `${e.userId}:${e.type}:${e.isPaused}:${e.ts}`;
+  }
+
   // session summary should be unique per user + period label + kind
   return `${e.userId}:${e.type}:${e.period.kind}:${e.period.label}`;
 }
+
