@@ -6,6 +6,7 @@ type Prefs = {
   tradeClosedWins: boolean;
   tradeClosedLosses: boolean;
   dailySummary: boolean;
+  strategyStatus: boolean;
 };
 
 export function NotificationPreferencesPanel() {
@@ -77,6 +78,22 @@ export function NotificationPreferencesPanel() {
           </span>
         </span>
       </button>
+
+      <button
+        type="button"
+        className={`aura-pill-toggle ${prefs.strategyStatus ? "is-on" : ""}`}
+        aria-pressed={prefs.strategyStatus}
+        onClick={() => toggle("strategyStatus")}
+        >
+        <span className="aura-pill-indicator" />
+        <span className="aura-pill-toggle__stack">
+            <span>Strategy status</span>
+            <span className="aura-pill-toggle__sublabel">
+            Notify when Aura is paused or running.
+            {saving === "strategyStatus" ? " Saving…" : ""}
+            </span>
+        </span>
+        </button>
 
       <button
         type="button"
