@@ -1511,3 +1511,16 @@ html.light .aura-topbar__state:hover {
 .aura-minw-140 { min-width: 140px; }
 .aura-minw-180 { min-width: 180px; }
 .aura-minw-260 { min-width: 260px; }
+
+.aura-control-right--sm {
+  min-width: 180px;
+}
+
+.aura-control-right--lg {
+  min-width: 260px;
+}
+
+.aura-input--readonly {
+  opacity: 0.9;
+  cursor: default;
+}

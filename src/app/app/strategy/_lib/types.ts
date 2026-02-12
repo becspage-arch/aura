@@ -1,3 +1,5 @@
+// src/app/app/strategy/_lib/types.ts
+
 export type StrategySettings = {
   mode: "paper" | "live";
   preset: "coreplus315";
@@ -28,6 +30,7 @@ export type StrategySettings = {
 
   safety: {
     maxDailyLossUsd: number;
+    maxDailyProfitUsd: number; // 0 disables
     maxConsecutiveLosses: number;
     autoPauseEnabled: boolean;
   };

@@ -12,50 +12,44 @@ type Props = {
   setErr: (next: string | null) => void;
 };
 
-function formatSavedSessions(current: StrategySettings | null) {
-  if (!current) return "—";
-  const list = [
-    current.sessions.asia ? "Asia" : null,
-    current.sessions.london ? "London" : null,
-    current.sessions.ny ? "New York" : null,
-  ].filter(Boolean) as string[];
+export function TradingSessionsCard({ current, saving }: Props) {
+  const selected =
+    current
+      ? [
+          current.sessions.asia ? "Asia" : null,
+          current.sessions.london ? "London" : null,
+          current.sessions.ny ? "NY" : null,
+        ]
+          .filter(Boolean)
+          .join(", ") || "None"
+      : "—";
 
-  return list.length ? `Saved: ${list.join(", ")}` : "Saved: None";
-}
-
-export function TradingSessionsCard({
-  current,
-  saving,
-  disabled,
-  setCurrent,
-  setSaving,
-  setErr,
-}: Props) {
-  // props are kept to avoid changing the page contract right now
-  void saving;
-  void disabled;
-  void setCurrent;
-  void setSaving;
-  void setErr;
-
-  const savedLabel = formatSavedSessions(current);
+  const isDisabled = true; // Coming soon (not wired yet)
 
   return (
     <section className="aura-card">
       <div className="aura-row-between">
         <div>
           <div className="aura-card-title">Trading Sessions</div>
-          <div className="aura-muted aura-text-xs aura-mt-6">
-            Choose the sessions you want Aura to trade in.
-            <span className="aura-muted"> (Coming soon)</span>
+          <div className="aura-muted aura-text-xs aura-mt-10">
+            Choose when Aura is allowed to trade.
           </div>
         </div>
 
-        <div className="aura-muted aura-text-xs">{savedLabel}</div>
+        <div className="aura-muted aura-text-xs">
+          {saving ? "Saving…" : `Selected: ${selected}`}
+        </div>
       </div>
 
-      <div className="aura-mt-12">
-        <div className="aura-pill-group aura-disabled" role="group" aria-label="Trading sessions (coming soon)">
+      <div className="aura-mt-12 aura-callout aura-callout--warn">
+        <div className="aura-callout-title">Coming soon</div>
+        <div className="aura-callout-text">
+          Session filtering isn’t active yet. Aura may trade outside these times.
+        </div>
+      </div>
+
+      <div className={`aura-mt-12 ${isDisabled ? "aura-disabled" : ""}`}>
+        <div className="aura-pill-group" role="group" aria-label="Trading sessions">
           {([
             { key: "asia", label: "Asia" },
             { key: "london", label: "London" },
@@ -69,9 +63,8 @@ export function TradingSessionsCard({
                 type="button"
                 className="aura-pill-toggle"
                 aria-pressed={on}
-                onClick={() => {}}
                 disabled={true}
-                title="Coming soon – session filtering isn’t enforced yet."
+                title="Coming soon"
               >
                 <span className="aura-pill-indicator" />
                 <span>{s.label}</span>
@@ -80,13 +73,9 @@ export function TradingSessionsCard({
           })}
         </div>
 
-        <div className="aura-mt-10 aura-error-block">
-          <div className="aura-text-xs">Coming soon</div>
-          <div className="aura-text-xs">
-            Session filtering is not enforced by the worker yet. These choices are
-            shown early so you can see what’s planned.
-          </div>
-        </div>
+        <p className="aura-muted aura-text-xs aura-mt-10">
+          (This will be enabled once session logic is live.)
+        </p>
       </div>
     </section>
   );

@@ -13,7 +13,6 @@ import { writeAuditLog, writeEventLog } from "@/lib/logging/server";
  */
 
 type StrategyMode = "paper" | "live";
-type EntryType = "market" | "limit";
 
 type StrategySettings = {
   // High-level
@@ -28,12 +27,10 @@ type StrategySettings = {
     ny: boolean;
   };
 
-  // Risk & exits (these overlap with risk settings today, but we keep them here too
-  // because strategy config is the single source of truth for the worker long-term)
+  // Risk & exits
   riskUsd: number;
   rr: number;
   maxStopTicks: number;
-  entryType: EntryType;
 
   // Position sizing (v1: keep simple)
   sizing: {
@@ -61,6 +58,7 @@ type StrategySettings = {
   // Safety
   safety: {
     maxDailyLossUsd: number; // 0 = disabled
+    maxDailyProfitUsd: number; // 0 = disabled
     maxConsecutiveLosses: number; // 0 = disabled
     autoPauseEnabled: boolean;
   };
@@ -76,7 +74,6 @@ const DEFAULTS: StrategySettings = {
   riskUsd: 50,
   rr: 2,
   maxStopTicks: 50,
-  entryType: "market",
 
   sizing: { mode: "risk_based", fixedContracts: 1 },
 
@@ -97,6 +94,7 @@ const DEFAULTS: StrategySettings = {
 
   safety: {
     maxDailyLossUsd: 0,
+    maxDailyProfitUsd: 0,
     maxConsecutiveLosses: 0,
     autoPauseEnabled: true,
   },
@@ -127,7 +125,6 @@ function normalize(input: unknown): StrategySettings {
   const obj = (input ?? {}) as Partial<StrategySettings>;
 
   const mode: StrategyMode = obj.mode === "live" ? "live" : "paper";
-  const entryType: EntryType = obj.entryType === "limit" ? "limit" : "market";
 
   const sessionsIn = (obj.sessions ?? {}) as Partial<StrategySettings["sessions"]>;
   const sizingIn = (obj.sizing ?? {}) as Partial<StrategySettings["sizing"]>;
@@ -156,19 +153,46 @@ function normalize(input: unknown): StrategySettings {
     riskUsd: clampNumber(obj.riskUsd, 1, 5000, DEFAULTS.riskUsd),
     rr: clampNumber(obj.rr, 0.5, 10, DEFAULTS.rr),
     maxStopTicks: clampNumber(obj.maxStopTicks, 1, 500, DEFAULTS.maxStopTicks),
-    entryType,
 
     sizing: {
       mode: sizingMode,
-      fixedContracts: clampNumber(sizingIn.fixedContracts, 1, 100, DEFAULTS.sizing.fixedContracts),
+      fixedContracts: clampNumber(
+        sizingIn.fixedContracts,
+        1,
+        100,
+        DEFAULTS.sizing.fixedContracts
+      ),
     },
 
     coreplus315: {
-      maxStopoutsPerSession: clampNumber(cpIn.maxStopoutsPerSession, 0, 50, DEFAULTS.coreplus315.maxStopoutsPerSession),
-      cooldownMinutesAfterStopout: clampNumber(cpIn.cooldownMinutesAfterStopout, 0, 240, DEFAULTS.coreplus315.cooldownMinutesAfterStopout),
-      maxTradesPerSession: clampNumber(cpIn.maxTradesPerSession, 0, 50, DEFAULTS.coreplus315.maxTradesPerSession),
-      requireBodyDominancePct: clampNumber(cpIn.requireBodyDominancePct, 50, 100, DEFAULTS.coreplus315.requireBodyDominancePct),
-      emaFilterEnabled: toBool(cpIn.emaFilterEnabled, DEFAULTS.coreplus315.emaFilterEnabled),
+      maxStopoutsPerSession: clampNumber(
+        cpIn.maxStopoutsPerSession,
+        0,
+        50,
+        DEFAULTS.coreplus315.maxStopoutsPerSession
+      ),
+      cooldownMinutesAfterStopout: clampNumber(
+        cpIn.cooldownMinutesAfterStopout,
+        0,
+        240,
+        DEFAULTS.coreplus315.cooldownMinutesAfterStopout
+      ),
+      maxTradesPerSession: clampNumber(
+        cpIn.maxTradesPerSession,
+        0,
+        50,
+        DEFAULTS.coreplus315.maxTradesPerSession
+      ),
+      requireBodyDominancePct: clampNumber(
+        cpIn.requireBodyDominancePct,
+        50,
+        100,
+        DEFAULTS.coreplus315.requireBodyDominancePct
+      ),
+      emaFilterEnabled: toBool(
+        cpIn.emaFilterEnabled,
+        DEFAULTS.coreplus315.emaFilterEnabled
+      ),
       entryTiming,
     },
 
@@ -188,9 +212,28 @@ function normalize(input: unknown): StrategySettings {
     },
 
     safety: {
-      maxDailyLossUsd: clampNumber(sfIn.maxDailyLossUsd, 0, 50000, DEFAULTS.safety.maxDailyLossUsd),
-      maxConsecutiveLosses: clampNumber(sfIn.maxConsecutiveLosses, 0, 50, DEFAULTS.safety.maxConsecutiveLosses),
-      autoPauseEnabled: toBool(sfIn.autoPauseEnabled, DEFAULTS.safety.autoPauseEnabled),
+      maxDailyLossUsd: clampNumber(
+        sfIn.maxDailyLossUsd,
+        0,
+        50000,
+        DEFAULTS.safety.maxDailyLossUsd
+      ),
+      maxDailyProfitUsd: clampNumber(
+        sfIn.maxDailyProfitUsd,
+        0,
+        50000,
+        DEFAULTS.safety.maxDailyProfitUsd
+      ),
+      maxConsecutiveLosses: clampNumber(
+        sfIn.maxConsecutiveLosses,
+        0,
+        50,
+        DEFAULTS.safety.maxConsecutiveLosses
+      ),
+      autoPauseEnabled: toBool(
+        sfIn.autoPauseEnabled,
+        DEFAULTS.safety.autoPauseEnabled
+      ),
     },
   };
 }

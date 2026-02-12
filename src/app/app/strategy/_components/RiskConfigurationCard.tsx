@@ -52,9 +52,6 @@ export function RiskConfigurationCard({
     );
   }, [current, riskForm]);
 
-  // Hydrate the form when `current` arrives/changes.
-  // - If the user has already edited (dirty), don't clobber.
-  // - If the form is still blank (common after refresh), always hydrate.
   useEffect(() => {
     if (!current) return;
 
@@ -81,19 +78,12 @@ export function RiskConfigurationCard({
     const maxStopTicks = toNumberOrNull(riskForm.maxStopTicks);
 
     if (riskUsd === null || rr === null || maxStopTicks === null) {
-      setErr("Please enter valid numbers for Max Risk, RR, and Max stop (ticks).");
+      setErr("Please enter valid numbers for Max Risk, RR, and Max Stop (ticks).");
       return;
     }
 
     const ok = window.confirm(
-      [
-        "Apply these risk settings?",
-        "",
-        `Max Risk (USD): ${riskUsd}`,
-        `RR (reward:risk): ${rr}`,
-        `Max stop (ticks): ${maxStopTicks}`,
-        "Order type: Market (fixed)",
-      ].join("\n")
+      `Apply these risk settings?\n\nMax Risk (USD): ${riskUsd}\nRR: ${rr}\nMax stop (ticks): ${maxStopTicks}\n\nOrders are always placed as MARKET orders.`
     );
     if (!ok) return;
 
@@ -125,17 +115,10 @@ export function RiskConfigurationCard({
   return (
     <section className="aura-card">
       <div className="aura-row-between">
-        <div>
-          <div className="aura-card-title">Risk Configuration</div>
-          <div className="aura-muted aura-text-xs aura-mt-6">
-            Sets your max risk per trade. Aura sizes positions to stay within this
-            risk when possible.
-          </div>
-        </div>
-
+        <div className="aura-card-title">Risk</div>
         <div className="aura-muted aura-text-xs">
           {current
-            ? `Current: $${current.riskUsd} • RR ${current.rr} • Max stop ${current.maxStopTicks}t • Market`
+            ? `Current: $${current.riskUsd} • RR ${current.rr} • Max stop ${current.maxStopTicks} ticks`
             : "—"}
         </div>
       </div>
@@ -154,9 +137,6 @@ export function RiskConfigurationCard({
               placeholder="e.g. 50"
               disabled={disabled}
             />
-            <div className="aura-muted aura-text-xs aura-mt-10">
-              The most Aura will risk on a single trade.
-            </div>
           </div>
 
           <div>
@@ -169,9 +149,6 @@ export function RiskConfigurationCard({
               placeholder="e.g. 2"
               disabled={disabled}
             />
-            <div className="aura-muted aura-text-xs aura-mt-10">
-              Target size relative to risk (e.g. 2 = 2R).
-            </div>
           </div>
 
           <div>
@@ -186,18 +163,15 @@ export function RiskConfigurationCard({
               placeholder="e.g. 50"
               disabled={disabled}
             />
-            <div className="aura-muted aura-text-xs aura-mt-10">
-              Aura will skip setups that require a stop larger than this.
-            </div>
           </div>
 
           <div>
             <div className="aura-muted aura-text-xs">Order type</div>
-            <div className="aura-input aura-mt-10 aura-disabled">
-              Market (fixed)
+            <div className="aura-input aura-mt-10 aura-input--readonly" aria-readonly="true">
+              market (fixed)
             </div>
             <div className="aura-muted aura-text-xs aura-mt-10">
-              Aura uses market orders for execution.
+              Aura places market orders only.
             </div>
           </div>
         </div>
@@ -225,9 +199,7 @@ export function RiskConfigurationCard({
         </div>
 
         <p className="aura-muted aura-text-xs">
-          Tip: These settings are saved to{" "}
-          <span className="aura-mono">strategySettings</span> and will be used by the
-          worker.
+          Tip: these settings are saved to <span className="aura-mono">strategySettings</span>.
         </p>
       </div>
     </section>
