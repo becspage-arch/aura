@@ -1,7 +1,8 @@
 // src/app/app/strategy/_components/TradingSessionsCard.tsx
 "use client";
 
-import type { StrategySettings } from "../_lib/types";
+import type { StrategyPostResponse, StrategySettings } from "../_lib/types";
+import { fetchJSON } from "../_lib/api";
 
 type Props = {
   current: StrategySettings | null;
@@ -12,43 +13,36 @@ type Props = {
   setErr: (next: string | null) => void;
 };
 
-export function TradingSessionsCard({ current, saving }: Props) {
-  const selected =
-    current
-      ? [
-          current.sessions.asia ? "Asia" : null,
-          current.sessions.london ? "London" : null,
-          current.sessions.ny ? "NY" : null,
-        ]
-          .filter(Boolean)
-          .join(", ") || "None"
-      : "—";
-
-  const isDisabled = true; // Coming soon (not wired yet)
+export function TradingSessionsCard({
+  current,
+  saving,
+  disabled,
+  setCurrent,
+  setSaving,
+  setErr,
+}: Props) {
+  const summary = saving
+    ? "Saving…"
+    : current
+    ? [
+        current.sessions.asia ? "Asia" : null,
+        current.sessions.london ? "London" : null,
+        current.sessions.ny ? "NY" : null,
+      ]
+        .filter(Boolean)
+        .join(", ") || "None selected"
+    : "—";
 
   return (
-    <section className="aura-card">
+    <div>
       <div className="aura-row-between">
-        <div>
-          <div className="aura-card-title">Trading Sessions</div>
-          <div className="aura-muted aura-text-xs aura-mt-10">
-            Choose when Aura is allowed to trade.
-          </div>
-        </div>
-
         <div className="aura-muted aura-text-xs">
-          {saving ? "Saving…" : `Selected: ${selected}`}
+          Select when Aura is allowed to trade.
         </div>
+        <div className="aura-muted aura-text-xs">{summary}</div>
       </div>
 
-      <div className="aura-mt-12 aura-callout aura-callout--warn">
-        <div className="aura-callout-title">Coming soon</div>
-        <div className="aura-callout-text">
-          Session filtering isn’t active yet. Aura may trade outside these times.
-        </div>
-      </div>
-
-      <div className={`aura-mt-12 ${isDisabled ? "aura-disabled" : ""}`}>
+      <div className="aura-mt-12">
         <div className="aura-pill-group" role="group" aria-label="Trading sessions">
           {([
             { key: "asia", label: "Asia" },
@@ -63,8 +57,40 @@ export function TradingSessionsCard({ current, saving }: Props) {
                 type="button"
                 className="aura-pill-toggle"
                 aria-pressed={on}
-                disabled={true}
-                title="Coming soon"
+                onClick={async () => {
+                  if (!current) return;
+
+                  const prev = current;
+                  const nextLocal: StrategySettings = {
+                    ...current,
+                    sessions: { ...current.sessions, [s.key]: !on },
+                  };
+                  setCurrent(nextLocal);
+
+                  try {
+                    setSaving(true);
+                    setErr(null);
+
+                    const res = await fetchJSON<StrategyPostResponse>(
+                      "/api/trading-state/strategy-settings",
+                      {
+                        method: "POST",
+                        body: JSON.stringify({
+                          sessions: { [s.key]: !on },
+                        }),
+                      }
+                    );
+
+                    setCurrent(res.strategySettings);
+                  } catch (e) {
+                    setCurrent(prev);
+                    setErr(e instanceof Error ? e.message : String(e));
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={disabled || !current}
+                title={on ? "Enabled" : "Disabled"}
               >
                 <span className="aura-pill-indicator" />
                 <span>{s.label}</span>
@@ -74,9 +100,10 @@ export function TradingSessionsCard({ current, saving }: Props) {
         </div>
 
         <p className="aura-muted aura-text-xs aura-mt-10">
-          (This will be enabled once session logic is live.)
+          Tip: most users start with one main session (e.g. New York) to keep results
+          consistent.
         </p>
       </div>
-    </section>
+    </div>
   );
 }

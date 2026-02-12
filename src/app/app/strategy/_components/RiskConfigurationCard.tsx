@@ -29,6 +29,10 @@ function formFromCurrent(current: StrategySettings): RiskFormState {
   };
 }
 
+function isPositiveNumber(n: number) {
+  return Number.isFinite(n) && n > 0;
+}
+
 export function RiskConfigurationCard({
   current,
   saving,
@@ -37,11 +41,11 @@ export function RiskConfigurationCard({
   setSaving,
   setErr,
 }: Props) {
-  const [riskForm, setRiskForm] = useState<RiskFormState>(() => ({
+  const [riskForm, setRiskForm] = useState<RiskFormState>({
     riskUsd: "",
     rr: "",
     maxStopTicks: "",
-  }));
+  });
 
   const dirtyRisk = useMemo(() => {
     if (!current) return false;
@@ -56,9 +60,7 @@ export function RiskConfigurationCard({
     if (!current) return;
 
     const isBlank =
-      riskForm.riskUsd === "" &&
-      riskForm.rr === "" &&
-      riskForm.maxStopTicks === "";
+      riskForm.riskUsd === "" && riskForm.rr === "" && riskForm.maxStopTicks === "";
 
     if (isBlank || !dirtyRisk) {
       setRiskForm(formFromCurrent(current));
@@ -82,8 +84,31 @@ export function RiskConfigurationCard({
       return;
     }
 
+    if (!isPositiveNumber(riskUsd)) {
+      setErr("Max Risk (USD) must be greater than 0.");
+      return;
+    }
+
+    if (!isPositiveNumber(rr)) {
+      setErr("RR must be greater than 0.");
+      return;
+    }
+
+    if (!isPositiveNumber(maxStopTicks)) {
+      setErr("Max Stop (ticks) must be greater than 0.");
+      return;
+    }
+
     const ok = window.confirm(
-      `Apply these risk settings?\n\nMax Risk (USD): ${riskUsd}\nRR: ${rr}\nMax stop (ticks): ${maxStopTicks}\n\nOrders are always placed as MARKET orders.`
+      [
+        "Apply these risk settings?",
+        "",
+        `Max Risk: $${riskUsd}`,
+        `RR: ${rr}`,
+        `Max Stop: ${maxStopTicks} ticks`,
+        "",
+        "Aura will place MARKET orders using these limits.",
+      ].join("\n")
     );
     if (!ok) return;
 
@@ -95,11 +120,7 @@ export function RiskConfigurationCard({
         "/api/trading-state/strategy-settings",
         {
           method: "POST",
-          body: JSON.stringify({
-            riskUsd,
-            rr,
-            maxStopTicks,
-          }),
+          body: JSON.stringify({ riskUsd, rr, maxStopTicks }),
         }
       );
 
@@ -115,7 +136,13 @@ export function RiskConfigurationCard({
   return (
     <section className="aura-card">
       <div className="aura-row-between">
-        <div className="aura-card-title">Risk</div>
+        <div>
+          <div className="aura-card-title">Risk</div>
+          <div className="aura-muted aura-text-xs aura-mt-6">
+            Set your max risk and stop-size limits (in ticks). Aura will size positions around these rules.
+          </div>
+        </div>
+
         <div className="aura-muted aura-text-xs">
           {current
             ? `Current: $${current.riskUsd} • RR ${current.rr} • Max stop ${current.maxStopTicks} ticks`
@@ -163,11 +190,17 @@ export function RiskConfigurationCard({
               placeholder="e.g. 50"
               disabled={disabled}
             />
+            <div className="aura-muted aura-text-xs aura-mt-10">
+              If a setup needs a bigger stop than this, Aura will skip the trade.
+            </div>
           </div>
 
           <div>
             <div className="aura-muted aura-text-xs">Order type</div>
-            <div className="aura-input aura-mt-10 aura-input--readonly" aria-readonly="true">
+            <div
+              className="aura-input aura-mt-10 aura-input--readonly"
+              aria-readonly="true"
+            >
               market (fixed)
             </div>
             <div className="aura-muted aura-text-xs aura-mt-10">
@@ -199,7 +232,8 @@ export function RiskConfigurationCard({
         </div>
 
         <p className="aura-muted aura-text-xs">
-          Tip: these settings are saved to <span className="aura-mono">strategySettings</span>.
+          Tip: these settings are saved to{" "}
+          <span className="aura-mono">strategySettings</span>.
         </p>
       </div>
     </section>

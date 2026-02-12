@@ -1,3 +1,4 @@
+// src/app/app/strategy/_components/ExecutionPreferencesCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -80,11 +81,11 @@ export function ExecutionPreferencesCard({
                 <div className="aura-control-meta">
                   <div className="aura-group-title">Max trades per session</div>
                   <div className="aura-control-help">
-                    Caps the number of trades Aura can take in a session. 0 disables.
+                    Caps the number of trades Aura can take in a session. Set to 0 to disable.
                   </div>
                 </div>
 
-                <div className="aura-control-right" style={{ minWidth: 180 }}>
+                <div className="aura-control-right aura-control-right--sm">
                   <input
                     className="aura-input"
                     inputMode="numeric"
@@ -123,23 +124,9 @@ export function ExecutionPreferencesCard({
             ) => {
               if (!current) return;
 
-              const prev = current;
-              const nextLocal: StrategySettings = {
-                ...current,
-                execution: { ...current.execution, [key]: value },
-              };
-
-              // optimistic UI
-              // (page.tsx owns setCurrent normally, but we can rely on patch to update state upstream)
-              // If you want optimistic UI here too, pass setCurrent into this card. For now: just patch.
-              try {
-                await patchStrategySettings({
-                  execution: { [key]: value } as any,
-                });
-              } catch (e) {
-                // If patch failed, revert is handled by upstream state refresh.
-                throw e;
-              }
+              await patchStrategySettings({
+                execution: { [key]: value } as any,
+              });
             };
 
             const rows: Array<{
@@ -153,17 +140,17 @@ export function ExecutionPreferencesCard({
               {
                 key: "allowMultipleTradesPerSession",
                 title: "Allow multiple trades per session",
-                help: "If disabled, Aura will only take one trade per session.",
+                help: "If off, Aura will only take one trade per session.",
               },
               {
                 key: "allowTradeStacking",
                 title: "Allow trade stacking",
-                help: "If enabled, Aura may add positions when new valid setups appear.",
+                help: "If on, Aura may add positions when new valid setups appear.",
               },
               {
                 key: "requireFlatBeforeNewEntry",
                 title: "Require flat before new entry",
-                help: "If enabled, Aura won’t enter a new trade until the prior position is flat.",
+                help: "If on, Aura won’t enter a new trade until the prior position is flat.",
               },
             ];
 
@@ -180,7 +167,7 @@ export function ExecutionPreferencesCard({
                           <div className="aura-control-help">{row.help}</div>
                         </div>
 
-                        <div className="aura-control-right" style={{ minWidth: 260 }}>
+                        <div className="aura-control-right aura-control-right--lg">
                           <div
                             className="aura-pill-group"
                             role="group"

@@ -1509,6 +1509,7 @@ html.light .aura-topbar__state:hover {
 
 /* Aura - no inline style helpers */
 .aura-minw-140 { min-width: 140px; }
+.aura-minw-160 { min-width: 160px; }
 .aura-minw-180 { min-width: 180px; }
 .aura-minw-260 { min-width: 260px; }
 

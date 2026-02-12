@@ -375,25 +375,23 @@ export async function startProjectXUserFeed(params: {
         // Emit notification event to the app (which will send email + in-app) ONLY on first creation
         if (!existed) {
           try {
-            await emitNotifyEvent({
-              type: "trade_closed",
-              ts: new Date().toISOString(),
-
-              userId: ident.clerkUserId,
-
+          await emitNotifyEvent({
+            name: "trade.closed",
+            ts: new Date().toISOString(),
+            broker: "projectx",
+            clerkUserId: ident.clerkUserId,
+            data: {
               tradeId: trade.id,
               accountId: String(payload?.accountId ?? params.accountId ?? "unknown"),
               symbol,
-
               direction: side === "BUY" ? "long" : "short",
-
-              // v1: we don't yet have true entry/exit timestamps here
               entryTs: closedAt.toISOString(),
               exitTs: closedAt.toISOString(),
-
               realisedPnlUsd: pnl,
               result: pnl > 0 ? "win" : pnl < 0 ? "loss" : "breakeven",
-            });
+            },
+          });
+
           } catch (e) {
             console.warn("[projectx-user] NOTIFY_EMIT_FAILED", {
               err: e instanceof Error ? e.message : String(e),

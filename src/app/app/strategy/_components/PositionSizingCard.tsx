@@ -1,3 +1,4 @@
+// src/app/app/strategy/_components/PositionSizingCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -81,11 +82,7 @@ export function PositionSizingCard({
 
           return (
             <div className="aura-grid-gap-12">
-              <div
-                className="aura-select-grid"
-                role="group"
-                aria-label="Position sizing"
-              >
+              <div className="aura-select-grid" role="group" aria-label="Position sizing">
                 {/* Risk-based */}
                 <div
                   className="aura-select-card"
@@ -109,8 +106,7 @@ export function PositionSizingCard({
                     <div>
                       <div className="aura-select-card__title">Risk-based</div>
                       <div className="aura-select-card__desc">
-                        Uses stop distance to size the position so your USD risk stays
-                        consistent.
+                        Uses stop distance to size the position so your USD risk stays consistent.
                       </div>
                     </div>
                     <span className="aura-select-card__dot" />
@@ -140,8 +136,7 @@ export function PositionSizingCard({
                     <div>
                       <div className="aura-select-card__title">Fixed contracts</div>
                       <div className="aura-select-card__desc">
-                        Uses a fixed contract count per trade. Useful for testing and
-                        simple rule sets.
+                        Uses a fixed contract count per trade. Useful for testing and simple rule sets.
                       </div>
                     </div>
                     <span className="aura-select-card__dot" />
@@ -151,15 +146,13 @@ export function PositionSizingCard({
                     <div className="aura-select-card__content">
                       <div className="aura-control-row">
                         <div className="aura-control-meta">
-                          <div className="aura-control-title">
-                            Contracts per trade
-                          </div>
+                          <div className="aura-control-title">Contracts per trade</div>
                           <div className="aura-control-help">
                             Minimum 1. Saved when you click away or press Enter.
                           </div>
                         </div>
 
-                        <div className="aura-control-right" style={{ minWidth: 160 }}>
+                        <div className="aura-control-right aura-minw-160">
                           <input
                             className="aura-input"
                             inputMode="numeric"
@@ -169,8 +162,7 @@ export function PositionSizingCard({
                             disabled={isDisabled}
                             onChange={(e) => {
                               const v = e.target.value;
-                              if (v === "" || /^[0-9]+$/.test(v))
-                                setFixedContractsDraft(v);
+                              if (v === "" || /^[0-9]+$/.test(v)) setFixedContractsDraft(v);
                             }}
                             onBlur={saveFixedContracts}
                             onKeyDown={(e) => {

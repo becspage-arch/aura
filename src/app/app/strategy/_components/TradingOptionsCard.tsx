@@ -1,3 +1,4 @@
+// src/app/app/strategy/_components/TradingOptionsCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -78,9 +79,7 @@ export function TradingOptionsCard({
                 Limits after losses so Aura can pause and recover.
               </div>
             </div>
-            <div className="aura-muted aura-text-xs">
-              {saving ? "Saving…" : "Auto-save"}
-            </div>
+            <div className="aura-muted aura-text-xs">{saving ? "Saving…" : "Auto-save"}</div>
           </div>
 
           <div className="aura-divider" />
@@ -126,16 +125,14 @@ export function TradingOptionsCard({
               <div className={isDisabled ? "aura-disabled" : ""}>
                 <div className="aura-control-row">
                   <div className="aura-control-meta">
-                    <div className="aura-group-title">
-                      Max stop-outs per session
-                    </div>
+                    <div className="aura-group-title">Max stop-outs per session</div>
                     <div className="aura-control-help">
-                      Number of stop-outs allowed before Aura pauses for the rest of
-                      the session. 0 disables.
+                      Number of stop-outs allowed before Aura pauses for the rest of the session.
+                      0 disables.
                     </div>
                   </div>
 
-                  <div className="aura-control-right" style={{ minWidth: 140 }}>
+                  <div className="aura-control-right aura-minw-140">
                     <input
                       className="aura-input"
                       inputMode="numeric"
@@ -145,14 +142,11 @@ export function TradingOptionsCard({
                       disabled={isDisabled}
                       onChange={(e) => {
                         const v = e.target.value;
-                        if (v === "" || /^[0-9]+$/.test(v))
-                          setMaxStopoutsDraft(v);
+                        if (v === "" || /^[0-9]+$/.test(v)) setMaxStopoutsDraft(v);
                       }}
                       onBlur={saveMaxStopouts}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          (e.target as HTMLInputElement).blur();
-                        }
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                       }}
                     />
                   </div>
@@ -162,16 +156,13 @@ export function TradingOptionsCard({
 
                 <div className="aura-control-row">
                   <div className="aura-control-meta">
-                    <div className="aura-group-title">
-                      Cooldown after stop-out (minutes)
-                    </div>
+                    <div className="aura-group-title">Cooldown after stop-out (minutes)</div>
                     <div className="aura-control-help">
-                      How long Aura waits before trading again after a stop-out. 0
-                      disables.
+                      How long Aura waits before trading again after a stop-out. 0 disables.
                     </div>
                   </div>
 
-                  <div className="aura-control-right" style={{ minWidth: 140 }}>
+                  <div className="aura-control-right aura-minw-140">
                     <input
                       className="aura-input"
                       inputMode="numeric"
@@ -181,14 +172,11 @@ export function TradingOptionsCard({
                       disabled={isDisabled}
                       onChange={(e) => {
                         const v = e.target.value;
-                        if (v === "" || /^[0-9]+$/.test(v))
-                          setCooldownDraft(v);
+                        if (v === "" || /^[0-9]+$/.test(v)) setCooldownDraft(v);
                       }}
                       onBlur={saveCooldown}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          (e.target as HTMLInputElement).blur();
-                        }
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                       }}
                     />
                   </div>
@@ -249,16 +237,14 @@ export function TradingOptionsCard({
               <div className={isDisabled ? "aura-disabled" : ""}>
                 <div className="aura-control-row">
                   <div className="aura-control-meta">
-                    <div className="aura-group-title">
-                      Require candle body dominance (%)
-                    </div>
+                    <div className="aura-group-title">Require candle body dominance (%)</div>
                     <div className="aura-control-help">
-                      Minimum % of the candle body that must be on one side of the EMA
-                      to qualify. (Recommended: 90)
+                      Minimum % of the candle body that must be on one side of the EMA to qualify.
+                      (Recommended: 90)
                     </div>
                   </div>
 
-                  <div className="aura-control-right" style={{ minWidth: 140 }}>
+                  <div className="aura-control-right aura-minw-140">
                     <input
                       className="aura-input"
                       inputMode="numeric"
@@ -268,14 +254,11 @@ export function TradingOptionsCard({
                       disabled={isDisabled}
                       onChange={(e) => {
                         const v = e.target.value;
-                        if (v === "" || /^[0-9]+$/.test(v))
-                          setBodyDominanceDraft(v);
+                        if (v === "" || /^[0-9]+$/.test(v)) setBodyDominanceDraft(v);
                       }}
                       onBlur={saveBodyDominance}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          (e.target as HTMLInputElement).blur();
-                        }
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                       }}
                     />
                   </div>
@@ -285,21 +268,14 @@ export function TradingOptionsCard({
 
                 <div className="aura-control-row">
                   <div className="aura-control-meta">
-                    <div className="aura-group-title">
-                      Expansion candle EMA filter
-                    </div>
+                    <div className="aura-group-title">Expansion candle EMA filter</div>
                     <div className="aura-control-help">
-                      When enabled, Aura requires additional EMA confirmation before
-                      allowing entries.
+                      When enabled, Aura requires additional EMA confirmation before allowing entries.
                     </div>
                   </div>
 
-                  <div className="aura-control-right" style={{ minWidth: 260 }}>
-                    <div
-                      className="aura-select-grid"
-                      role="group"
-                      aria-label="EMA filter toggle"
-                    >
+                  <div className="aura-control-right aura-control-right--lg">
+                    <div className="aura-select-grid" role="group" aria-label="EMA filter toggle">
                       <div
                         className="aura-select-card"
                         role="button"
@@ -312,10 +288,7 @@ export function TradingOptionsCard({
                         }}
                         onKeyDown={(e) => {
                           if (isDisabled) return;
-                          if (
-                            (e.key === "Enter" || e.key === " ") &&
-                            !emaEnabledDraft
-                          ) {
+                          if ((e.key === "Enter" || e.key === " ") && !emaEnabledDraft) {
                             e.preventDefault();
                             toggleEma();
                           }
@@ -342,10 +315,7 @@ export function TradingOptionsCard({
                         }}
                         onKeyDown={(e) => {
                           if (isDisabled) return;
-                          if (
-                            (e.key === "Enter" || e.key === " ") &&
-                            emaEnabledDraft
-                          ) {
+                          if ((e.key === "Enter" || e.key === " ") && emaEnabledDraft) {
                             e.preventDefault();
                             toggleEma();
                           }
@@ -369,17 +339,12 @@ export function TradingOptionsCard({
                   <div className="aura-control-meta">
                     <div className="aura-group-title">Entry timing window</div>
                     <div className="aura-control-help">
-                      Immediate enters on signal. Wait-for-confirm delays entry until
-                      confirmation.
+                      Immediate enters on signal. Wait-for-confirm delays entry until confirmation.
                     </div>
                   </div>
 
-                  <div className="aura-control-right" style={{ minWidth: 260 }}>
-                    <div
-                      className="aura-select-grid"
-                      role="group"
-                      aria-label="Entry timing"
-                    >
+                  <div className="aura-control-right aura-control-right--lg">
+                    <div className="aura-select-grid" role="group" aria-label="Entry timing">
                       <div
                         className="aura-select-card"
                         role="button"
