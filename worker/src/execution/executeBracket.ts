@@ -126,9 +126,7 @@ export async function executeBracket(params: {
 
   // --- MAX OPEN TRADES (DB guard) + anti-double-click lock ---
   const maxOpenTrades =
-    process.env.AURA_MAX_OPEN_TRADES != null
-      ? Number(process.env.AURA_MAX_OPEN_TRADES)
-      : 1;
+    process.env.AURA_MAX_OPEN_TRADES != null ? Number(process.env.AURA_MAX_OPEN_TRADES) : 1;
 
   const lockKey1 = `aura:${input.userId}`;
   const lockKey2 = `openTrade:${input.brokerName}:${input.contractId}:${input.symbol ?? ""}`;
@@ -146,13 +144,151 @@ export async function executeBracket(params: {
   }
 
   try {
+    // --- REAL broker position guard (no DB-ghost blocking) ---
+    // We try a few method names because adapters differ.
+    const getPosFn =
+      (broker as any).getPosition ?? (broker as any).fetchPosition ?? (broker as any).getOpenPosition ?? null;
+
+    let brokerHasOpenPosition = false;
+    let brokerPositionSize: number | null = null;
+    let brokerPosCheckOk = false;
+
+    if (typeof getPosFn === "function") {
+      try {
+        const pos = await getPosFn.call(broker, {
+          contractId: input.contractId,
+          symbol: input.symbol ?? null,
+        });
+
+        const rawSize =
+          pos?.size ?? pos?.qty ?? pos?.positionSize ?? pos?.netQty ?? pos?.netPosition ?? 0;
+
+        const sizeNum = Number(rawSize);
+
+        brokerPosCheckOk = true;
+        brokerPositionSize = Number.isFinite(sizeNum) ? sizeNum : 0;
+        brokerHasOpenPosition = Number.isFinite(sizeNum) && sizeNum !== 0;
+
+        if (brokerHasOpenPosition) {
+          console.warn("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
+            execKey: input.execKey,
+            userId: input.userId,
+            brokerName: input.brokerName,
+            contractId: input.contractId,
+            symbol: input.symbol ?? null,
+            brokerPositionSize: sizeNum,
+          });
+
+          logTag("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
+            execKey: input.execKey,
+            userId: input.userId,
+            brokerName: input.brokerName,
+            contractId: input.contractId,
+            symbol: input.symbol ?? null,
+            brokerPositionSize: sizeNum,
+          });
+
+          throw new Error(`Blocked: broker reports open position (size=${sizeNum})`);
+        }
+      } catch (e: any) {
+        // Non-blocking if the position check fails
+        console.warn("[executeBracket] broker position check failed (non-blocking)", {
+          execKey: input.execKey,
+          err: e?.message ? String(e.message) : String(e),
+        });
+      }
+    } else {
+      console.warn("[executeBracket] broker has no position-check method (non-blocking)", {
+        execKey: input.execKey,
+        broker: (broker as any)?.name ?? null,
+      });
+    }
+
+    // --- If broker is flat, auto-cancel stale "ghost" open executions so they can't block forever ---
+    // This is ONLY done when broker position check succeeded AND broker is flat.
+    // (If we cannot verify broker flat, we do not auto-cancel anything.)
+    const ghostTtlMinutes =
+      process.env.AURA_GHOST_EXEC_TTL_MINUTES != null
+        ? Number(process.env.AURA_GHOST_EXEC_TTL_MINUTES)
+        : 2;
+
+    const shouldGhostClean =
+      brokerPosCheckOk &&
+      !brokerHasOpenPosition &&
+      Number.isFinite(ghostTtlMinutes) &&
+      ghostTtlMinutes > 0;
+
+    if (shouldGhostClean) {
+      const staleBefore = new Date(Date.now() - ghostTtlMinutes * 60 * 1000);
+
+      // These are the statuses that frequently get stuck and block users.
+      // Note: We INCLUDE ORDER_FILLED here for cleanup purposes (but we do NOT count it as "open" below).
+      const ghostStatuses: any[] = [
+        "INTENT_CREATED",
+        "ORDER_SUBMITTED",
+        "ORDER_ACCEPTED",
+        "ORDER_FILLED",
+        "BRACKET_SUBMITTED",
+        "BRACKET_ACTIVE",
+        "POSITION_OPEN",
+      ];
+
+      try {
+        const res = await prisma.execution.updateMany({
+          where: {
+            userId: input.userId,
+            brokerName: input.brokerName,
+            contractId: input.contractId,
+            ...(input.symbol ? { symbol: input.symbol } : {}),
+            status: { in: ghostStatuses },
+            updatedAt: { lt: staleBefore },
+          },
+          data: {
+            status: "CANCELLED",
+            error: "auto-cancel: broker flat (db ghost)",
+          },
+        });
+
+        if (res.count > 0) {
+          console.warn("[executeBracket] AUTO_CANCELLED_GHOST_EXECUTIONS", {
+            execKey: input.execKey,
+            userId: input.userId,
+            brokerName: input.brokerName,
+            contractId: input.contractId,
+            symbol: input.symbol ?? null,
+            cancelledCount: res.count,
+            ghostTtlMinutes,
+            brokerPositionSize,
+          });
+
+          logTag("[executeBracket] AUTO_CANCELLED_GHOST_EXECUTIONS", {
+            execKey: input.execKey,
+            userId: input.userId,
+            brokerName: input.brokerName,
+            contractId: input.contractId,
+            symbol: input.symbol ?? null,
+            cancelledCount: res.count,
+            ghostTtlMinutes,
+            brokerPositionSize,
+          });
+        }
+      } catch (e: any) {
+        console.warn("[executeBracket] ghost cleanup failed (non-blocking)", {
+          execKey: input.execKey,
+          err: e?.message ? String(e.message) : String(e),
+        });
+      }
+    }
+
     // 0) Max open trades guard (DB)
+    // IMPORTANT: DO NOT treat ORDER_FILLED as "open" here.
+    // If the broker is actually still in a position, the broker guard above blocks it.
+    // If broker is flat, ORDER_FILLED rows can exist transiently and must not block forever.
     if (Number.isFinite(maxOpenTrades) && maxOpenTrades > 0) {
       const openStatuses: any[] = [
         "INTENT_CREATED",
         "ORDER_SUBMITTED",
         "ORDER_ACCEPTED",
-        "ORDER_FILLED",
         "BRACKET_SUBMITTED",
         "BRACKET_ACTIVE",
         "POSITION_OPEN",
@@ -189,71 +325,8 @@ export async function executeBracket(params: {
           maxOpenTrades,
         });
 
-        throw new Error(
-          `Blocked: max open trades reached (${openCount}/${maxOpenTrades})`
-        );
+        throw new Error(`Blocked: max open trades reached (${openCount}/${maxOpenTrades})`);
       }
-    }
-
-    // --- REAL broker position guard (no DB-ghost blocking) ---
-    const getPosFn =
-      (broker as any).getPosition ??
-      (broker as any).fetchPosition ??
-      (broker as any).getOpenPosition ??
-      null;
-
-    if (typeof getPosFn === "function") {
-      try {
-        const pos = await getPosFn.call(broker, {
-          contractId: input.contractId,
-          symbol: input.symbol ?? null,
-        });
-
-        const rawSize =
-          pos?.size ??
-          pos?.qty ??
-          pos?.positionSize ??
-          pos?.netQty ??
-          pos?.netPosition ??
-          0;
-
-        const sizeNum = Number(rawSize);
-
-        if (Number.isFinite(sizeNum) && sizeNum !== 0) {
-          console.warn("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
-            execKey: input.execKey,
-            userId: input.userId,
-            brokerName: input.brokerName,
-            contractId: input.contractId,
-            symbol: input.symbol ?? null,
-            brokerPositionSize: sizeNum,
-          });
-
-          logTag("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
-            execKey: input.execKey,
-            userId: input.userId,
-            brokerName: input.brokerName,
-            contractId: input.contractId,
-            symbol: input.symbol ?? null,
-            brokerPositionSize: sizeNum,
-          });
-
-          throw new Error(
-            `Blocked: broker reports open position (size=${sizeNum})`
-          );
-        }
-      } catch (e: any) {
-        // Non-blocking if the position check fails
-        console.warn("[executeBracket] broker position check failed (non-blocking)", {
-          execKey: input.execKey,
-          err: e?.message ? String(e.message) : String(e),
-        });
-      }
-    } else {
-      console.warn("[executeBracket] broker has no position-check method (non-blocking)", {
-        execKey: input.execKey,
-        broker: (broker as any)?.name ?? null,
-      });
     }
 
     // Safety rail: clamp qty if maxContracts is provided
@@ -278,9 +351,7 @@ export async function executeBracket(params: {
 
     // ALWAYS use a short tag for broker calls (ProjectX can 500 on long tags)
     const brokerTag =
-      input.customTag && input.customTag.trim().length > 0
-        ? input.customTag.trim()
-        : makeBrokerTag(input.execKey);
+      input.customTag && input.customTag.trim().length > 0 ? input.customTag.trim() : makeBrokerTag(input.execKey);
 
     // 1) Idempotency check
     const existing = await prisma.execution.findUnique({
@@ -350,8 +421,7 @@ export async function executeBracket(params: {
         entryRes,
       });
 
-      const entryOrderId =
-        entryRes?.orderId != null ? String(entryRes.orderId) : null;
+      const entryOrderId = entryRes?.orderId != null ? String(entryRes.orderId) : null;
 
       const updatedAfterEntry = await prisma.execution.update({
         where: { id: exec.id },
@@ -378,14 +448,11 @@ export async function executeBracket(params: {
       });
 
       // 4) Place SL/TP as a separate immediate step (ProjectX requirement)
-      const sl =
-        input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
-      const tp =
-        input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+      const sl = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
+      const tp = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
 
       const wantsBrackets =
-        (sl != null && Number.isFinite(sl) && sl > 0) ||
-        (tp != null && Number.isFinite(tp) && tp > 0);
+        (sl != null && Number.isFinite(sl) && sl > 0) || (tp != null && Number.isFinite(tp) && tp > 0);
 
       const placeBracketsAfterEntryFn = (broker as any).placeBracketsAfterEntry;
 
@@ -427,14 +494,8 @@ export async function executeBracket(params: {
           where: { id: exec.id },
           data: {
             status: "BRACKET_SUBMITTED",
-            stopOrderId:
-              bracketRes?.stopOrderId != null
-                ? String(bracketRes.stopOrderId)
-                : null,
-            tpOrderId:
-              bracketRes?.takeProfitOrderId != null
-                ? String(bracketRes.takeProfitOrderId)
-                : null,
+            stopOrderId: bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null,
+            tpOrderId: bracketRes?.takeProfitOrderId != null ? String(bracketRes.takeProfitOrderId) : null,
             meta: {
               ...(updatedAfterEntry.meta as any),
               brackets: jsonSafe(bracketRes),
@@ -485,7 +546,7 @@ export async function executeBracket(params: {
           meta: {
             brokerError: {
               message: errMsg,
-              stack: e?.stack ? String(e.stack) : null,
+              stack: e?.stack ? String(e.stack) : String(e),
             },
           },
         },
