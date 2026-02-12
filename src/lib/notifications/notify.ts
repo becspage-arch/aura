@@ -64,8 +64,8 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       deepLink: `/app/trades/${event.tradeId}`,
     });
 
-    // Push notification (stubbed for now)
-    await sendPushTradeClosed(event);
+    // Push notification 
+    await sendPushTradeClosed(event, { prisma });
 
     // Email (only if user has an email stored in UserProfile)
     const toEmail = await getUserEmailByClerkUserId(prisma, event.userId);

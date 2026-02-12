@@ -37,6 +37,45 @@ function makeBrokerTag(execKey: string): string {
   return `aura-${h}`; // short + unique enough for ProjectX
 }
 
+async function enforceMaxOpenTrades(params: {
+  prisma: PrismaClient;
+  userId: string;
+  brokerName: string;
+  symbol: string | null;
+  maxOpenTrades: number;
+  execKey: string;
+}) {
+  const { prisma, userId, brokerName, symbol, maxOpenTrades, execKey } = params;
+
+  // NOTE: this is intentionally conservative for now.
+  // Later you’ll likely add explicit CLOSED statuses (e.g. TRADE_CLOSED, CANCELED).
+  const OPEN_STATUSES = ["INTENT_CREATED", "ORDER_SUBMITTED", "BRACKET_SUBMITTED", "ORDER_FILLED"] as const;
+
+  const openCount = await prisma.execution.count({
+    where: {
+      userId,
+      brokerName,
+      symbol: symbol ?? null,
+      status: { in: [...OPEN_STATUSES] as any },
+    },
+  });
+
+  if (openCount >= maxOpenTrades) {
+    console.warn("[executeBracket] BLOCKED_MAX_OPEN_TRADES", {
+      execKey,
+      userId,
+      brokerName,
+      symbol,
+      openCount,
+      maxOpenTrades,
+    });
+
+    throw new Error(
+      `Blocked: already have ${openCount} open trade(s) (maxOpenTrades=${maxOpenTrades})`
+    );
+  }
+}
+
 function isFilled(o: any): boolean {
   if (!o) return false;
 
@@ -123,6 +162,22 @@ export async function executeBracket(params: {
   input: ExecuteBracketInput;
 }) {
   const { prisma, broker, input } = params;
+
+  // ✅ STRICT MODE (for now): one open trade at a time per symbol + broker + user
+  const maxOpenTradesRaw = process.env.AURA_MAX_OPEN_TRADES;
+  const maxOpenTrades =
+    maxOpenTradesRaw && Number.isFinite(Number(maxOpenTradesRaw)) && Number(maxOpenTradesRaw) > 0
+      ? Math.floor(Number(maxOpenTradesRaw))
+      : 1;
+
+  await enforceMaxOpenTrades({
+    prisma,
+    userId: input.userId,
+    brokerName: input.brokerName,
+    symbol: input.symbol ?? null,
+    maxOpenTrades,
+    execKey: input.execKey,
+  });
 
   // Safety rail: clamp qty if maxContracts is provided
   const rawQty = Number(input.qty);

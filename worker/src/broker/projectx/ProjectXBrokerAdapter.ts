@@ -163,6 +163,19 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     }
   }
 
+    private async safeCancel(orderId: number | null, reason: string) {
+      if (!orderId) return;
+      try {
+        await this.cancelOrder(String(orderId), reason);
+      } catch (e) {
+        console.warn("[projectx-adapter] safeCancel failed", {
+          orderId,
+          reason,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
   private async validateToken(): Promise<void> {
     if (!this.token) return;
 
@@ -977,122 +990,130 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     const baseTag = (input.customTag || "brackets").trim() || "brackets";
     const entryTagPart = input.entryOrderId ? `:${input.entryOrderId}` : "";
 
-    if (wantsSL && slPrice != null) {
-      const body = {
-        accountId: this.accountId,
-        contractId,
-        type: 4, // Stop
-        side: exitSide,
-        size,
-        limitPrice: null,
-        stopPrice: slPrice,
-        trailPrice: null,
-        customTag: `${baseTag}:SL${entryTagPart}`,
-      };
+      try {
+      if (wantsSL && slPrice != null) {
+        const body = {
+          accountId: this.accountId,
+          contractId,
+          type: 4, // Stop
+          side: exitSide,
+          size,
+          limitPrice: null,
+          stopPrice: slPrice,
+          trailPrice: null,
+          customTag: `${baseTag}:SL${entryTagPart}`,
+        };
 
-      logTag("[projectx-adapter] SL_EXIT_PRICES", {
-        contractId,
-        entryOrderId: input.entryOrderId ?? null,
-        isLong,
-        exitSide,
-        size,
-        slTicks: slAbs,
-        refPrice,
-        tickSize,
-        stopPrice: slPrice,
-        customTag: body.customTag,
-      });
+        logTag("[projectx-adapter] SL_EXIT_PRICES", {
+          contractId,
+          entryOrderId: input.entryOrderId ?? null,
+          isLong,
+          exitSide,
+          size,
+          slTicks: slAbs,
+          refPrice,
+          tickSize,
+          stopPrice: slPrice,
+          customTag: body.customTag,
+        });
 
-      const res = await fetch("https://api.topstepx.com/api/Order/place", {
-        method: "POST",
-        headers: {
-          accept: "text/plain",
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.token}`,
-        },
-        body: JSON.stringify(body),
-      });
+        const res = await fetch("https://api.topstepx.com/api/Order/place", {
+          method: "POST",
+          headers: {
+            accept: "text/plain",
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.token}`,
+          },
+          body: JSON.stringify(body),
+        });
 
-      const text = await res.text();
-      const parsed = parseJsonOrNull(text) as PlaceOrderResponse | null;
+        const text = await res.text();
+        const parsed = parseJsonOrNull(text) as PlaceOrderResponse | null;
 
-      console.log("[projectx-adapter] SL exit response", {
-        status: res.status,
-        ok: res.ok,
-        success: parsed?.success,
-        errorCode: parsed?.errorCode,
-        errorMessage: parsed?.errorMessage ?? null,
-        orderId: parsed?.orderId ?? null,
-      });
+        console.log("[projectx-adapter] SL exit response", {
+          status: res.status,
+          ok: res.ok,
+          success: parsed?.success,
+          errorCode: parsed?.errorCode,
+          errorMessage: parsed?.errorMessage ?? null,
+          orderId: parsed?.orderId ?? null,
+        });
 
-      if (!res.ok || !parsed?.success || !parsed?.orderId) {
-        throw new Error(
-          `ProjectX SL exit Order/place failed (HTTP ${res.status})${
-            parsed?.errorCode != null ? ` code=${parsed.errorCode}` : ""
-          }${parsed?.errorMessage ? ` msg=${parsed.errorMessage}` : ""}`
-        );
+        if (!res.ok || !parsed?.success || !parsed?.orderId) {
+          throw new Error(
+            `ProjectX SL exit Order/place failed (HTTP ${res.status})${
+              parsed?.errorCode != null ? ` code=${parsed.errorCode}` : ""
+            }${parsed?.errorMessage ? ` msg=${parsed.errorMessage}` : ""}`
+          );
+        }
+
+        stopOrderId = parsed.orderId;
       }
 
-      stopOrderId = parsed.orderId;
-    }
+      if (wantsTP && tpPrice != null) {
+        const body = {
+          accountId: this.accountId,
+          contractId,
+          type: 1, // Limit
+          side: exitSide,
+          size,
+          limitPrice: tpPrice,
+          stopPrice: null,
+          trailPrice: null,
+          customTag: `${baseTag}:TP${entryTagPart}`,
+        };
 
-    if (wantsTP && tpPrice != null) {
-      const body = {
-        accountId: this.accountId,
-        contractId,
-        type: 1, // Limit
-        side: exitSide,
-        size,
-        limitPrice: tpPrice,
-        stopPrice: null,
-        trailPrice: null,
-        customTag: `${baseTag}:TP${entryTagPart}`,
-      };
+        logTag("[projectx-adapter] TP_EXIT_PRICES", {
+          contractId,
+          entryOrderId: input.entryOrderId ?? null,
+          isLong,
+          exitSide,
+          size,
+          tpTicks: tpAbs,
+          refPrice,
+          tickSize,
+          limitPrice: tpPrice,
+          customTag: body.customTag,
+        });
 
-      logTag("[projectx-adapter] TP_EXIT_PRICES", {
-        contractId,
-        entryOrderId: input.entryOrderId ?? null,
-        isLong,
-        exitSide,
-        size,
-        tpTicks: tpAbs,
-        refPrice,
-        tickSize,
-        limitPrice: tpPrice,
-        customTag: body.customTag,
-      });
+        const res = await fetch("https://api.topstepx.com/api/Order/place", {
+          method: "POST",
+          headers: {
+            accept: "text/plain",
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.token}`,
+          },
+          body: JSON.stringify(body),
+        });
 
-      const res = await fetch("https://api.topstepx.com/api/Order/place", {
-        method: "POST",
-        headers: {
-          accept: "text/plain",
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.token}`,
-        },
-        body: JSON.stringify(body),
-      });
+        const text = await res.text();
+        const parsed = parseJsonOrNull(text) as PlaceOrderResponse | null;
 
-      const text = await res.text();
-      const parsed = parseJsonOrNull(text) as PlaceOrderResponse | null;
+        console.log("[projectx-adapter] TP exit response", {
+          status: res.status,
+          ok: res.ok,
+          success: parsed?.success,
+          errorCode: parsed?.errorCode,
+          errorMessage: parsed?.errorMessage ?? null,
+          orderId: parsed?.orderId ?? null,
+        });
 
-      console.log("[projectx-adapter] TP exit response", {
-        status: res.status,
-        ok: res.ok,
-        success: parsed?.success,
-        errorCode: parsed?.errorCode,
-        errorMessage: parsed?.errorMessage ?? null,
-        orderId: parsed?.orderId ?? null,
-      });
+        if (!res.ok || !parsed?.success || !parsed?.orderId) {
+          throw new Error(
+            `ProjectX TP exit Order/place failed (HTTP ${res.status})${
+              parsed?.errorCode != null ? ` code=${parsed.errorCode}` : ""
+            }${parsed?.errorMessage ? ` msg=${parsed.errorMessage}` : ""}`
+          );
+        }
 
-      if (!res.ok || !parsed?.success || !parsed?.orderId) {
-        throw new Error(
-          `ProjectX TP exit Order/place failed (HTTP ${res.status})${
-            parsed?.errorCode != null ? ` code=${parsed.errorCode}` : ""
-          }${parsed?.errorMessage ? ` msg=${parsed.errorMessage}` : ""}`
-        );
+        takeProfitOrderId = parsed.orderId;
       }
-
-      takeProfitOrderId = parsed.orderId;
+    } catch (e) {
+      // Critical safety: never leave a half-bracket behind.
+      // If one exit was placed but the other failed, cancel the one that was placed.
+      await this.safeCancel(stopOrderId, "HALF_BRACKET_CLEANUP");
+      await this.safeCancel(takeProfitOrderId, "HALF_BRACKET_CLEANUP");
+      throw e;
     }
 
     console.log("[projectx-adapter] brackets placed (separate exit orders)", {
