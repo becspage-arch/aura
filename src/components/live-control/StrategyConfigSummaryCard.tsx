@@ -34,9 +34,7 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     const trimmed = text ? text.replace(/\s+/g, " ").slice(0, 140) : "";
-    throw new Error(
-      `${res.status} ${res.statusText}${trimmed ? ` - ${trimmed}` : ""}`
-    );
+    throw new Error(`${res.status} ${res.statusText}${trimmed ? ` - ${trimmed}` : ""}`);
   }
 
   return (await res.json()) as T;
@@ -44,11 +42,7 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
 
 function sessionList(s: StrategySettings["sessions"] | null | undefined) {
   if (!s) return [];
-  return [
-    s.asia ? "Asia" : null,
-    s.london ? "London" : null,
-    s.ny ? "NY" : null,
-  ].filter(Boolean) as string[];
+  return [s.asia ? "Asia" : null, s.london ? "London" : null, s.ny ? "NY" : null].filter(Boolean) as string[];
 }
 
 export function StrategyConfigSummaryCard() {
@@ -64,9 +58,7 @@ export function StrategyConfigSummaryCard() {
         setLoading(true);
         setErr(null);
 
-        const res = await fetchJSON<StrategyGetResponse>(
-          "/api/trading-state/strategy-settings"
-        );
+        const res = await fetchJSON<StrategyGetResponse>("/api/trading-state/strategy-settings");
         if (cancelled) return;
 
         setCfg(res.strategySettings);
@@ -86,77 +78,66 @@ export function StrategyConfigSummaryCard() {
   const sessions = useMemo(() => sessionList(cfg?.sessions), [cfg]);
 
   const preset = cfg?.preset ?? "—";
+  const mode = cfg?.mode ?? "—";
 
   return (
-    <Link href="/app/strategy" className="block">
-      <section className="aura-card cursor-pointer">
-        <div className="aura-row-between">
-          <div>
-            <div className="aura-card-title">Active Strategy</div>
-            <p className="aura-muted aura-text-xs aura-mt-10">
-              Snapshot only, locked to avoid accidental changes mid-session – click
-              to edit in Strategy Settings →
-            </p>
-          </div>
-
-          {!loading && cfg ? (
-            <div className="aura-muted aura-text-xs">
-              ${cfg.riskUsd} • RR {cfg.rr} • Max stop {cfg.maxStopTicks} •{" "}
-              {String(cfg.entryType)}
-            </div>
-          ) : (
-            <div className="aura-muted aura-text-xs">
-              {loading ? "Loading…" : "—"}
-            </div>
-          )}
+    <section className="aura-card">
+      <div className="aura-row-between">
+        <div>
+          <div className="aura-card-title">Active Strategy</div>
+          <p className="aura-muted aura-text-xs aura-mt-10">
+            This is a read-only snapshot of your current settings.
+          </p>
         </div>
 
-        {err ? (
-          <div className="aura-mt-12 aura-error-block">
-            <div className="aura-text-xs">Error</div>
-            <div className="aura-text-xs">{err}</div>
-          </div>
-        ) : null}
+        <Link href="/app/strategy" className="aura-btn aura-btn-subtle">
+          Edit Strategy →
+        </Link>
+      </div>
 
-        {/* Strategy-style “health strip” snapshot (matches Strategy page) */}
-        <div
-          className="aura-mt-12 aura-health-strip"
-          aria-label="Active strategy snapshot"
-        >
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Preset</span>
-            <span className="aura-health-val">{loading ? "…" : preset}</span>
-          </div>
+      {err ? (
+        <div className="aura-mt-12 aura-error-block">
+          <div className="aura-text-xs">Error</div>
+          <div className="aura-text-xs">{err}</div>
+        </div>
+      ) : null}
 
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Symbols</span>
-            <span className="aura-health-val">
-              {loading ? "…" : symbols.length ? symbols.join(", ") : "—"}
-            </span>
-          </div>
+      <div className="aura-mt-12">
+        <div className="aura-muted aura-text-xs">
+          {loading ? "Loading…" : `${preset} • ${String(mode).toUpperCase()}`}
+        </div>
 
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Sessions</span>
-            <span className="aura-health-val">
-              {loading ? "…" : sessions.length ? sessions.join(", ") : "—"}
-            </span>
+        <div className="aura-mt-12 aura-grid-4">
+          <div className="aura-card-muted">
+            <div className="aura-stat-label">Risk</div>
+            <div className="aura-mini-value">{loading || !cfg ? "—" : `$${cfg.riskUsd}`}</div>
+            <div className="aura-stat-sub">Max risk per trade</div>
           </div>
 
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Risk</span>
-            <span className="aura-health-val">
-              {loading || !cfg ? "…" : `$${cfg.riskUsd} • RR ${cfg.rr}`}
-            </span>
+          <div className="aura-card-muted">
+            <div className="aura-stat-label">RR</div>
+            <div className="aura-mini-value">{loading || !cfg ? "—" : `${cfg.rr}R`}</div>
+            <div className="aura-stat-sub">Reward to risk</div>
           </div>
 
-          <div className="aura-health-pill">
-            <span className="aura-health-key">Entry</span>
-            <span className="aura-health-val">
-              {loading ? "…" : cfg ? String(cfg.entryType) : "—"}
-            </span>
+          <div className="aura-card-muted">
+            <div className="aura-stat-label">Max Stop</div>
+            <div className="aura-mini-value">{loading || !cfg ? "—" : `${cfg.maxStopTicks}t`}</div>
+            <div className="aura-stat-sub">Ticks</div>
+          </div>
+
+          <div className="aura-card-muted">
+            <div className="aura-stat-label">Sessions</div>
+            <div className="aura-mini-value">{loading ? "—" : sessions.length ? sessions.join(", ") : "—"}</div>
+            <div className="aura-stat-sub">When Aura can trade</div>
           </div>
         </div>
-      </section>
-    </Link>
+
+        <div className="aura-mt-12 aura-muted aura-text-xs">
+          Symbols: {loading ? "…" : symbols.length ? symbols.join(", ") : "—"} • Entry:{" "}
+          {loading ? "…" : cfg ? String(cfg.entryType) : "—"}
+        </div>
+      </div>
+    </section>
   );
 }

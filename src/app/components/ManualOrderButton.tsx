@@ -3,7 +3,16 @@
 import { useState } from "react";
 
 type ApiResp =
-  | { ok: true; order: { contractId: string; side: "buy" | "sell"; size: number; stopLossTicks: number; takeProfitTicks: number } }
+  | {
+      ok: true;
+      order: {
+        contractId: string;
+        side: "buy" | "sell";
+        size: number;
+        stopLossTicks: number;
+        takeProfitTicks: number;
+      };
+    }
   | { ok: false; error: string };
 
 export function ManualOrderButton() {
@@ -46,22 +55,22 @@ export function ManualOrderButton() {
   }
 
   return (
-    <div className="aura-card">
+    <div className="aura-grid-gap-12">
       <div className="aura-row-between">
         <div>
           <div className="aura-card-title">Manual Test Order</div>
           <div className="aura-muted aura-text-xs">
-            Temporary button. Sends a market order with default SL/TP.
+            Places a market order using the current default SL/TP settings.
           </div>
         </div>
 
-        <button className="aura-btn aura-btn-primary" onClick={onClick} disabled={status === "sending"}>
+        <button className="aura-cta aura-cta-primary" onClick={onClick} disabled={status === "sending"}>
           {status === "sending" ? "Sending…" : "Place test order"}
         </button>
       </div>
 
       {msg ? (
-        <div className="aura-mt-12 aura-text-sm">
+        <div className="aura-text-sm">
           <span className={status === "error" ? "aura-text-red" : "aura-muted"}>{msg}</span>
         </div>
       ) : null}

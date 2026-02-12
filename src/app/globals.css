@@ -1087,6 +1087,156 @@ html.light .aura-row-link:hover {
   border-top: 1px solid var(--border);
 }
 
+/* ==============================
+   Live Control - UX primitives
+   (token-driven, no inline styles)
+   ============================== */
+
+.aura-section-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.aura-engine {
+  display: grid;
+  gap: 12px;
+}
+
+.aura-engine-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.aura-engine-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.aura-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+}
+
+.aura-dot-live {
+  background: rgba(127, 168, 161, 0.85); /* success */
+  border-color: rgba(127, 168, 161, 0.45);
+}
+
+.aura-dot-paused {
+  background: rgba(138, 145, 158, 0.75); /* neutral */
+  border-color: rgba(138, 145, 158, 0.45);
+}
+
+.aura-cta-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.aura-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 14px;
+  padding: 12px 18px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.aura-cta:hover {
+  background: rgba(214, 194, 143, 0.08);
+}
+
+.aura-cta:active {
+  transform: translateY(1px);
+}
+
+.aura-cta-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: color-mix(in srgb, var(--primary) 80%, var(--border));
+}
+
+.aura-cta-primary:hover {
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 80%, var(--border));
+}
+
+.aura-cta-subtle {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.aura-dev-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.aura-danger-card {
+  border: 1px solid color-mix(in srgb, var(--destructive) 55%, var(--border));
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+
+.aura-cta-danger {
+  border-color: color-mix(in srgb, var(--destructive) 65%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 22%, transparent);
+  color: var(--foreground);
+}
+
+.aura-cta-danger:hover {
+  background: color-mix(in srgb, var(--destructive) 30%, transparent);
+  border-color: color-mix(in srgb, var(--destructive) 75%, var(--border));
+}
+
+/* Missing utilities used in a few components */
+.aura-text-sm {
+  font-size: 13px;
+}
+
+.aura-text-red {
+  color: var(--destructive);
+}
+
+/* Back-compat: ManualOrderButton currently uses aura-btn-primary */
+.aura-btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid color-mix(in srgb, var(--primary) 80%, var(--border));
+}
+
+.aura-btn-primary:hover {
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 80%, var(--border));
+}
+
 /* --------------------------------------------------
    Aura section group header
 -------------------------------------------------- */
