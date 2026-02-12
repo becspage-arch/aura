@@ -124,7 +124,7 @@ export async function executeBracket(params: {
 }) {
   const { prisma, broker, input } = params;
 
-    // --- MAX OPEN TRADES (DB guard) + anti-double-click lock ---
+  // --- MAX OPEN TRADES (DB guard) + anti-double-click lock ---
   const maxOpenTrades =
     process.env.AURA_MAX_OPEN_TRADES != null
       ? Number(process.env.AURA_MAX_OPEN_TRADES)
@@ -133,7 +133,7 @@ export async function executeBracket(params: {
   const lockKey1 = `aura:${input.userId}`;
   const lockKey2 = `openTrade:${input.brokerName}:${input.contractId}:${input.symbol ?? ""}`;
 
-  // Serialize entry attempts for this user+broker+contract so rapid clicks can't stack
+  // Acquire lock (best-effort)
   try {
     await prisma.$executeRaw`
       SELECT pg_advisory_lock(hashtext(${lockKey1}), hashtext(${lockKey2}))
@@ -146,6 +146,7 @@ export async function executeBracket(params: {
   }
 
   try {
+    // 0) Max open trades guard (DB)
     if (Number.isFinite(maxOpenTrades) && maxOpenTrades > 0) {
       const openStatuses: any[] = [
         "INTENT_CREATED",
@@ -162,7 +163,6 @@ export async function executeBracket(params: {
           userId: input.userId,
           brokerName: input.brokerName,
           contractId: input.contractId,
-          // include symbol match if symbol is set; otherwise ignore symbol
           ...(input.symbol ? { symbol: input.symbol } : {}),
           status: { in: openStatuses },
         },
@@ -189,306 +189,312 @@ export async function executeBracket(params: {
           maxOpenTrades,
         });
 
-        throw new Error(`Blocked: max open trades reached (${openCount}/${maxOpenTrades})`);
+        throw new Error(
+          `Blocked: max open trades reached (${openCount}/${maxOpenTrades})`
+        );
       }
     }
 
-  // --- REAL broker position guard (no DB-ghost blocking) ---
-  // We try a few method names because adapters differ.
-  const getPosFn =
-    (broker as any).getPosition ??
-    (broker as any).fetchPosition ??
-    (broker as any).getOpenPosition ??
-    null;
+    // --- REAL broker position guard (no DB-ghost blocking) ---
+    const getPosFn =
+      (broker as any).getPosition ??
+      (broker as any).fetchPosition ??
+      (broker as any).getOpenPosition ??
+      null;
 
-  if (typeof getPosFn === "function") {
-    let pos: any = null;
+    if (typeof getPosFn === "function") {
+      try {
+        const pos = await getPosFn.call(broker, {
+          contractId: input.contractId,
+          symbol: input.symbol ?? null,
+        });
 
-    try {
-      pos = await getPosFn.call(broker, {
+        const rawSize =
+          pos?.size ??
+          pos?.qty ??
+          pos?.positionSize ??
+          pos?.netQty ??
+          pos?.netPosition ??
+          0;
+
+        const sizeNum = Number(rawSize);
+
+        if (Number.isFinite(sizeNum) && sizeNum !== 0) {
+          console.warn("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
+            execKey: input.execKey,
+            userId: input.userId,
+            brokerName: input.brokerName,
+            contractId: input.contractId,
+            symbol: input.symbol ?? null,
+            brokerPositionSize: sizeNum,
+          });
+
+          logTag("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
+            execKey: input.execKey,
+            userId: input.userId,
+            brokerName: input.brokerName,
+            contractId: input.contractId,
+            symbol: input.symbol ?? null,
+            brokerPositionSize: sizeNum,
+          });
+
+          throw new Error(
+            `Blocked: broker reports open position (size=${sizeNum})`
+          );
+        }
+      } catch (e: any) {
+        // Non-blocking if the position check fails
+        console.warn("[executeBracket] broker position check failed (non-blocking)", {
+          execKey: input.execKey,
+          err: e?.message ? String(e.message) : String(e),
+        });
+      }
+    } else {
+      console.warn("[executeBracket] broker has no position-check method (non-blocking)", {
+        execKey: input.execKey,
+        broker: (broker as any)?.name ?? null,
+      });
+    }
+
+    // Safety rail: clamp qty if maxContracts is provided
+    const rawQty = Number(input.qty);
+    const maxC = input.maxContracts != null ? Number(input.maxContracts) : null;
+
+    const qtyClamped =
+      Number.isFinite(rawQty) && rawQty > 0
+        ? maxC != null && Number.isFinite(maxC) && maxC > 0
+          ? Math.min(rawQty, maxC)
+          : rawQty
+        : rawQty;
+
+    if (qtyClamped !== rawQty) {
+      console.log("[executeBracket] QTY_CLAMPED_BY_MAX_CONTRACTS", {
+        execKey: input.execKey,
+        rawQty,
+        maxContracts: maxC,
+        qtyClamped,
+      });
+    }
+
+    // ALWAYS use a short tag for broker calls (ProjectX can 500 on long tags)
+    const brokerTag =
+      input.customTag && input.customTag.trim().length > 0
+        ? input.customTag.trim()
+        : makeBrokerTag(input.execKey);
+
+    // 1) Idempotency check
+    const existing = await prisma.execution.findUnique({
+      where: { execKey: input.execKey },
+    });
+
+    if (existing) {
+      console.log("[executeBracket] IDEMPOTENT_HIT", {
+        execKey: input.execKey,
+        executionId: existing.id,
+        status: existing.status,
+        entryOrderId: existing.entryOrderId ?? null,
+      });
+      return existing;
+    }
+
+    // 2) Create intent row
+    const exec = await prisma.execution.create({
+      data: {
+        execKey: input.execKey,
+        userId: input.userId,
+        brokerName: input.brokerName,
         contractId: input.contractId,
         symbol: input.symbol ?? null,
-      });
-    } catch (e: any) {
-      // Non-blocking if the POSITION CHECK call fails
-      console.warn("[executeBracket] broker position check failed (non-blocking)", {
-        execKey: input.execKey,
-        err: e?.message ? String(e.message) : String(e),
-      });
-      pos = null;
-    }
-
-    if (pos) {
-      const rawSize =
-        pos?.size ??
-        pos?.qty ??
-        pos?.positionSize ??
-        pos?.netQty ??
-        pos?.netPosition ??
-        0;
-
-      const sizeNum = Number(rawSize);
-
-      if (Number.isFinite(sizeNum) && sizeNum !== 0) {
-        console.warn("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
-          execKey: input.execKey,
-          userId: input.userId,
-          brokerName: input.brokerName,
-          contractId: input.contractId,
-          symbol: input.symbol ?? null,
-          brokerPositionSize: sizeNum,
-        });
-
-        logTag("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
-          execKey: input.execKey,
-          userId: input.userId,
-          brokerName: input.brokerName,
-          contractId: input.contractId,
-          symbol: input.symbol ?? null,
-          brokerPositionSize: sizeNum,
-        });
-
-        throw new Error(`Blocked: broker reports open position (size=${sizeNum})`);
-      }
-    }
-  } else {
-    console.warn("[executeBracket] broker has no position-check method (non-blocking)", {
-      execKey: input.execKey,
-      broker: (broker as any)?.name ?? null,
-    });
-  }
-
-  // Safety rail: clamp qty if maxContracts is provided
-  const rawQty = Number(input.qty);
-  const maxC = input.maxContracts != null ? Number(input.maxContracts) : null;
-
-  const qtyClamped =
-    Number.isFinite(rawQty) && rawQty > 0
-      ? maxC != null && Number.isFinite(maxC) && maxC > 0
-        ? Math.min(rawQty, maxC)
-        : rawQty
-      : rawQty;
-
-  if (qtyClamped !== rawQty) {
-    console.log("[executeBracket] QTY_CLAMPED_BY_MAX_CONTRACTS", {
-      execKey: input.execKey,
-      rawQty,
-      maxContracts: maxC,
-      qtyClamped,
-    });
-  }
-
-  // ALWAYS use a short tag for broker calls (ProjectX can 500 on long tags)
-  const brokerTag =
-    input.customTag && input.customTag.trim().length > 0
-      ? input.customTag.trim()
-      : makeBrokerTag(input.execKey);
-
-  // 1) Idempotency check
-  const existing = await prisma.execution.findUnique({
-    where: { execKey: input.execKey },
-  });
-
-  if (existing) {
-    console.log("[executeBracket] IDEMPOTENT_HIT", {
-      execKey: input.execKey,
-      executionId: existing.id,
-      status: existing.status,
-      entryOrderId: existing.entryOrderId ?? null,
-    });
-    return existing;
-  }
-
-  // 2) Create intent row
-  const exec = await prisma.execution.create({
-    data: {
-      execKey: input.execKey,
-      userId: input.userId,
-      brokerName: input.brokerName,
-      contractId: input.contractId,
-      symbol: input.symbol ?? null,
-      side: input.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
-      qty: qtyClamped,
-      entryType: input.entryType,
-      stopLossTicks: input.stopLossTicks ?? null,
-      takeProfitTicks: input.takeProfitTicks ?? null,
-      customTag: brokerTag, // store the actual broker tag we used
-      status: "INTENT_CREATED",
-    },
-  });
-
-  // 3) Place ENTRY (always entry-only for ProjectX)
-  const placeEntryFn = (broker as any).placeOrder;
-
-  const entryReq = {
-    contractId: input.contractId,
-    side: input.side,
-    size: qtyClamped,
-    type: input.entryType,
-    customTag: brokerTag,
-  };
-
-  console.log("[executeBracket] BROKER_CALL_BEGIN", {
-    execKey: input.execKey,
-    broker: (broker as any)?.name ?? null,
-    mode: "ENTRY_ONLY_THEN_BRACKETS",
-    req: entryReq,
-  });
-
-  try {
-    if (typeof placeEntryFn !== "function") {
-      const msg = "Broker does not support placeOrder (entry)";
-      await prisma.execution.update({
-        where: { id: exec.id },
-        data: { status: "FAILED", error: msg },
-      });
-      throw new Error(msg);
-    }
-
-    const entryRes = await placeEntryFn.call(broker, entryReq);
-
-    console.log("[executeBracket] BROKER_CALL_OK", {
-      execKey: input.execKey,
-      entryRes,
-    });
-
-    const entryOrderId = entryRes?.orderId != null ? String(entryRes.orderId) : null;
-
-    const updatedAfterEntry = await prisma.execution.update({
-      where: { id: exec.id },
-      data: {
-        entryOrderId,
-        status: "ORDER_SUBMITTED",
-        meta: { brokerResponse: jsonSafe(entryRes), note: "entry_submitted" },
+        side: input.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
+        qty: qtyClamped,
+        entryType: input.entryType,
+        stopLossTicks: input.stopLossTicks ?? null,
+        takeProfitTicks: input.takeProfitTicks ?? null,
+        customTag: brokerTag,
+        status: "INTENT_CREATED",
       },
     });
 
-    logTag("[projectx-worker] ORDER_SUBMITTED", {
-      execKey: input.execKey,
-      executionId: updatedAfterEntry.id,
-      broker: (broker as any)?.name ?? null,
+    // 3) Place ENTRY (always entry-only for ProjectX)
+    const placeEntryFn = (broker as any).placeOrder;
+
+    const entryReq = {
       contractId: input.contractId,
-      symbol: input.symbol ?? null,
       side: input.side,
-      qty: qtyClamped,
-      entryType: input.entryType,
-      stopLossTicks: input.stopLossTicks ?? null,
-      takeProfitTicks: input.takeProfitTicks ?? null,
-      entryOrderId,
+      size: qtyClamped,
+      type: input.entryType,
       customTag: brokerTag,
+    };
+
+    console.log("[executeBracket] BROKER_CALL_BEGIN", {
+      execKey: input.execKey,
+      broker: (broker as any)?.name ?? null,
+      mode: "ENTRY_ONLY_THEN_BRACKETS",
+      req: entryReq,
     });
 
-    // 4) Place SL/TP as a separate immediate step (ProjectX requirement)
-    const sl = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
-    const tp = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+    try {
+      if (typeof placeEntryFn !== "function") {
+        const msg = "Broker does not support placeOrder (entry)";
+        await prisma.execution.update({
+          where: { id: exec.id },
+          data: { status: "FAILED", error: msg },
+        });
+        throw new Error(msg);
+      }
 
-    const wantsBrackets =
-      (sl != null && Number.isFinite(sl) && sl > 0) ||
-      (tp != null && Number.isFinite(tp) && tp > 0);
+      const entryRes = await placeEntryFn.call(broker, entryReq);
 
-    const placeBracketsAfterEntryFn = (broker as any).placeBracketsAfterEntry;
+      console.log("[executeBracket] BROKER_CALL_OK", {
+        execKey: input.execKey,
+        entryRes,
+      });
 
-    if (wantsBrackets) {
-      if (typeof placeBracketsAfterEntryFn !== "function") {
-        console.log("[executeBracket] BRACKETS_SKIPPED", {
+      const entryOrderId =
+        entryRes?.orderId != null ? String(entryRes.orderId) : null;
+
+      const updatedAfterEntry = await prisma.execution.update({
+        where: { id: exec.id },
+        data: {
+          entryOrderId,
+          status: "ORDER_SUBMITTED",
+          meta: { brokerResponse: jsonSafe(entryRes), note: "entry_submitted" },
+        },
+      });
+
+      logTag("[projectx-worker] ORDER_SUBMITTED", {
+        execKey: input.execKey,
+        executionId: updatedAfterEntry.id,
+        broker: (broker as any)?.name ?? null,
+        contractId: input.contractId,
+        symbol: input.symbol ?? null,
+        side: input.side,
+        qty: qtyClamped,
+        entryType: input.entryType,
+        stopLossTicks: input.stopLossTicks ?? null,
+        takeProfitTicks: input.takeProfitTicks ?? null,
+        entryOrderId,
+        customTag: brokerTag,
+      });
+
+      // 4) Place SL/TP as a separate immediate step (ProjectX requirement)
+      const sl =
+        input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
+      const tp =
+        input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+
+      const wantsBrackets =
+        (sl != null && Number.isFinite(sl) && sl > 0) ||
+        (tp != null && Number.isFinite(tp) && tp > 0);
+
+      const placeBracketsAfterEntryFn = (broker as any).placeBracketsAfterEntry;
+
+      if (wantsBrackets) {
+        if (typeof placeBracketsAfterEntryFn !== "function") {
+          console.log("[executeBracket] BRACKETS_SKIPPED", {
+            execKey: input.execKey,
+            reason: "broker has no placeBracketsAfterEntry()",
+            entryOrderId,
+            sl,
+            tp,
+          });
+          return updatedAfterEntry;
+        }
+
+        console.log("[executeBracket] BRACKETS_BEGIN", {
           execKey: input.execKey,
-          reason: "broker has no placeBracketsAfterEntry()",
           entryOrderId,
           sl,
           tp,
         });
-        return updatedAfterEntry;
+
+        const bracketRes = await placeBracketsAfterEntryFn.call(broker, {
+          entryOrderId,
+          contractId: input.contractId,
+          side: input.side,
+          size: qtyClamped,
+          stopLossTicks: sl,
+          takeProfitTicks: tp,
+          customTag: brokerTag,
+        });
+
+        console.log("[executeBracket] BRACKETS_OK", {
+          execKey: input.execKey,
+          bracketRes,
+        });
+
+        const updatedAfterBrackets = await prisma.execution.update({
+          where: { id: exec.id },
+          data: {
+            status: "BRACKET_SUBMITTED",
+            stopOrderId:
+              bracketRes?.stopOrderId != null
+                ? String(bracketRes.stopOrderId)
+                : null,
+            tpOrderId:
+              bracketRes?.takeProfitOrderId != null
+                ? String(bracketRes.takeProfitOrderId)
+                : null,
+            meta: {
+              ...(updatedAfterEntry.meta as any),
+              brackets: jsonSafe(bracketRes),
+              note2: "brackets_submitted_after_entry",
+            },
+          },
+        });
+
+        logTag("[projectx-worker] BRACKET_SUBMITTED", {
+          execKey: input.execKey,
+          executionId: updatedAfterBrackets.id,
+          broker: (broker as any)?.name ?? null,
+          contractId: input.contractId,
+          side: input.side,
+          qty: qtyClamped,
+          stopLossTicks: sl,
+          takeProfitTicks: tp,
+          entryOrderId,
+          customTag: brokerTag,
+        });
+
+        void ocoWatchAndCancel({
+          broker,
+          execKey: input.execKey,
+          stopOrderId: updatedAfterBrackets.stopOrderId ?? null,
+          tpOrderId: updatedAfterBrackets.tpOrderId ?? null,
+          tag: brokerTag,
+        });
+
+        return updatedAfterBrackets;
       }
 
-      console.log("[executeBracket] BRACKETS_BEGIN", {
+      return updatedAfterEntry;
+    } catch (e: any) {
+      const errMsg = e?.message ? String(e.message) : String(e);
+
+      console.error("[executeBracket] FAIL", {
         execKey: input.execKey,
-        entryOrderId,
-        sl,
-        tp,
+        err: errMsg,
+        stack: e?.stack ? String(e.stack) : null,
       });
 
-      const bracketRes = await placeBracketsAfterEntryFn.call(broker, {
-        entryOrderId,
-        contractId: input.contractId,
-        side: input.side,
-        size: qtyClamped,
-        stopLossTicks: sl,
-        takeProfitTicks: tp,
-        customTag: brokerTag,
-      });
-
-      console.log("[executeBracket] BRACKETS_OK", {
-        execKey: input.execKey,
-        bracketRes,
-      });
-
-      const updatedAfterBrackets = await prisma.execution.update({
+      await prisma.execution.update({
         where: { id: exec.id },
         data: {
-          status: "BRACKET_SUBMITTED",
-          stopOrderId: bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null,
-          tpOrderId:
-            bracketRes?.takeProfitOrderId != null
-              ? String(bracketRes.takeProfitOrderId)
-              : null,
+          status: "FAILED",
+          error: errMsg,
           meta: {
-            ...(updatedAfterEntry.meta as any),
-            brackets: jsonSafe(bracketRes),
-            note2: "brackets_submitted_after_entry",
+            brokerError: {
+              message: errMsg,
+              stack: e?.stack ? String(e.stack) : null,
+            },
           },
         },
       });
 
-      logTag("[projectx-worker] BRACKET_SUBMITTED", {
-        execKey: input.execKey,
-        executionId: updatedAfterBrackets.id,
-        broker: (broker as any)?.name ?? null,
-        contractId: input.contractId,
-        side: input.side,
-        qty: qtyClamped,
-        stopLossTicks: sl,
-        takeProfitTicks: tp,
-        entryOrderId,
-        customTag: brokerTag,
-      });
-
-      void ocoWatchAndCancel({
-        broker,
-        execKey: input.execKey,
-        stopOrderId: updatedAfterBrackets.stopOrderId ?? null,
-        tpOrderId: updatedAfterBrackets.tpOrderId ?? null,
-        tag: brokerTag,
-      });
-
-      return updatedAfterBrackets;
+      throw e;
     }
-
-    return updatedAfterEntry;
-  } catch (e: any) {
-    const errMsg = e?.message ? String(e.message) : String(e);
-
-    console.error("[executeBracket] FAIL", {
-      execKey: input.execKey,
-      err: errMsg,
-      stack: e?.stack ? String(e.stack) : null,
-    });
-
-    await prisma.execution.update({
-      where: { id: exec.id },
-      data: {
-        status: "FAILED",
-        error: errMsg,
-        meta: {
-          brokerError: {
-            message: errMsg,
-            stack: e?.stack ? String(e.stack) : null,
-          },
-        },
-      },
-    });
-
-    throw e;
   } finally {
+    // Always attempt unlock
     try {
       await prisma.$executeRaw`
         SELECT pg_advisory_unlock(hashtext(${lockKey1}), hashtext(${lockKey2}))
