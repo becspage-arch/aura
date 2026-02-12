@@ -234,6 +234,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
                 symbol: (process.env.PROJECTX_SYMBOL || "").trim() || null,
                 side,
                 qty,
+                maxContracts: process.env.AURA_MAX_CONTRACTS ? Number(process.env.AURA_MAX_CONTRACTS) : null,
                 entryType: "market",
                 stopLossTicks: Number(stopLossTicks),
                 takeProfitTicks: Number(takeProfitTicks),

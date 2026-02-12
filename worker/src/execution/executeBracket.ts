@@ -15,6 +15,10 @@ export type ExecuteBracketInput = {
 
   side: "buy" | "sell";
   qty: number;
+
+  // optional: hard cap on qty (broker/user safety rail)
+  maxContracts?: number | null;
+
   entryType: "market" | "limit" | "stop";
 
   stopLossTicks?: number | null;
@@ -31,6 +35,37 @@ function jsonSafe<T>(v: T): T {
 function makeBrokerTag(execKey: string): string {
   const h = createHash("sha1").update(execKey).digest("hex").slice(0, 8);
   return `aura-${h}`; // short + unique enough for ProjectX
+}
+
+function isFilled(o: any): boolean {
+  if (!o) return false;
+
+  const rawStatus = o?.status ?? o?.orderStatus ?? o?.state ?? null;
+  const status = rawStatus == null ? "" : String(rawStatus).toUpperCase();
+
+  if (status.includes("FILL")) return true;
+  if (status === "2" || status === "FILLED" || status === "COMPLETE") return true;
+
+  const filledQty = Number(
+    o?.filledQty ??
+      o?.filledQuantity ??
+      o?.filledSize ??
+      o?.quantityFilled ??
+      o?.fillQty ??
+      NaN
+  );
+
+  const totalQty = Number(o?.qty ?? o?.quantity ?? o?.size ?? o?.orderQty ?? NaN);
+
+  if (Number.isFinite(filledQty) && filledQty > 0) {
+    if (!Number.isFinite(totalQty)) return true;
+    if (filledQty >= totalQty) return true;
+  }
+
+  const filledPrice = Number(o?.filledPrice ?? o?.avgFillPrice ?? NaN);
+  if (Number.isFinite(filledPrice) && filledPrice > 0) return true;
+
+  return false;
 }
 
 async function ocoWatchAndCancel(params: {
@@ -55,41 +90,8 @@ async function ocoWatchAndCancel(params: {
       const sl = await broker.fetchOrderById(stopOrderId);
       const tp = await broker.fetchOrderById(tpOrderId);
 
-  function isFilled(o: any): boolean {
-    if (!o) return false;
-
-    const rawStatus = o?.status ?? o?.orderStatus ?? o?.state ?? null;
-    const status = rawStatus == null ? "" : String(rawStatus).toUpperCase();
-
-    if (status.includes("FILL")) return true;
-    if (status === "2" || status === "FILLED" || status === "COMPLETE") return true;
-
-    const filledQty = Number(
-      o?.filledQty ??
-        o?.filledQuantity ??
-        o?.filledSize ??
-        o?.quantityFilled ??
-        o?.fillQty ??
-        NaN
-    );
-
-    const totalQty = Number(
-      o?.qty ?? o?.quantity ?? o?.size ?? o?.orderQty ?? NaN
-    );
-
-    if (Number.isFinite(filledQty) && filledQty > 0) {
-      if (!Number.isFinite(totalQty)) return true;
-      if (filledQty >= totalQty) return true;
-    }
-
-    const filledPrice = Number(o?.filledPrice ?? o?.avgFillPrice ?? NaN);
-    if (Number.isFinite(filledPrice) && filledPrice > 0) return true;
-
-    return false;
-  }
-
-  const slFilled = isFilled(sl);
-  const tpFilled = isFilled(tp);
+      const slFilled = isFilled(sl);
+      const tpFilled = isFilled(tp);
 
       if (slFilled && !tpFilled) {
         console.log("[executeBracket] OCO_CANCEL_TP", { execKey, tpOrderId, tag });
@@ -122,10 +124,31 @@ export async function executeBracket(params: {
 }) {
   const { prisma, broker, input } = params;
 
+  // Safety rail: clamp qty if maxContracts is provided
+  const rawQty = Number(input.qty);
+  const maxC = input.maxContracts != null ? Number(input.maxContracts) : null;
+
+  const qtyClamped =
+    Number.isFinite(rawQty) && rawQty > 0
+      ? maxC != null && Number.isFinite(maxC) && maxC > 0
+        ? Math.min(rawQty, maxC)
+        : rawQty
+      : rawQty;
+
+  if (qtyClamped !== rawQty) {
+    console.log("[executeBracket] QTY_CLAMPED_BY_MAX_CONTRACTS", {
+      execKey: input.execKey,
+      rawQty,
+      maxContracts: maxC,
+      qtyClamped,
+    });
+  }
+
   // ALWAYS use a short tag for broker calls (ProjectX can 500 on long tags)
-  const brokerTag = (input.customTag && input.customTag.trim().length > 0)
-    ? input.customTag.trim()
-    : makeBrokerTag(input.execKey);
+  const brokerTag =
+    input.customTag && input.customTag.trim().length > 0
+      ? input.customTag.trim()
+      : makeBrokerTag(input.execKey);
 
   // 1) Idempotency check
   const existing = await prisma.execution.findUnique({
@@ -151,7 +174,7 @@ export async function executeBracket(params: {
       contractId: input.contractId,
       symbol: input.symbol ?? null,
       side: input.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
-      qty: input.qty,
+      qty: qtyClamped,
       entryType: input.entryType,
       stopLossTicks: input.stopLossTicks ?? null,
       takeProfitTicks: input.takeProfitTicks ?? null,
@@ -166,7 +189,7 @@ export async function executeBracket(params: {
   const entryReq = {
     contractId: input.contractId,
     side: input.side,
-    size: input.qty,
+    size: qtyClamped,
     type: input.entryType,
     customTag: brokerTag,
   };
@@ -195,8 +218,7 @@ export async function executeBracket(params: {
       entryRes,
     });
 
-    const entryOrderId =
-      entryRes?.orderId != null ? String(entryRes.orderId) : null;
+    const entryOrderId = entryRes?.orderId != null ? String(entryRes.orderId) : null;
 
     const updatedAfterEntry = await prisma.execution.update({
       where: { id: exec.id },
@@ -214,11 +236,11 @@ export async function executeBracket(params: {
       contractId: input.contractId,
       symbol: input.symbol ?? null,
       side: input.side,
-      qty: input.qty,
+      qty: qtyClamped,
       entryType: input.entryType,
       stopLossTicks: input.stopLossTicks ?? null,
       takeProfitTicks: input.takeProfitTicks ?? null,
-      entryOrderId: entryOrderId,
+      entryOrderId,
       customTag: brokerTag,
     });
 
@@ -255,7 +277,7 @@ export async function executeBracket(params: {
         entryOrderId,
         contractId: input.contractId,
         side: input.side,
-        size: input.qty,
+        size: qtyClamped,
         stopLossTicks: sl,
         takeProfitTicks: tp,
         customTag: brokerTag,
@@ -273,7 +295,9 @@ export async function executeBracket(params: {
           stopOrderId:
             bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null,
           tpOrderId:
-            bracketRes?.takeProfitOrderId != null ? String(bracketRes.takeProfitOrderId) : null,
+            bracketRes?.takeProfitOrderId != null
+              ? String(bracketRes.takeProfitOrderId)
+              : null,
           meta: {
             ...(updatedAfterEntry.meta as any),
             brackets: jsonSafe(bracketRes),
@@ -288,7 +312,7 @@ export async function executeBracket(params: {
         broker: (broker as any)?.name ?? null,
         contractId: input.contractId,
         side: input.side,
-        qty: input.qty,
+        qty: qtyClamped,
         stopLossTicks: sl,
         takeProfitTicks: tp,
         entryOrderId,

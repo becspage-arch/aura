@@ -155,9 +155,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       success: json.success,
       errorCode: json.errorCode,
       hasToken: Boolean(this.token),
-      tokenPreview: this.token
-        ? `${this.token.slice(0, 12)}...${this.token.slice(-12)}`
-        : null,
+      tokenPreview: this.token ? `${this.token.slice(0, 12)}...${this.token.slice(-12)}` : null,
     });
 
     if (!this.token) {
@@ -197,9 +195,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       success: json?.success,
       errorCode: json?.errorCode,
       errorMessage: json?.errorMessage ?? null,
-      tokenPreview: this.token
-        ? `${this.token.slice(0, 12)}...${this.token.slice(-12)}`
-        : null,
+      tokenPreview: this.token ? `${this.token.slice(0, 12)}...${this.token.slice(-12)}` : null,
     });
 
     if (!res.ok) {
@@ -239,7 +235,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     const preferredIdRaw = process.env.PROJECTX_ACCOUNT_ID?.trim() || null;
     const preferredId = preferredIdRaw ? Number(preferredIdRaw) : null;
 
-    // Helpful debug: log what we actually received (safe subset).
     console.log("[projectx-adapter] account search accounts", {
       count: accounts.length,
       accounts: accounts.map((a) => ({
@@ -261,8 +256,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       ? accounts.find((a) => a.name === preferredName) ?? null
       : null;
 
-    // STRICT MODE:
-    // If user specified an account name/id, we MUST match it or refuse to run.
     if (preferredIdRaw && !preferredById) {
       throw new Error(
         `ProjectX account selection failed: PROJECTX_ACCOUNT_ID=${preferredIdRaw} not found in active accounts`
@@ -595,6 +588,9 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   /**
    * Places a MARKET/LIMIT/STOP order with optional stop-loss and take-profit brackets (ticks).
    * Uses: POST https://api.topstepx.com/api/Order/place
+   *
+   * NOTE: Keep this for future brokers, but ProjectX currently uses placeOrder() + placeBracketsAfterEntry()
+   * in Aura’s execution flow.
    */
   async placeOrderWithBrackets(input: PlaceOrderWithBracketsInput): Promise<{
     orderId: number;
@@ -640,17 +636,11 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
         : null;
 
     if (slAbs != null && slAbs > 0) {
-      body.stopLossBracket = {
-        ticks: slAbs,
-        type: 4,
-      };
+      body.stopLossBracket = { ticks: slAbs, type: 4 };
     }
 
     if (tpAbs != null && tpAbs > 0) {
-      body.takeProfitBracket = {
-        ticks: tpAbs,
-        type: 1,
-      };
+      body.takeProfitBracket = { ticks: tpAbs, type: 1 };
     }
 
     const requestSummary = {
@@ -715,15 +705,14 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     return { orderId: parsed.orderId, raw: parsed };
   }
 
-    /**
+  /**
    * ProjectX "2-call" brackets:
    * 1) ENTRY is already placed via placeOrder()
    * 2) We then place TWO separate exit orders:
    *    - Stop order (SL)
    *    - Limit order (TP)
    *
-   * NOTE: ProjectX API does not provide an "attach by entryOrderId" bracket endpoint in docs,
-   * so we must place explicit exit orders with absolute prices.
+   * We compute absolute prices from the actual filledPrice where possible.
    */
   async placeBracketsAfterEntry(input: {
     entryOrderId: string | null;
@@ -777,7 +766,6 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     // --- Ensure we have tickSize for this contract ---
     let tickSize = this.contractTickSize;
 
-    // If we don't have it yet (or might be for a different contract), fetch it on-demand.
     if (!tickSize || !Number.isFinite(tickSize)) {
       const res = await fetch("https://api.topstepx.com/api/Contract/searchById", {
         method: "POST",
@@ -793,8 +781,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       const json = parseJsonOrNull(text);
       const c = json?.contract ?? null;
 
-      const ts =
-        typeof c?.tickSize === "number" ? c.tickSize : Number(c?.tickSize ?? NaN);
+      const ts = typeof c?.tickSize === "number" ? c.tickSize : Number(c?.tickSize ?? NaN);
 
       if (!Number.isFinite(ts)) {
         throw new Error(
@@ -805,177 +792,185 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       tickSize = ts;
       this.contractTickSize = ts;
 
-      console.log("[projectx-adapter] tickSize resolved", {
-        contractId,
-        tickSize,
-      });
+      console.log("[projectx-adapter] tickSize resolved", { contractId, tickSize });
     }
 
-    // --- Get a reference price near "now" ---
-    // We do NOT have a documented "get fill price by orderId" endpoint.
-    // So we use the latest bar close as a reference price for bracket prices.
-    // This is sufficient for proving SL/TP creation in the UI.
-    const live = true;
+    const tickDecimals = (() => {
+      const s = String(tickSize);
+      const dot = s.indexOf(".");
+      return dot >= 0 ? s.length - dot - 1 : 0;
+    })();
 
-    const end = new Date();
-    const start = new Date(end.getTime() - 2 * 60 * 1000);
-
-    const barsRes = await fetch("https://api.topstepx.com/api/History/retrieveBars", {
-      method: "POST",
-      headers: {
-        accept: "text/plain",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
-      },
-      body: JSON.stringify({
-        contractId,
-        live,
-        startTime: start.toISOString(),
-        endTime: end.toISOString(),
-        unit: 1,
-        unitNumber: 15,
-        limit: 5,
-        includePartialBar: true,
-      }),
-    });
-
-    const barsText = await barsRes.text();
-    const barsJson = parseJsonOrNull(barsText);
-    const bars = Array.isArray(barsJson?.bars) ? barsJson.bars : [];
-
-// --- Get a reference price: prefer the ENTRY filled price from Order/search ---
-// If we use retrieveBars and it returns 0/NaN, brackets will be nonsense.
-let refPrice: number | null = null;
-
-// 1) Try Order/search for the entry order (best source for the actual fill)
-if (input.entryOrderId) {
-  try {
-    const end = new Date();
-    const start = new Date(end.getTime() - 10 * 60 * 1000);
-
-    const res = await fetch("https://api.topstepx.com/api/Order/search", {
-      method: "POST",
-      headers: {
-        accept: "text/plain",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
-      },
-      body: JSON.stringify({
-        accountId: this.accountId,
-        startTimestamp: start.toISOString(),
-        endTimestamp: end.toISOString(),
-      }),
-    });
-
-    const text = await res.text();
-    const json = parseJsonOrNull(text);
-    const orders = Array.isArray(json?.orders) ? json.orders : [];
-
-    const entryIdNum = Number(input.entryOrderId);
-    const found = orders.find((o: any) => Number(o?.id) === entryIdNum) ?? null;
-
-    const filledRaw = found?.filledPrice ?? null;
-    const filledPrice = typeof filledRaw === "number" ? filledRaw : Number(filledRaw);
-
-    if (Number.isFinite(filledPrice) && filledPrice > 0) {
-      refPrice = filledPrice;
-    }
-
-    console.log("[projectx-adapter] entry fill lookup", {
-      entryOrderId: input.entryOrderId,
-      found: Boolean(found),
-      filledPrice: Number.isFinite(filledPrice) ? filledPrice : null,
-      status: found?.status ?? null,
-      type: found?.type ?? null,
-      side: found?.side ?? null,
-    });
-  } catch (e) {
-    console.warn("[projectx-adapter] entry fill lookup failed", {
-      entryOrderId: input.entryOrderId,
-      err: e instanceof Error ? e.message : String(e),
-    });
-  }
-}
-
-// 2) Fallback: latest bar close (only if it’s sane)
-if (refPrice == null) {
-  const live = true;
-
-  const end = new Date();
-  const start = new Date(end.getTime() - 2 * 60 * 1000);
-
-  const barsRes = await fetch("https://api.topstepx.com/api/History/retrieveBars", {
-    method: "POST",
-    headers: {
-      accept: "text/plain",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${this.token}`,
-    },
-    body: JSON.stringify({
-      contractId,
-      live,
-      startTime: start.toISOString(),
-      endTime: end.toISOString(),
-      unit: 1,
-      unitNumber: 15,
-      limit: 5,
-      includePartialBar: true,
-    }),
-  });
-
-  const barsText = await barsRes.text();
-  const barsJson = parseJsonOrNull(barsText);
-  const bars = Array.isArray(barsJson?.bars) ? barsJson.bars : [];
-
-  const lastBar = bars.length ? bars[bars.length - 1] : null;
-  const refPriceRaw = lastBar?.c ?? lastBar?.C ?? null;
-  const barClose = typeof refPriceRaw === "number" ? refPriceRaw : Number(refPriceRaw);
-
-  if (Number.isFinite(barClose) && barClose > 0) {
-    refPrice = barClose;
-  }
-
-  console.log("[projectx-adapter] bars refPrice fallback", {
-    status: barsRes.status,
-    ok: barsRes.ok,
-    barsCount: bars.length,
-    barClose: Number.isFinite(barClose) ? barClose : null,
-  });
-}
-
-// 3) Hard stop if still bad (prevents placing -4.5 / 4.5 nonsense)
-if (refPrice == null || !Number.isFinite(refPrice) || refPrice <= 0) {
-  throw new Error(
-    `placeBracketsAfterEntry: cannot determine valid refPrice (got ${String(refPrice)}) for contractId=${contractId} entryOrderId=${String(
-      input.entryOrderId
-    )}`
-  );
-}
-
-    if (!Number.isFinite(refPrice)) {
-      console.error("[projectx-adapter] retrieveBars failed (cannot compute brackets)", {
-        status: barsRes.status,
-        ok: barsRes.ok,
-        success: barsJson?.success,
-        errorCode: barsJson?.errorCode,
-        errorMessage: barsJson?.errorMessage ?? null,
-        barsCount: bars.length,
-      });
-      throw new Error("placeBracketsAfterEntry: cannot determine reference price for brackets");
-    }
+    const roundToTick = (price: number) => {
+      const p = Math.round(price / tickSize!) * tickSize!;
+      return Number(p.toFixed(Math.max(0, Math.min(8, tickDecimals))));
+    };
 
     const isLong = input.side === "buy";
 
-    const slPrice =
-      wantsSL ? (isLong ? refPrice - slAbs! * tickSize : refPrice + slAbs! * tickSize) : null;
+    const assertValidExitPrice = (kind: "SL" | "TP", px: number, ref: number) => {
+      if (!Number.isFinite(px) || px <= 0) {
+        throw new Error(`placeBracketsAfterEntry: ${kind} price invalid ${String(px)}`);
+      }
+      if (isLong) {
+        if (kind === "SL" && px >= ref) {
+          throw new Error(
+            `placeBracketsAfterEntry: SL must be < refPrice for LONG (sl=${px} ref=${ref})`
+          );
+        }
+        if (kind === "TP" && px <= ref) {
+          throw new Error(
+            `placeBracketsAfterEntry: TP must be > refPrice for LONG (tp=${px} ref=${ref})`
+          );
+        }
+      } else {
+        if (kind === "SL" && px <= ref) {
+          throw new Error(
+            `placeBracketsAfterEntry: SL must be > refPrice for SHORT (sl=${px} ref=${ref})`
+          );
+        }
+        if (kind === "TP" && px >= ref) {
+          throw new Error(
+            `placeBracketsAfterEntry: TP must be < refPrice for SHORT (tp=${px} ref=${ref})`
+          );
+        }
+      }
+    };
 
-    const tpPrice =
-      wantsTP ? (isLong ? refPrice + tpAbs! * tickSize : refPrice - tpAbs! * tickSize) : null;
+    console.log("[projectx-adapter] bracket calc", {
+      entryOrderId: input.entryOrderId ?? null,
+      side: input.side,
+      isLong,
+      tickSize,
+      slTicks: slAbs,
+      tpTicks: tpAbs,
+    });
+
+    // --- Get a reference price: prefer actual filledPrice from Order/search ---
+    let refPrice: number | null = null;
+
+    if (input.entryOrderId) {
+      try {
+        const end = new Date();
+        const start = new Date(end.getTime() - 10 * 60 * 1000);
+
+        const res = await fetch("https://api.topstepx.com/api/Order/search", {
+          method: "POST",
+          headers: {
+            accept: "text/plain",
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.token}`,
+          },
+          body: JSON.stringify({
+            accountId: this.accountId,
+            startTimestamp: start.toISOString(),
+            endTimestamp: end.toISOString(),
+          }),
+        });
+
+        const text = await res.text();
+        const json = parseJsonOrNull(text);
+        const orders = Array.isArray(json?.orders) ? json.orders : [];
+
+        const entryIdNum = Number(input.entryOrderId);
+        const found = orders.find((o: any) => Number(o?.id) === entryIdNum) ?? null;
+
+        const filledRaw = found?.filledPrice ?? found?.avgFillPrice ?? null;
+        const filledPrice = typeof filledRaw === "number" ? filledRaw : Number(filledRaw);
+
+        if (Number.isFinite(filledPrice) && filledPrice > 0) {
+          refPrice = filledPrice;
+        }
+
+        console.log("[projectx-adapter] entry fill lookup", {
+          entryOrderId: input.entryOrderId,
+          found: Boolean(found),
+          filledPrice: Number.isFinite(filledPrice) ? filledPrice : null,
+          status: found?.status ?? null,
+          type: found?.type ?? null,
+          side: found?.side ?? null,
+        });
+      } catch (e) {
+        console.warn("[projectx-adapter] entry fill lookup failed", {
+          entryOrderId: input.entryOrderId,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    // Fallback: latest bar close (only if sane)
+    if (refPrice == null) {
+      const end = new Date();
+      const start = new Date(end.getTime() - 2 * 60 * 1000);
+
+      const barsRes = await fetch("https://api.topstepx.com/api/History/retrieveBars", {
+        method: "POST",
+        headers: {
+          accept: "text/plain",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({
+          contractId,
+          live: true,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          unit: 1,
+          unitNumber: 15,
+          limit: 5,
+          includePartialBar: true,
+        }),
+      });
+
+      const barsText = await barsRes.text();
+      const barsJson = parseJsonOrNull(barsText);
+      const bars = Array.isArray(barsJson?.bars) ? barsJson.bars : [];
+
+      const lastBar = bars.length ? bars[bars.length - 1] : null;
+      const refRaw = lastBar?.c ?? lastBar?.C ?? null;
+      const barClose = typeof refRaw === "number" ? refRaw : Number(refRaw);
+
+      if (Number.isFinite(barClose) && barClose > 0) {
+        refPrice = barClose;
+      }
+
+      console.log("[projectx-adapter] bars refPrice fallback", {
+        status: barsRes.status,
+        ok: barsRes.ok,
+        barsCount: bars.length,
+        barClose: Number.isFinite(barClose) ? barClose : null,
+      });
+    }
+
+    if (refPrice == null || !Number.isFinite(refPrice) || refPrice <= 0) {
+      throw new Error(
+        `placeBracketsAfterEntry: cannot determine valid refPrice for contractId=${contractId} entryOrderId=${String(
+          input.entryOrderId
+        )}`
+      );
+    }
+
+    const slRaw = wantsSL
+      ? isLong
+        ? refPrice - slAbs! * tickSize
+        : refPrice + slAbs! * tickSize
+      : null;
+
+    const tpRaw = wantsTP
+      ? isLong
+        ? refPrice + tpAbs! * tickSize
+        : refPrice - tpAbs! * tickSize
+      : null;
+
+    const slPrice = slRaw != null ? roundToTick(slRaw) : null;
+    const tpPrice = tpRaw != null ? roundToTick(tpRaw) : null;
+
+    if (wantsSL && slPrice != null) assertValidExitPrice("SL", slPrice, refPrice);
+    if (wantsTP && tpPrice != null) assertValidExitPrice("TP", tpPrice, refPrice);
 
     // Exit orders are always the OPPOSITE side
     const exitSide = isLong ? 1 : 0; // 1=Ask(sell), 0=Bid(buy)
 
-    // Order types: 4=Stop, 1=Limit
     let stopOrderId: number | null = null;
     let takeProfitOrderId: number | null = null;
 
