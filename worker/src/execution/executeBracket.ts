@@ -124,6 +124,75 @@ export async function executeBracket(params: {
 }) {
   const { prisma, broker, input } = params;
 
+    // --- MAX OPEN TRADES (DB guard) + anti-double-click lock ---
+  const maxOpenTrades =
+    process.env.AURA_MAX_OPEN_TRADES != null
+      ? Number(process.env.AURA_MAX_OPEN_TRADES)
+      : 1;
+
+  const lockKey1 = `aura:${input.userId}`;
+  const lockKey2 = `openTrade:${input.brokerName}:${input.contractId}:${input.symbol ?? ""}`;
+
+  // Serialize entry attempts for this user+broker+contract so rapid clicks can't stack
+  try {
+    await prisma.$executeRaw`
+      SELECT pg_advisory_lock(hashtext(${lockKey1}), hashtext(${lockKey2}))
+    `;
+  } catch (e: any) {
+    console.warn("[executeBracket] advisory lock failed (continuing without lock)", {
+      execKey: input.execKey,
+      err: e?.message ? String(e.message) : String(e),
+    });
+  }
+
+  try {
+    if (Number.isFinite(maxOpenTrades) && maxOpenTrades > 0) {
+      const openStatuses: any[] = [
+        "INTENT_CREATED",
+        "ORDER_SUBMITTED",
+        "ORDER_ACCEPTED",
+        "ORDER_FILLED",
+        "BRACKET_SUBMITTED",
+        "BRACKET_ACTIVE",
+        "POSITION_OPEN",
+      ];
+
+      const openCount = await prisma.execution.count({
+        where: {
+          userId: input.userId,
+          brokerName: input.brokerName,
+          contractId: input.contractId,
+          // include symbol match if symbol is set; otherwise ignore symbol
+          ...(input.symbol ? { symbol: input.symbol } : {}),
+          status: { in: openStatuses },
+        },
+      });
+
+      if (openCount >= maxOpenTrades) {
+        console.warn("[executeBracket] BLOCKED_MAX_OPEN_TRADES", {
+          execKey: input.execKey,
+          userId: input.userId,
+          brokerName: input.brokerName,
+          contractId: input.contractId,
+          symbol: input.symbol ?? null,
+          openCount,
+          maxOpenTrades,
+        });
+
+        logTag("[executeBracket] BLOCKED_MAX_OPEN_TRADES", {
+          execKey: input.execKey,
+          userId: input.userId,
+          brokerName: input.brokerName,
+          contractId: input.contractId,
+          symbol: input.symbol ?? null,
+          openCount,
+          maxOpenTrades,
+        });
+
+        throw new Error(`Blocked: max open trades reached (${openCount}/${maxOpenTrades})`);
+      }
+    }
+
   // --- REAL broker position guard (no DB-ghost blocking) ---
   // We try a few method names because adapters differ.
   const getPosFn =
@@ -133,13 +202,23 @@ export async function executeBracket(params: {
     null;
 
   if (typeof getPosFn === "function") {
+    let pos: any = null;
+
     try {
-      const pos = await getPosFn.call(broker, {
+      pos = await getPosFn.call(broker, {
         contractId: input.contractId,
         symbol: input.symbol ?? null,
       });
+    } catch (e: any) {
+      // Non-blocking if the POSITION CHECK call fails
+      console.warn("[executeBracket] broker position check failed (non-blocking)", {
+        execKey: input.execKey,
+        err: e?.message ? String(e.message) : String(e),
+      });
+      pos = null;
+    }
 
-      // Normalize common shapes: { size }, { qty }, { positionSize }, etc.
+    if (pos) {
       const rawSize =
         pos?.size ??
         pos?.qty ??
@@ -171,14 +250,8 @@ export async function executeBracket(params: {
 
         throw new Error(`Blocked: broker reports open position (size=${sizeNum})`);
       }
-    } catch (e: any) {
-      // If the position check itself fails, we do NOT hard-block trading.
-      // We only block when we definitively detect a non-zero position.
-      console.warn("[executeBracket] broker position check failed (non-blocking)", {
-        execKey: input.execKey,
-        err: e?.message ? String(e.message) : String(e),
-      });
     }
+
   } else {
     console.warn("[executeBracket] broker has no position-check method (non-blocking)", {
       execKey: input.execKey,
@@ -409,12 +482,20 @@ export async function executeBracket(params: {
         meta: {
           brokerError: {
             message: errMsg,
-            stack: e?.stack ? String(e.stack) : null,
+            stack: e?.stack ? String(e.stack) : String(e.stack) : null,
           },
         },
       },
     });
 
     throw e;
+  } finally {
+    try {
+      await prisma.$executeRaw`
+        SELECT pg_advisory_unlock(hashtext(${lockKey1}), hashtext(${lockKey2}))
+      `;
+    } catch {
+      // ignore
+    }
   }
 }
