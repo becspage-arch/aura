@@ -338,6 +338,19 @@ enum OrderStatus {
   REJECTED
 }
 
+model ApnsPushDevice {
+  id          String   @id @default(cuid())
+  userId      String
+  deviceToken String   @unique
+  environment String   // "sandbox" | "production"
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+  deviceName  String?
+
+  @@index([userId])
+  @@index([environment])
+}
+
 model OneSignalPushSubscription {
   id             String   @id @default(cuid())
   userId         String
