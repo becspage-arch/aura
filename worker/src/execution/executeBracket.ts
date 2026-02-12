@@ -37,58 +37,6 @@ function makeBrokerTag(execKey: string): string {
   return `aura-${h}`; // short + unique enough for ProjectX
 }
 
-async function enforceMaxOpenTrades(params: {
-  prisma: PrismaClient;
-  userId: string;
-  brokerName: string;
-  symbol: string | null;
-  maxOpenTrades: number;
-  execKey: string;
-}) {
-  const { prisma, userId, brokerName, symbol, maxOpenTrades, execKey } = params;
-
-  // NOTE: this is intentionally conservative for now.
-  // Later you’ll likely add explicit CLOSED statuses (e.g. TRADE_CLOSED, CANCELED).
-  const OPEN_STATUSES = ["INTENT_CREATED", "ORDER_SUBMITTED", "BRACKET_SUBMITTED", "ORDER_FILLED"] as const;
-
-  const openCount = await prisma.execution.count({
-    where: {
-      userId,
-      brokerName,
-      symbol: symbol ?? null,
-      status: { in: [...OPEN_STATUSES] as any },
-    },
-  });
-
-  if (openCount >= maxOpenTrades) {
-    console.warn("[executeBracket] BLOCKED_MAX_OPEN_TRADES", {
-      execKey,
-      userId,
-      brokerName,
-      symbol,
-      openCount,
-      maxOpenTrades,
-    });
-
-    // Tell the UI the truth (manual button is async)
-    await publishExecEventToUser(prisma, {
-      clerkUserId: userId, // IMPORTANT: this must be the CLERK user id used in the Ably channel (the `user_...` one)
-      name: "exec.manual_result",
-      ok: false,
-      code: "MAX_OPEN_TRADES",
-      message: `Blocked - already have ${openCount} open trade(s) (max ${maxOpenTrades})`,
-      execKey,
-      brokerName,
-      symbol: symbol ?? null,
-      openCount,
-      maxOpenTrades,
-    });
-
-    return; // do NOT place anything at the broker
-  }
-
-}
-
 function isFilled(o: any): boolean {
   if (!o) return false;
 
@@ -176,21 +124,67 @@ export async function executeBracket(params: {
 }) {
   const { prisma, broker, input } = params;
 
-  // ✅ STRICT MODE (for now): one open trade at a time per symbol + broker + user
-  const maxOpenTradesRaw = process.env.AURA_MAX_OPEN_TRADES;
-  const maxOpenTrades =
-    maxOpenTradesRaw && Number.isFinite(Number(maxOpenTradesRaw)) && Number(maxOpenTradesRaw) > 0
-      ? Math.floor(Number(maxOpenTradesRaw))
-      : 1;
+  // --- REAL broker position guard (no DB-ghost blocking) ---
+  // We try a few method names because adapters differ.
+  const getPosFn =
+    (broker as any).getPosition ??
+    (broker as any).fetchPosition ??
+    (broker as any).getOpenPosition ??
+    null;
 
-  await enforceMaxOpenTrades({
-    prisma,
-    userId: input.userId,
-    brokerName: input.brokerName,
-    symbol: input.symbol ?? null,
-    maxOpenTrades,
-    execKey: input.execKey,
-  });
+  if (typeof getPosFn === "function") {
+    try {
+      const pos = await getPosFn.call(broker, {
+        contractId: input.contractId,
+        symbol: input.symbol ?? null,
+      });
+
+      // Normalize common shapes: { size }, { qty }, { positionSize }, etc.
+      const rawSize =
+        pos?.size ??
+        pos?.qty ??
+        pos?.positionSize ??
+        pos?.netQty ??
+        pos?.netPosition ??
+        0;
+
+      const sizeNum = Number(rawSize);
+
+      if (Number.isFinite(sizeNum) && sizeNum !== 0) {
+        console.warn("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
+          execKey: input.execKey,
+          userId: input.userId,
+          brokerName: input.brokerName,
+          contractId: input.contractId,
+          symbol: input.symbol ?? null,
+          brokerPositionSize: sizeNum,
+        });
+
+        logTag("[executeBracket] BLOCKED_BROKER_POSITION_OPEN", {
+          execKey: input.execKey,
+          userId: input.userId,
+          brokerName: input.brokerName,
+          contractId: input.contractId,
+          symbol: input.symbol ?? null,
+          brokerPositionSize: sizeNum,
+        });
+
+        throw new Error(`Blocked: broker reports open position (size=${sizeNum})`);
+      }
+    } catch (e: any) {
+      // If the position check itself fails, we do NOT hard-block trading.
+      // We only block when we definitively detect a non-zero position.
+      console.warn("[executeBracket] broker position check failed (non-blocking)", {
+        execKey: input.execKey,
+        err: e?.message ? String(e.message) : String(e),
+      });
+    }
+  } else {
+    console.warn("[executeBracket] broker has no position-check method (non-blocking)", {
+      execKey: input.execKey,
+      broker: (broker as any)?.name ?? null,
+    });
+  }
 
   // Safety rail: clamp qty if maxContracts is provided
   const rawQty = Number(input.qty);
@@ -360,8 +354,7 @@ export async function executeBracket(params: {
         where: { id: exec.id },
         data: {
           status: "BRACKET_SUBMITTED",
-          stopOrderId:
-            bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null,
+          stopOrderId: bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null,
           tpOrderId:
             bracketRes?.takeProfitOrderId != null
               ? String(bracketRes.takeProfitOrderId)

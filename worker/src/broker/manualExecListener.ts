@@ -256,11 +256,25 @@ export async function startManualExecListener(params: {
         takeProfitTicks,
       });
     } catch (e) {
+      const message =
+        e instanceof Error ? e.message : String(e);
+
       console.error("[manual-exec] executeBracket failed", e);
+
       logTag(`[${params.env.WORKER_NAME}] MANUAL_EXEC_FAILED`, {
-        err: e instanceof Error ? e.message : String(e),
+        err: message,
+      });
+
+      // 🔔 Notify frontend of failure so toast reflects reality
+      await publishInAppNotification({
+        prisma: params.getPrisma(),
+        userId: ident.userId,
+        type: "manual_exec_failed",
+        title: "Manual order blocked",
+        body: message,
       });
     }
+
   };
 
   // Subscribe to all names we’ve used historically
