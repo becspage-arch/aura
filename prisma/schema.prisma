@@ -402,6 +402,17 @@ enum StrategyBlockReason {
   NOT_LIVE_CANDLE
   INVALID_BRACKET
   EXECUTION_FAILED
+
+  // Engine / near-miss reasons (new)
+  NO_ACTIVE_FVG
+  FVG_INVALID
+  FVG_ALREADY_TRADED
+  NOT_RETESTED
+  DIRECTION_MISMATCH
+  NO_EXPANSION_PATTERN
+  STOP_INVALID
+  STOP_TOO_BIG
+  CONTRACTS_ZERO
 }
 
 model NotificationPreferences {

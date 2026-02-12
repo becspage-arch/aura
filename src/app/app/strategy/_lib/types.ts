@@ -1,5 +1,3 @@
-export type EntryType = "market" | "limit";
-
 export type StrategySettings = {
   mode: "paper" | "live";
   preset: "coreplus315";
@@ -10,7 +8,6 @@ export type StrategySettings = {
   riskUsd: number;
   rr: number;
   maxStopTicks: number;
-  entryType: EntryType;
 
   sizing: { mode: "risk_based" | "fixed_contracts"; fixedContracts: number };
 
