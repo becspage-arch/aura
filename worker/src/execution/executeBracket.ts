@@ -251,8 +251,9 @@ export async function executeBracket(params: {
         throw new Error(`Blocked: broker reports open position (size=${sizeNum})`);
       }
     }
+  } 
 
-  } else {
+  else {
     console.warn("[executeBracket] broker has no position-check method (non-blocking)", {
       execKey: input.execKey,
       broker: (broker as any)?.name ?? null,
@@ -482,7 +483,7 @@ export async function executeBracket(params: {
         meta: {
           brokerError: {
             message: errMsg,
-            stack: e?.stack ? String(e.stack) : String(e.stack) : null,
+            stack: e?.stack ? String(e.stack) : null,
           },
         },
       },
