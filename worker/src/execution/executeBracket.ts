@@ -70,10 +70,23 @@ async function enforceMaxOpenTrades(params: {
       maxOpenTrades,
     });
 
-    throw new Error(
-      `Blocked: already have ${openCount} open trade(s) (maxOpenTrades=${maxOpenTrades})`
-    );
+    // Tell the UI the truth (manual button is async)
+    await publishExecEventToUser(prisma, {
+      clerkUserId: userId, // IMPORTANT: this must be the CLERK user id used in the Ably channel (the `user_...` one)
+      name: "exec.manual_result",
+      ok: false,
+      code: "MAX_OPEN_TRADES",
+      message: `Blocked - already have ${openCount} open trade(s) (max ${maxOpenTrades})`,
+      execKey,
+      brokerName,
+      symbol: symbol ?? null,
+      openCount,
+      maxOpenTrades,
+    });
+
+    return; // do NOT place anything at the broker
   }
+
 }
 
 function isFilled(o: any): boolean {
