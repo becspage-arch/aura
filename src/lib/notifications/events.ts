@@ -5,7 +5,6 @@ export type TradeDirection = "long" | "short";
 
 /**
  * Minimum viable trade-closed payload.
- * This should describe the outcome in a way the UI/push/email can use.
  */
 export type TradeClosedEvent = {
   type: "trade_closed";
@@ -13,24 +12,24 @@ export type TradeClosedEvent = {
 
   userId: string;
 
-  tradeId: string; // Aura trade id (our DB id)
-  accountId: string; // broker account id or our BrokerAccount id
+  tradeId: string;
+  accountId: string;
   symbol: string;
 
   direction: TradeDirection;
 
-  entryTs: string; // ISO
-  exitTs: string; // ISO
+  entryTs: string;
+  exitTs: string;
 
-  realisedPnlUsd: number; // + / -
+  realisedPnlUsd: number;
   result: TradeResult;
 
-  strategyRunId?: string; // optional
+  strategyRunId?: string;
 };
 
 export type TradeOpenedEvent = {
   type: "trade_opened";
-  ts: string; // ISO timestamp (when we placed / confirmed the entry)
+  ts: string;
 
   userId: string;
 
@@ -41,39 +40,33 @@ export type TradeOpenedEvent = {
   direction: TradeDirection;
   size: number;
 
-  entryTs: string; // ISO
-  entryPrice?: number; // optional (depends on what we have at entry time)
+  entryTs: string;
+  entryPrice?: number;
 
-  strategyRunId?: string; // optional
+  strategyRunId?: string;
 };
 
 /**
- * Strategy status changed (pause/run).
- * We’ll send this when the user toggles pause.
+ * Strategy status change (pause/run)
  */
 export type StrategyStatusChangedEvent = {
   type: "strategy_status_changed";
-  ts: string; // ISO timestamp of the state write (use DB updatedAt if possible)
-
-  userId: string;
-
+  ts: string; // ISO timestamp
+  userId: string; // Clerk user id
   isPaused: boolean;
 };
 
-/**
- * Summary for a session/day (we’ll decide later how we define “session”).
- */
 export type SessionSummaryEvent = {
   type: "session_summary";
-  ts: string; // ISO timestamp (when summary was produced)
+  ts: string;
 
   userId: string;
 
   period: {
     kind: "session" | "daily";
-    label: string; // e.g. "London", or "2026-02-06"
-    startTs: string; // ISO
-    endTs: string; // ISO
+    label: string;
+    startTs: string;
+    endTs: string;
   };
 
   tradesCount: number;
@@ -82,31 +75,18 @@ export type SessionSummaryEvent = {
   breakeven: number;
 
   netPnlUsd: number;
-  winRate: number; // 0..1
+  winRate: number;
 };
 
-/**
- * Union of events our notification system will support (v1).
- */
 export type NotificationEvent =
   | TradeClosedEvent
   | TradeOpenedEvent
   | StrategyStatusChangedEvent
   | SessionSummaryEvent;
 
-/**
- * Idempotency key so we can safely retry without duplicates.
- */
 export function notificationIdempotencyKey(e: NotificationEvent): string {
   if (e.type === "trade_closed") return `${e.tradeId}:${e.type}`;
   if (e.type === "trade_opened") return `${e.tradeId}:${e.type}`;
-
-  // strategy status should be unique per user + state + timestamp of the write
-  if (e.type === "strategy_status_changed") {
-    return `${e.userId}:${e.type}:${e.isPaused}:${e.ts}`;
-  }
-
-  // session summary should be unique per user + period label + kind
+  if (e.type === "strategy_status_changed") return `${e.userId}:${e.type}:${e.ts}`;
   return `${e.userId}:${e.type}:${e.period.kind}:${e.period.label}`;
 }
-

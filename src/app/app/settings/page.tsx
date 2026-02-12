@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { PushStatusRow } from "@/components/PushStatusRow";
 import { TestEmailButton } from "@/components/TestEmailButton";
-import { NotificationPreferencesPanel } from "@/components/NotificationPreferencesPanel";
+import { NotificationPreferences } from "@/components/NotificationPreferences";
 
 export default function SettingsPage() {
   return (
@@ -153,7 +153,7 @@ export default function SettingsPage() {
               Pick the notifications you want. (We’ll wire these to saved preferences next.)
             </div>
 
-            <NotificationPreferencesPanel />
+            <NotificationPreferences />
 
           </div>
 

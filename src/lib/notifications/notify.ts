@@ -64,24 +64,23 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   });
 
   if (!created) {
-    // Duplicate (already notified) - do nothing.
     return { ok: true as const, skipped: true as const, key };
   }
 
   // -----------------------------
-  // Strategy status changed → In-app (and later Push/Email)
+  // Strategy status changed → In-app (v1)
   // -----------------------------
   if (event.type === "strategy_status_changed") {
     const prefs = await getNotificationPrefs(prisma, event.userId);
-    if (prefs && prefs.strategyStatus === false) {
+    if (prefs && !prefs.strategyStatus) {
       return { ok: true as const, skipped: true as const, key };
     }
 
-    const title = "Aura";
+    const title = "Aura - Strategy";
     const body = event.isPaused ? "⏸️ Aura is now paused" : "▶️ Aura is now running";
 
     await publishInAppNotification(event.userId, {
-      type: "strategy_status_changed",
+      type: "strategy_status",
       title,
       body,
       ts: event.ts,
@@ -123,10 +122,8 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       deepLink: `/app/trades/${event.tradeId}`,
     });
 
-    // Push notification
     await sendPushTradeClosed(event, { prisma });
 
-    // Email (only if user has an email stored in UserProfile)
     const toEmail = await getUserEmailByClerkUserId(prisma, event.userId);
 
     if (toEmail) {
@@ -200,7 +197,6 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   <tr>
     <td align="center" style="padding:28px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="width:100%;max-width:640px;">
-        <!-- Header -->
         <tr>
           <td style="padding:0 0 14px 0;">
             <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; letter-spacing:0.3px; color:#f5f5f5; font-size:18px; font-weight:700;">
@@ -214,10 +210,8 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
           </td>
         </tr>
 
-        <!-- Card -->
         <tr>
           <td style="background:#141414;border:1px solid #222;border-radius:16px;padding:18px;">
-            <!-- Badge row -->
             <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
               <tr>
                 <td align="left">
@@ -233,7 +227,6 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
 
             <div style="height:12px;"></div>
 
-            <!-- Summary -->
             <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#f5f5f5;font-size:18px;font-weight:700;line-height:1.25;">
               ${direction} ${qty ? `${qty}x ` : ""}${symbol}
             </div>
@@ -244,13 +237,9 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
             </div>
 
             <div style="height:14px;"></div>
-
-            <!-- Divider -->
             <div style="height:1px;background:#222;"></div>
-
             <div style="height:14px;"></div>
 
-            <!-- CTA -->
             <table role="presentation" cellpadding="0" cellspacing="0">
               <tr>
                 <td>
@@ -271,7 +260,6 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
           </td>
         </tr>
 
-        <!-- Footer -->
         <tr>
           <td style="padding:14px 2px 0 2px;">
             <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#777;font-size:11px;line-height:1.45;">
@@ -290,6 +278,8 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
 
       await sendEmail({ to: toEmail, subject, html });
     }
+
+    return { ok: true as const, skipped: false as const, key };
   }
 
   // -----------------------------
@@ -309,13 +299,13 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       ts: event.ts,
       deepLink: `/app/trades/${event.tradeId}`,
     });
+
+    return { ok: true as const, skipped: false as const, key };
   }
 
-  // -----------------------------
-  // Session summary → Email (later)
-  // -----------------------------
   if (event.type === "session_summary") {
     // v1: not wired yet
+    return { ok: true as const, skipped: false as const, key };
   }
 
   return { ok: true as const, skipped: false as const, key };
@@ -337,7 +327,6 @@ async function tryCreateNotificationLog(args: {
     });
     return true;
   } catch (err: any) {
-    // Prisma unique constraint error (P2002) means we've already sent it.
     if (err?.code === "P2002") return false;
     throw err;
   }

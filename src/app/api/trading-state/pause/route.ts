@@ -1,8 +1,10 @@
+// src/app/api/trading-state/pause/route.ts
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { ensureUserProfile } from "@/lib/user-profile";
 import { publishToUser } from "@/lib/ably/server";
 import { writeAuditLog, writeEventLog } from "@/lib/logging/server";
+import { notify } from "@/lib/notifications/notify";
 
 export async function GET() {
   const { userId: clerkUserId } = await auth();
@@ -35,12 +37,19 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const isPaused = Boolean(body?.isPaused);
 
-  // ✅ Ensure profile exists (create if missing)
   const user = await ensureUserProfile({
     clerkUserId,
     email: null,
     displayName: null,
   });
+
+  // Read current state so we only notify on real changes
+  const current = await db.userTradingState.findUnique({
+    where: { userId: user.id },
+    select: { isPaused: true },
+  });
+
+  const prevPaused = current?.isPaused ?? false;
 
   const next = await db.userTradingState.upsert({
     where: { userId: user.id },
@@ -59,6 +68,19 @@ export async function POST(req: Request) {
   });
 
   await publishToUser(clerkUserId, "status_update" as any, { isPaused });
+
+  // 🔔 Only notify if it changed
+  if (prevPaused !== isPaused) {
+    await notify(
+      {
+        type: "strategy_status_changed",
+        userId: clerkUserId, // notify expects Clerk userId
+        ts: next.updatedAt.toISOString(),
+        isPaused,
+      },
+      { prisma: db as any }
+    );
+  }
 
   return Response.json({
     ok: true,
