@@ -572,19 +572,18 @@ export async function startProjectXUserFeed(params: {
         });
       }
 
+      // Best-effort: mark recent matching executions closed.
+      // Execution model does NOT have a relation to Order,
+      // so we cannot filter on entryOrder.filledQty here.
+      const recentCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000); // last 2 hours
+
       await db.execution.updateMany({
         where: {
           userId: ident.userId,
+          brokerName: "projectx",
+          contractId: String(payload?.contractId ?? ""),
           status: { in: ["ORDER_FILLED", "POSITION_OPEN"] },
-          entryOrderId: {
-            not: null,
-          },
-          // Only close executions whose entry order actually filled
-          entryOrder: {
-            filledQty: {
-              gt: 0,
-            },
-          },
+          createdAt: { gte: recentCutoff },
         },
         data: { status: "POSITION_CLOSED" },
       });
