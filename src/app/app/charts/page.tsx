@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { TradingChart } from "@/components/charts/TradingChart";
+import { TradesAndExecutionsTables } from "./TradesAndExecutionsTables";
 
 function fmtTime(d: Date) {
   // simple + predictable (no locale surprises)
@@ -135,8 +136,8 @@ export default async function ChartsPage() {
     return out.slice(0, 200);
   })();
 
-  // NOTE: symbol list for charts section (keep simple)
-  const symbols = ["MGC", "GC"];
+  // ONLY MGC chart (remove GC)
+  const symbols = ["MGC"];
 
   return (
     <div className="aura-page">
@@ -163,6 +164,11 @@ export default async function ChartsPage() {
             <TradingChart symbol={s} initialTf="15s" channelName={null} />
           </div>
         ))}
+      </section>
+
+      {/* NEW: Debug tables (Executions + Closed Trades) */}
+      <section className="aura-card">
+        <TradesAndExecutionsTables />
       </section>
 
       {/* Trades table */}
@@ -209,14 +215,19 @@ export default async function ChartsPage() {
                     <div>
                       <span className={pillClass(kind)}>{out}</span>
                     </div>
-                    <div className="aura-right">{t.rrAchieved != null ? fmtNum(t.rrAchieved, 2) : "–"}</div>
+                    <div className="aura-right">
+                      {t.rrAchieved != null ? fmtNum(t.rrAchieved, 2) : "–"}
+                    </div>
                     <div className="aura-right">{fmtNum(t.realizedPnlUsd, 2)}</div>
                     <div className="aura-hide-sm aura-muted">
                       {t.side} {fmtNum(t.qty, 0)} - SL {t.plannedStopTicks ?? "–"}t - TP{" "}
                       {t.plannedTakeProfitTicks ?? "–"}t
                     </div>
                     <div className="aura-right">
-                      <Link className="aura-link aura-btn aura-btn-subtle" href={`/app/reports?execKey=${encodeURIComponent(t.execKey)}`}>
+                      <Link
+                        className="aura-link aura-btn aura-btn-subtle"
+                        href={`/app/reports?execKey=${encodeURIComponent(t.execKey)}`}
+                      >
                         View →
                       </Link>
                     </div>
@@ -256,7 +267,8 @@ export default async function ChartsPage() {
                         Exit: {t.exitReason} - Side: {t.side} - Qty: {fmtNum(t.qty, 0)}
                       </div>
                       <div className="aura-text-xs aura-muted">
-                        Planned: SL {t.plannedStopTicks ?? "–"}t - TP {t.plannedTakeProfitTicks ?? "–"}t - RR{" "}
+                        Planned: SL {t.plannedStopTicks ?? "–"}t - TP{" "}
+                        {t.plannedTakeProfitTicks ?? "–"}t - RR{" "}
                         {t.plannedRR != null ? fmtNum(t.plannedRR, 2) : "–"}
                       </div>
                       <div className="aura-text-xs aura-muted">
@@ -275,7 +287,9 @@ export default async function ChartsPage() {
       {/* Signals table */}
       <section className="aura-card">
         <div className="aura-group-header">
-          <div className="aura-group-title">Evaluated setups (later-stage only - last 24h)</div>
+          <div className="aura-group-title">
+            Evaluated setups (later-stage only - last 24h)
+          </div>
           <Link className="aura-link aura-btn aura-btn-subtle" href="/app/reports">
             View full report →
           </Link>
@@ -292,7 +306,9 @@ export default async function ChartsPage() {
 
           {signals.length === 0 ? (
             <div className="aura-table-row">
-              <div className="aura-muted">No later-stage setups yet (needs an active retested FVG window)</div>
+              <div className="aura-muted">
+                No later-stage setups yet (needs an active retested FVG window)
+              </div>
               <div />
               <div />
               <div className="aura-hide-sm" />
@@ -341,15 +357,21 @@ export default async function ChartsPage() {
                       </div>
                       <div className="aura-card-muted">
                         <div className="aura-stat-label">RR planned</div>
-                        <div className="aura-mini-value">{s.rr != null ? fmtNum(s.rr, 2) : "–"}</div>
+                        <div className="aura-mini-value">
+                          {s.rr != null ? fmtNum(s.rr, 2) : "–"}
+                        </div>
                       </div>
                       <div className="aura-card-muted">
                         <div className="aura-stat-label">Contracts</div>
-                        <div className="aura-mini-value">{s.contracts != null ? fmtInt(s.contracts) : "–"}</div>
+                        <div className="aura-mini-value">
+                          {s.contracts != null ? fmtInt(s.contracts) : "–"}
+                        </div>
                       </div>
                       <div className="aura-card-muted">
                         <div className="aura-stat-label">Risk planned</div>
-                        <div className="aura-mini-value">{s.riskUsdPlanned != null ? `$${fmtNum(s.riskUsdPlanned, 2)}` : "–"}</div>
+                        <div className="aura-mini-value">
+                          {s.riskUsdPlanned != null ? `$${fmtNum(s.riskUsdPlanned, 2)}` : "–"}
+                        </div>
                       </div>
                     </div>
 
@@ -375,7 +397,9 @@ export default async function ChartsPage() {
                       </div>
 
                       <details>
-                        <summary className="aura-summary aura-text-xs aura-muted aura-row-link">Raw meta</summary>
+                        <summary className="aura-summary aura-text-xs aura-muted aura-row-link">
+                          Raw meta
+                        </summary>
                         <pre className="aura-card-muted aura-text-xs aura-mt-10" style={{ overflow: "auto" }}>
 {JSON.stringify(s.meta ?? null, null, 2)}
                         </pre>
