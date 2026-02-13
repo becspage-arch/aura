@@ -76,19 +76,28 @@ export default async function ChartsPage() {
   const rawSignals = await prisma.strategySignal.findMany({
     where: {
       createdAt: { gte: since },
-      OR: [
-        { status: "TAKEN" },
 
-        // BLOCKED but only when it got far enough to compute a bracket / size
+      AND: [
         {
-          status: "BLOCKED",
           OR: [
-            { stopTicks: { gt: 0 } },
-            { tpTicks: { gt: 0 } },
-            { contracts: { gt: 0 } },
-            { riskUsdPlanned: { gt: 0 } },
-            { rr: { gt: 0 } },
+            { status: "TAKEN" },
+            { status: "BLOCKED" },
           ],
+        },
+
+        // MUST have actual stop
+        {
+          stopTicks: { gt: 0 },
+        },
+
+        // MUST have actual TP
+        {
+          tpTicks: { gt: 0 },
+        },
+
+        // MUST have contracts
+        {
+          contracts: { gt: 0 },
         },
       ],
     },
