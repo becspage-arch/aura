@@ -434,39 +434,37 @@ export async function startProjectXUserFeed(params: {
         toNum(payload?.closePrice) ??
         0;
 
-      const closeKey =
-        toStr(payload?.closedAt) ??
-        toStr(payload?.timestamp) ??
-        toStr(payload?.ts) ??
-        String(closedAt.getTime());
+      const acctId =
+        toStr(payload?.accountId ?? params.accountId) ?? "unknownAcct";
 
-      const refOrderId =
-        toStr(payload?.entryOrderId) ??
-        toStr(payload?.orderId) ??
+      const positionId =
+        toStr(payload?.positionId) ??
         toStr(payload?.id) ??
-        "noorder";
+        toStr(payload?.position?.id) ??
+        "nopos";
 
-      console.log(
-        "[projectx-user] POS_CLOSE_KEYS_JSON " +
-          JSON.stringify({
-            accountId: payload?.accountId ?? params.accountId ?? null,
-            contractId: payload?.contractId ?? payload?.instrumentId ?? payload?.symbolId ?? null,
+      // Deterministic close identity:
+      // accountId + positionId are stable for a closed position
+      const execKey = `projectx:close:${ident.clerkUserId}:${symbol}:${acctId}:${positionId}`;
 
-            positionId: payload?.positionId ?? payload?.id ?? payload?.position?.id ?? null,
+      console.log("[projectx-user] POS_CLOSE_KEYS_JSON", {
+        accountId: payload?.accountId ?? params.accountId ?? null,
+        contractId:
+          payload?.contractId ??
+          payload?.instrumentId ??
+          payload?.symbolId ??
+          null,
+        positionId:
+          payload?.positionId ??
+          payload?.id ??
+          payload?.position?.id ??
+          null,
+        entryOrderId: payload?.entryOrderId ?? null,
+        orderId: payload?.orderId ?? null,
+        id: payload?.id ?? null,
+        execKey,
+      });
 
-            closedAtField: payload?.closedAt ?? null,
-            tsField: payload?.timestamp ?? payload?.ts ?? null,
-
-            entryOrderId: payload?.entryOrderId ?? null,
-            orderId: payload?.orderId ?? null,
-            id: payload?.id ?? null,
-
-            refOrderId,
-            closeKey,
-          })
-      );
-
-      const execKey = `projectx:close:${ident.clerkUserId}:${symbol}:${refOrderId}:${closeKey}`;
 
       // Dedupe: only emit notify the first time we see this execKey
       let existed: { id: string } | null = null;
