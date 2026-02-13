@@ -32,6 +32,11 @@ type ApiResponse = {
   nextTo: number | null;
 };
 
+type SeriesWithOptionalMarkers = ISeriesApi<"Candlestick"> & {
+  // Some lightweight-charts versions expose this at runtime but typings may lag.
+  setMarkers?: (markers: SeriesMarker<UTCTimestamp>[]) => void;
+};
+
 function toSeries(c: Candle): CandlestickData<UTCTimestamp> {
   return {
     time: c.time as UTCTimestamp,
@@ -92,68 +97,34 @@ function mapAuraMarkersToSeriesMarkers(
   const toSeriesMarker = (m: ChartMarker): SeriesMarker<UTCTimestamp> => {
     const t = mkTime(m.time) as UTCTimestamp;
 
-    // NOTE: colors are part of chart marker config (not CSS)
     switch (m.kind) {
       case "order_buy":
-        return {
-          time: t,
-          position: "belowBar",
-          shape: "arrowUp",
-          color: "#7fa8a1",
-          text: m.label ?? "BUY",
-        };
+        return { time: t, position: "belowBar", shape: "arrowUp", color: "#7fa8a1", text: m.label ?? "BUY" };
       case "order_sell":
-        return {
-          time: t,
-          position: "aboveBar",
-          shape: "arrowDown",
-          color: "#b07a7a",
-          text: m.label ?? "SELL",
-        };
+        return { time: t, position: "aboveBar", shape: "arrowDown", color: "#b07a7a", text: m.label ?? "SELL" };
       case "fill_buy_full":
       case "fill_sell_full":
-        return {
-          time: t,
-          position: "inBar",
-          shape: "circle",
-          color: "#d6c28f",
-          text: m.label ?? "FILL",
-        };
+        return { time: t, position: "inBar", shape: "circle", color: "#d6c28f", text: m.label ?? "FILL" };
       case "order_cancelled":
-        return {
-          time: t,
-          position: "inBar",
-          shape: "square",
-          color: "#8a919e",
-          text: m.label ?? "CANCEL",
-        };
+        return { time: t, position: "inBar", shape: "square", color: "#8a919e", text: m.label ?? "CANCEL" };
       default:
-        return {
-          time: t,
-          position: "inBar",
-          shape: "circle",
-          color: "#8a919e",
-          text: m.label ?? "EVENT",
-        };
+        return { time: t, position: "inBar", shape: "circle", color: "#8a919e", text: m.label ?? "EVENT" };
     }
   };
 
-  return all
-    .filter((m) => m.symbol === symbol)
-    .map(toSeriesMarker);
+  return all.filter((m) => m.symbol === symbol).map(toSeriesMarker);
 }
 
 export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const seriesRef = useRef<SeriesWithOptionalMarkers | null>(null);
 
   const [tf, setTf] = useState<Timeframe>(initialTf);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Keep latest tf in a ref so chart subscriptions never go stale
   const tfRef = useRef<Timeframe>(initialTf);
   useEffect(() => {
     tfRef.current = tf;
@@ -167,25 +138,19 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     "3m": [],
   });
 
-  // Server cursor for older history (if implemented by API)
   const nextToRef = useRef<Record<Timeframe, number | null>>({
     "15s": null,
     "3m": null,
   });
 
-  // If the API gets stuck returning the same cursor + no growth, stop spamming.
   const exhaustedCursorRef = useRef<Record<Timeframe, number | null>>({
     "15s": null,
     "3m": null,
   });
 
-  // Aura markers (data)
   const [markers, setMarkers] = useState<ChartMarker[]>([]);
-
-  // DEBUG: marker count
   const [debugMarkerStats, setDebugMarkerStats] = useState({ total: 0, shown: 0 });
 
-  // DEBUG: shows paging behavior + cache times
   const [debugPaging, setDebugPaging] = useState({
     triggers: 0,
     loads: 0,
@@ -228,20 +193,28 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
   const applySeriesMarkers = useCallback(
     (nextTf: Timeframe) => {
-      if (!seriesRef.current) return;
-
-      const seriesMarkers = mapAuraMarkersToSeriesMarkers(markers, symbol, nextTf);
-      seriesRef.current.setMarkers(seriesMarkers);
+      const s = seriesRef.current;
+      if (!s) return;
 
       const total = markers.filter((m) => m.symbol === symbol).length;
-      setDebugMarkerStats({ total, shown: seriesMarkers.length });
+
+      // Safe: only call if available at runtime
+      if (typeof s.setMarkers === "function") {
+        const seriesMarkers = mapAuraMarkersToSeriesMarkers(markers, symbol, nextTf);
+        s.setMarkers(seriesMarkers);
+        setDebugMarkerStats({ total, shown: seriesMarkers.length });
+      } else {
+        // Typings/runtime mismatch: don’t crash; keep chart working.
+        setDebugMarkerStats({ total, shown: 0 });
+      }
     },
     [markers, symbol]
   );
 
   const fetchCandles = useCallback(
     async (nextTf: Timeframe) => {
-      if (!seriesRef.current) return;
+      const s = seriesRef.current;
+      if (!s) return;
 
       setIsLoading(true);
       setError(null);
@@ -255,7 +228,7 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
       try {
         const cached = cacheRef.current[nextTf];
-        seriesRef.current.setData(cached.map(toSeries));
+        s.setData(cached.map(toSeries));
 
         const to = floorToTf(Math.floor(Date.now() / 1000), nextTf);
         const url = `/api/charts/candles?symbol=${encodeURIComponent(symbol)}&tf=${nextTf}&to=${to}&limit=800&fill=1`;
@@ -272,12 +245,10 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         nextToRef.current[nextTf] = json.nextTo ?? null;
         exhaustedCursorRef.current[nextTf] = null;
 
-        seriesRef.current.setData(candles.map(toSeries));
+        s.setData(candles.map(toSeries));
         chartRef.current?.timeScale().fitContent();
 
         updateCacheDebugForTf(nextTf);
-
-        // Ensure markers stay in sync with current tf
         applySeriesMarkers(nextTf);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
@@ -289,7 +260,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     [symbol, updateCacheDebugForTf, applySeriesMarkers]
   );
 
-  // Pagination refs
   const isPagingRef = useRef(false);
   const pendingPageRef = useRef(false);
   const lastRangeFromRef = useRef<number | null>(null);
@@ -298,7 +268,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
   const pagingCooldownMs = 350;
   const leftEdgeThresholdBars = 300;
 
-  // Reset cursors + debug when symbol changes
   useEffect(() => {
     nextToRef.current["15s"] = null;
     nextToRef.current["3m"] = null;
@@ -338,7 +307,8 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
   const loadOlderCandles = useCallback(
     async (nextTf: Timeframe) => {
-      if (!seriesRef.current) return;
+      const s = seriesRef.current;
+      if (!s) return;
       if (!chartRef.current) return;
       if (isPagingRef.current) return;
 
@@ -410,7 +380,7 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         const addedBars = merged.length - beforeLen;
 
         cacheRef.current[nextTf] = merged;
-        seriesRef.current.setData(merged.map(toSeries));
+        s.setData(merged.map(toSeries));
 
         if (currentRange && addedBars > 0) {
           requestAnimationFrame(() => {
@@ -431,8 +401,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
         updateCacheDebugForTf(nextTf);
         bumpPagingDebug({ grew });
-
-        // Keep markers synced after paging
         applySeriesMarkers(nextTf);
       } finally {
         isPagingRef.current = false;
@@ -457,7 +425,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     loadOlderRef.current = loadOlderCandles;
   }, [loadOlderCandles]);
 
-  // Create chart once
   useEffect(() => {
     if (!containerRef.current) return;
     if (chartRef.current) return;
@@ -488,7 +455,7 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     });
 
     chartRef.current = chart;
-    seriesRef.current = series;
+    seriesRef.current = series as SeriesWithOptionalMarkers;
 
     const ro = new ResizeObserver(() => {
       if (!containerRef.current || !chartRef.current) return;
@@ -530,7 +497,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     };
   }, []);
 
-  // Load markers initially (and when symbol changes)
   useEffect(() => {
     let cancelled = false;
 
@@ -559,12 +525,10 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     };
   }, [symbol]);
 
-  // Fetch candles when timeframe changes
   useEffect(() => {
     fetchCandles(tf);
   }, [fetchCandles, tf]);
 
-  // Keep series markers synced when marker data changes or tf changes
   useEffect(() => {
     applySeriesMarkers(tf);
   }, [applySeriesMarkers, tf]);
@@ -593,8 +557,8 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         }
 
         if (tf === "3m") {
-          const bucket = TF_SECONDS["3m"]; // 180
-          const last15sOpen = bucket - TF_SECONDS["15s"]; // 165
+          const bucket = TF_SECONDS["3m"];
+          const last15sOpen = bucket - TF_SECONDS["15s"];
           if (candle.time % bucket === last15sOpen) {
             fetchCandles("3m");
           }
@@ -719,9 +683,7 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         <div ref={containerRef} className="aura-chart-surface" />
 
         {isLoading && <div className="aura-float aura-float-top-right">Loading…</div>}
-
         {error && <div className="aura-float aura-float-bottom-left">{error}</div>}
-
         {!isLoading && !error && cacheRef.current[tf].length === 0 && (
           <div className="aura-float aura-float-center">No candles yet (waiting for data)</div>
         )}
