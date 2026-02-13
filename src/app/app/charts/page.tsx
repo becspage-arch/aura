@@ -71,14 +71,12 @@ export default async function ChartsPage() {
     },
   });
 
-  // Strategy Signals (last 24h)
+
+// Strategy Signals (last 24h) — include TAKEN + all BLOCKED
   const rawSignals = await prisma.strategySignal.findMany({
     where: {
       createdAt: { gte: since },
-      OR: [
-        { status: "TAKEN" },
-        { status: "BLOCKED", blockReason: { in: [...LATE_STAGE_BLOCK_REASONS] } },
-      ],
+      OR: [{ status: "TAKEN" }, { status: "BLOCKED" }],
     },
     orderBy: { createdAt: "desc" },
     take: 400,
