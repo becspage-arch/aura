@@ -277,6 +277,55 @@ export async function startProjectXUserFeed(params: {
           },
         });
 
+                // --- ROLL UP: Fill -> Order (8E.4b) ---
+        if (orderRow?.id) {
+          try {
+            const agg = await db.fill.aggregate({
+              where: { orderId: orderRow.id },
+              _sum: { qty: true },
+              _avg: { price: true },
+            });
+
+            const filledQtySum = Number(agg._sum.qty ?? 0);
+            const avgFillPrice = agg._avg.price == null ? null : Number(agg._avg.price);
+
+            // Load intended order qty so we can mark FILLED vs PARTIAL
+            const ord = await db.order.findUnique({
+              where: { id: orderRow.id },
+              select: { qty: true },
+            });
+
+            const orderQty = ord?.qty == null ? 0 : Number(ord.qty);
+
+            // tiny tolerance for numeric/decimal conversions
+            const EPS = 1e-9;
+
+            const nextStatus =
+              orderQty > 0 && filledQtySum + EPS >= orderQty ? "FILLED" : filledQtySum > 0 ? "PARTIAL" : "NEW";
+
+            await db.order.update({
+              where: { id: orderRow.id },
+              data: {
+                filledQty: filledQtySum,
+                avgFillPrice,
+                status: nextStatus,
+              },
+            });
+
+            console.log("[projectx-user] ORDER_ROLLUP_OK", {
+              orderExternalId: fillOrderExternalId ?? null,
+              filledQty: filledQtySum,
+              avgFillPrice,
+              status: nextStatus,
+            });
+          } catch (e) {
+            console.warn("[projectx-user] ORDER_ROLLUP_FAILED (non-fatal)", {
+              err: e instanceof Error ? e.message : String(e),
+              orderExternalId: fillOrderExternalId ?? null,
+            });
+          }
+        }
+
         console.log("[projectx-user] FILL_UPSERT_OK", {
           brokerAccountId: brokerAccount.id,
           externalId: fillExternalId,
