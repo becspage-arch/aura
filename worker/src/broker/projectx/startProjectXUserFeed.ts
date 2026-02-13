@@ -147,46 +147,88 @@ export async function startProjectXUserFeed(params: {
       cacheExitPnlFromTrade(payload);
 
       // --- PERSIST FILL (8E.4) ---
+      // --- PERSIST FILL (8E.4) ---
       try {
-        const fillOrderId =
-          toStr(payload?.orderId ?? payload?.parentOrderId ?? payload?.id) ?? "unknown";
-
-        const fillExternalId = toStr(payload?.id); // ProjectX trade/fill id
-
-        const fillSymbol =
-          toStr(payload?.symbol) ??
-          toStr(payload?.contractId) ??
-          toStr(payload?.instrumentId) ??
-          "UNKNOWN";
-
-        const sideRaw = (toStr(payload?.side) ?? "").toLowerCase();
-        const fillSide = sideRaw.includes("sell") ? "SELL" : "BUY";
-
-        const fillQty =
-          toNum(payload?.qty ?? payload?.quantity ?? payload?.size) ?? 0;
-
-        const fillPrice =
-          toNum(payload?.price) ??
-          toNum(payload?.fillPrice) ??
-          toNum(payload?.averagePrice) ??
-          0;
-
-        // If we have an externalId, try to dedupe (ProjectX can emit multiple trade events)
-        if (fillExternalId) {
-          const exists = await db.fill.findFirst({
+        // We must map ProjectX accountId -> BrokerAccount.id (FK)
+        const acctExternalId = toStr(payload?.accountId ?? params.accountId);
+        if (!acctExternalId) {
+          console.warn("[projectx-user] FILL_SKIPPED_NO_ACCOUNT_ID", {
+            payloadAccountId: payload?.accountId,
+            paramsAccountId: params.accountId,
+          });
+        } else {
+          const brokerAccount = await db.brokerAccount.upsert({
             where: {
-              brokerAccountId: String(payload?.accountId ?? params.accountId ?? "unknown"),
-              externalId: fillExternalId,
+              brokerName_externalId: {
+                brokerName: "projectx",
+                externalId: acctExternalId,
+              },
+            },
+            create: {
+              userId: ident.userId,
+              brokerName: "projectx",
+              externalId: acctExternalId,
+              accountLabel: null,
+            },
+            update: {
+              // keep userId aligned just in case
+              userId: ident.userId,
             },
             select: { id: true },
           });
 
-          if (!exists) {
+          const fillOrderId =
+            toStr(payload?.orderId ?? payload?.parentOrderId ?? payload?.id) ?? "unknown";
+
+          const fillExternalId = toStr(payload?.id); // ProjectX trade/fill id
+
+          const fillSymbol =
+            toStr(payload?.symbol) ??
+            toStr(payload?.contractId) ??
+            toStr(payload?.instrumentId) ??
+            "UNKNOWN";
+
+          const sideRaw = (toStr(payload?.side) ?? "").toLowerCase();
+          const fillSide = sideRaw.includes("sell") ? "SELL" : "BUY";
+
+          const fillQty = toNum(payload?.qty ?? payload?.quantity ?? payload?.size) ?? 0;
+
+          const fillPrice =
+            toNum(payload?.price) ??
+            toNum(payload?.fillPrice) ??
+            toNum(payload?.averagePrice) ??
+            0;
+
+          // If we have an externalId, try to dedupe (ProjectX can emit multiple trade events)
+          if (fillExternalId) {
+            const exists = await db.fill.findFirst({
+              where: {
+                brokerAccountId: brokerAccount.id, // ✅ real FK target
+                externalId: fillExternalId,
+              },
+              select: { id: true },
+            });
+
+            if (!exists) {
+              await db.fill.create({
+                data: {
+                  brokerAccountId: brokerAccount.id, // ✅ real FK target
+                  orderId: fillOrderId,
+                  externalId: fillExternalId,
+                  symbol: fillSymbol,
+                  side: fillSide,
+                  qty: fillQty,
+                  price: fillPrice,
+                },
+              });
+            }
+          } else {
+            // No externalId available – just write it (worst case: duplicates)
             await db.fill.create({
               data: {
-                brokerAccountId: String(payload?.accountId ?? params.accountId ?? "unknown"),
+                brokerAccountId: brokerAccount.id, // ✅ real FK target
                 orderId: fillOrderId,
-                externalId: fillExternalId,
+                externalId: null,
                 symbol: fillSymbol,
                 side: fillSide,
                 qty: fillQty,
@@ -194,19 +236,6 @@ export async function startProjectXUserFeed(params: {
               },
             });
           }
-        } else {
-          // No externalId available – just write it (worst case: duplicates)
-          await db.fill.create({
-            data: {
-              brokerAccountId: String(payload?.accountId ?? params.accountId ?? "unknown"),
-              orderId: fillOrderId,
-              externalId: null,
-              symbol: fillSymbol,
-              side: fillSide,
-              qty: fillQty,
-              price: fillPrice,
-            },
-          });
         }
       } catch (e) {
         console.warn("[projectx-user] FILL_CREATE_FAILED (non-fatal)", {
