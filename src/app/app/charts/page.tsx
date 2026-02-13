@@ -1,4 +1,7 @@
 ﻿// src/app/app/charts/page.tsx
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { TradingChart } from "@/components/charts/TradingChart";
