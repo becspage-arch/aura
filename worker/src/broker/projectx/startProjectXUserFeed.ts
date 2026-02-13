@@ -146,6 +146,74 @@ export async function startProjectXUserFeed(params: {
       // IMPORTANT: capture EXIT pnl from GatewayUserTrade
       cacheExitPnlFromTrade(payload);
 
+      // --- PERSIST FILL (8E.4) ---
+      try {
+        const fillOrderId =
+          toStr(payload?.orderId ?? payload?.parentOrderId ?? payload?.id) ?? "unknown";
+
+        const fillExternalId = toStr(payload?.id); // ProjectX trade/fill id
+
+        const fillSymbol =
+          toStr(payload?.symbol) ??
+          toStr(payload?.contractId) ??
+          toStr(payload?.instrumentId) ??
+          "UNKNOWN";
+
+        const sideRaw = (toStr(payload?.side) ?? "").toLowerCase();
+        const fillSide = sideRaw.includes("sell") ? "SELL" : "BUY";
+
+        const fillQty =
+          toNum(payload?.qty ?? payload?.quantity ?? payload?.size) ?? 0;
+
+        const fillPrice =
+          toNum(payload?.price) ??
+          toNum(payload?.fillPrice) ??
+          toNum(payload?.averagePrice) ??
+          0;
+
+        // If we have an externalId, try to dedupe (ProjectX can emit multiple trade events)
+        if (fillExternalId) {
+          const exists = await db.fill.findFirst({
+            where: {
+              brokerAccountId: String(payload?.accountId ?? params.accountId ?? "unknown"),
+              externalId: fillExternalId,
+            },
+            select: { id: true },
+          });
+
+          if (!exists) {
+            await db.fill.create({
+              data: {
+                brokerAccountId: String(payload?.accountId ?? params.accountId ?? "unknown"),
+                orderId: fillOrderId,
+                externalId: fillExternalId,
+                symbol: fillSymbol,
+                side: fillSide,
+                qty: fillQty,
+                price: fillPrice,
+              },
+            });
+          }
+        } else {
+          // No externalId available – just write it (worst case: duplicates)
+          await db.fill.create({
+            data: {
+              brokerAccountId: String(payload?.accountId ?? params.accountId ?? "unknown"),
+              orderId: fillOrderId,
+              externalId: null,
+              symbol: fillSymbol,
+              side: fillSide,
+              qty: fillQty,
+              price: fillPrice,
+            },
+          });
+        }
+      } catch (e) {
+        console.warn("[projectx-user] FILL_CREATE_FAILED (non-fatal)", {
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+
       await db.eventLog.create({
         data: {
           type: "user.trade",
