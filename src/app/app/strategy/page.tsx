@@ -212,11 +212,7 @@ export default function StrategyPage() {
           setErr={setErr}
         />
 
-        <PositionSizingCard
-          current={current}
-          saving={saving}
-          patchStrategySettings={patchStrategySettings}
-        />
+        <PositionSizingCard current={current} />
 
         <SafetyLimitsCard
           current={current}
