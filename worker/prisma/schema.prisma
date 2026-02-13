@@ -17,6 +17,7 @@ model UserProfile {
   brokerAccounts BrokerAccount[]
   userState      UserTradingState?
   onboardingNotificationsDone Boolean @default(false)
+  notificationPrefs NotificationPreferences?
 }
 
 model BrokerAccount {
@@ -338,10 +339,121 @@ enum OrderStatus {
   REJECTED
 }
 
+model StrategySignal {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Who / what
+  userId    String
+  strategy  String   // e.g. "coreplus315"
+  brokerName String? // optional, but useful for later
+  symbol    String
+  contractId String?
+
+  side      OrderSide
+
+  // Times (epoch seconds)
+  entryTime Int
+  fvgTime   Int
+
+  // Planned prices (optional but handy for chart overlays)
+  entryPrice       Decimal?
+  stopPrice        Decimal?
+  takeProfitPrice  Decimal?
+
+  // Risk math
+  stopTicks   Decimal?
+  tpTicks     Decimal?
+  rr          Decimal?
+  contracts   Int?
+  riskUsdPlanned Decimal?
+
+  // Outcome
+  status      StrategySignalStatus @default(DETECTED)
+  blockReason StrategyBlockReason?
+
+  // Link to execution when TAKEN
+  execKey     String?
+  executionId String?
+
+  // extra context (FVG top/bottom, retested, debug, bracket etc)
+  meta        Json?
+
+  // Deterministic idempotency key for “same signal”
+  signalKey   String   @unique
+
+  @@index([userId, createdAt])
+  @@index([userId, strategy, createdAt])
+  @@index([symbol, entryTime])
+  @@index([executionId])
+}
+
+enum StrategySignalStatus {
+  DETECTED
+  BLOCKED
+  TAKEN
+}
+
+enum StrategyBlockReason {
+  IN_TRADE
+  PAUSED
+  KILL_SWITCH
+  NOT_LIVE_CANDLE
+  INVALID_BRACKET
+  EXECUTION_FAILED
+
+  // Engine / near-miss reasons (new)
+  NO_ACTIVE_FVG
+  FVG_INVALID
+  FVG_ALREADY_TRADED
+  NOT_RETESTED
+  DIRECTION_MISMATCH
+  NO_EXPANSION_PATTERN
+  STOP_INVALID
+  STOP_TOO_BIG
+  CONTRACTS_ZERO
+}
+
+model NotificationPreferences {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String @unique
+  user   UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // WHAT (event-level preferences)
+  tradeClosedWins   Boolean @default(true)
+  tradeClosedLosses Boolean @default(true)
+  dailySummary      Boolean @default(false)
+  strategyStatus    Boolean @default(true)
+
+  // (Optional placeholders for later - we can add later if you prefer)
+  // tradeOpened Boolean @default(false)
+  // killSwitch  Boolean @default(true)
+
+  @@index([userId])
+}
+
+model ApnsPushDevice {
+  id          String   @id @default(cuid())
+  userId      String
+  deviceToken String   @unique
+  environment String   // "sandbox" | "production"
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+  deviceName  String?
+
+  @@index([userId])
+  @@index([environment])
+}
+
 model OneSignalPushSubscription {
   id             String   @id @default(cuid())
   userId         String
   subscriptionId String   @unique
+  onesignalId    String?  @unique
   createdAt      DateTime @default(now())
   lastSeenAt     DateTime @updatedAt
 
