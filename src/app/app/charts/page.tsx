@@ -71,34 +71,25 @@ export default async function ChartsPage() {
     },
   });
 
-
-  // Strategy Signals (last 24h) — ONLY real setup candidates (have SL/TP/contracts/risk) + TAKEN
+  // Strategy Signals (last 24h) — TAKEN + later-stage blocked candidates (NOT heartbeats)
   const rawSignals = await prisma.strategySignal.findMany({
     where: {
       createdAt: { gte: since },
+      OR: [
+        // TAKEN setups always included
+        { status: "TAKEN" },
 
-      AND: [
+        // BLOCKED but only later-stage reasons (filters out "heartbeat" style rows)
         {
-          OR: [
-            { status: "TAKEN" },
-            { status: "BLOCKED" },
-          ],
+          status: "BLOCKED",
+          blockReason: { in: [...LATE_STAGE_BLOCK_REASONS] },
         },
+      ],
 
-        // MUST have actual stop
-        {
-          stopTicks: { gt: 0 },
-        },
-
-        // MUST have actual TP
-        {
-          tpTicks: { gt: 0 },
-        },
-
-        // MUST have contracts
-        {
-          contracts: { gt: 0 },
-        },
+      // Extra safety: explicitly exclude the heartbeat reason if it exists in your data
+      NOT: [
+        { blockReason: "NO_ACTIVE_FVG" as any },
+        { blockReason: "HEARTBEAT" as any },
       ],
     },
     orderBy: { createdAt: "desc" },
