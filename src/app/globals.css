@@ -414,6 +414,62 @@ html.light .aura-table-header {
 }
 
 /* --------------------------------------------------
+   Aura table expand rows (details/summary)
+-------------------------------------------------- */
+
+.aura-details {
+  border-bottom: 1px solid var(--border);
+}
+
+.aura-details:last-child {
+  border-bottom: none;
+}
+
+.aura-summary {
+  list-style: none;
+}
+
+.aura-summary::-webkit-details-marker {
+  display: none;
+}
+
+.aura-expand {
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.08);
+  border-top: 1px solid var(--border);
+}
+
+html.light .aura-expand {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* Trade table columns */
+.aura-table-trades .aura-table-header,
+.aura-table-trades .aura-table-row {
+  grid-template-columns: 140px 90px 90px 90px 90px 1fr 120px;
+}
+
+@media (max-width: 900px) {
+  .aura-table-trades .aura-table-header,
+  .aura-table-trades .aura-table-row {
+    grid-template-columns: 1fr 90px 90px;
+  }
+}
+
+/* Signals table columns */
+.aura-table-signals .aura-table-header,
+.aura-table-signals .aura-table-row {
+  grid-template-columns: 140px 110px 80px 1fr 120px;
+}
+
+@media (max-width: 900px) {
+  .aura-table-signals .aura-table-header,
+  .aura-table-signals .aura-table-row {
+    grid-template-columns: 1fr 90px 90px;
+  }
+}
+
+/* --------------------------------------------------
    Aura health strip (System Status)
 -------------------------------------------------- */
 

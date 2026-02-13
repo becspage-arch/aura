@@ -147,147 +147,145 @@ export async function startProjectXUserFeed(params: {
       cacheExitPnlFromTrade(payload);
 
       // --- PERSIST FILL (8E.4) ---
-      // --- PERSIST FILL (8E.4) ---
       try {
-        // We must map ProjectX accountId -> BrokerAccount.id (FK)
+        // ProjectX accountId -> BrokerAccount.id (FK)
         const acctExternalId = toStr(payload?.accountId ?? params.accountId);
         if (!acctExternalId) {
           console.warn("[projectx-user] FILL_SKIPPED_NO_ACCOUNT_ID", {
             payloadAccountId: payload?.accountId,
             paramsAccountId: params.accountId,
           });
-        } else {
-          const brokerAccount = await db.brokerAccount.upsert({
+          return;
+        }
+
+        const brokerAccount = await db.brokerAccount.upsert({
+          where: {
+            brokerName_externalId: {
+              brokerName: "projectx",
+              externalId: acctExternalId,
+            },
+          },
+          create: {
+            userId: ident.userId,
+            brokerName: "projectx",
+            externalId: acctExternalId,
+            accountLabel: null,
+          },
+          update: {
+            userId: ident.userId,
+          },
+          select: { id: true },
+        });
+
+        // ProjectX fields (based on the EventLog payload you pasted)
+        const fillExternalId = toStr(payload?.id); // e.g. 2116125433 (trade/fill id)
+        const fillOrderExternalId = toStr(payload?.orderId ?? payload?.parentOrderId) ?? null;
+
+        const fillSymbol =
+          toStr(payload?.symbol) ??
+          toStr(payload?.contractId) ??
+          toStr(payload?.instrumentId) ??
+          "UNKNOWN";
+
+        // Side is numeric in your real payload (side: 1)
+        function normalizeSide(v: any): "BUY" | "SELL" {
+          if (typeof v === "number") return v === 1 ? "SELL" : "BUY";
+          const s = (toStr(v) ?? "").toLowerCase();
+          if (s.includes("sell") || s === "s" || s === "short") return "SELL";
+          return "BUY";
+        }
+        const fillSide = normalizeSide(payload?.side);
+
+        const fillQty = toNum(payload?.qty ?? payload?.quantity ?? payload?.size) ?? 0;
+
+        const fillPrice =
+          toNum(payload?.price) ??
+          toNum(payload?.fillPrice) ??
+          toNum(payload?.averagePrice) ??
+          0;
+
+        const filledAt =
+          payload?.creationTimestamp ? new Date(String(payload.creationTimestamp)) : null;
+
+        // Ensure we have an Order row to link to (by broker order id)
+        // NOTE: We do NOT pretend we know the intended qty here; we just store what we know from the fill.
+        let orderRow: { id: string } | null = null;
+        if (fillOrderExternalId) {
+          orderRow = await db.order.upsert({
             where: {
-              brokerName_externalId: {
-                brokerName: "projectx",
-                externalId: acctExternalId,
+              brokerAccountId_externalId: {
+                brokerAccountId: brokerAccount.id,
+                externalId: fillOrderExternalId,
               },
             },
             create: {
-              userId: ident.userId,
-              brokerName: "projectx",
-              externalId: acctExternalId,
-              accountLabel: null,
+              brokerAccountId: brokerAccount.id,
+              externalId: fillOrderExternalId,
+              symbol: fillSymbol,
+              side: fillSide,
+              type: "MARKET",
+              status: "NEW",
+              qty: fillQty,
+              price: null,
+              stopPrice: null,
+              filledQty: 0,
+              avgFillPrice: null,
             },
             update: {
-              // keep userId aligned just in case
-              userId: ident.userId,
+              symbol: fillSymbol,
+              side: fillSide,
             },
             select: { id: true },
           });
-
-          const fillOrderExternalId =
-            toStr(payload?.orderId ?? payload?.parentOrderId) ?? null;
-
-          const fillExternalId = toStr(payload?.id); // ProjectX trade/fill id
-
-          const fillSymbol =
-            toStr(payload?.symbol) ??
-            toStr(payload?.contractId) ??
-            toStr(payload?.instrumentId) ??
-            "UNKNOWN";
-
-          const sideRaw = (toStr(payload?.side) ?? "").toLowerCase();
-          const fillSide = sideRaw.includes("sell") ? "SELL" : "BUY";
-
-          const fillQty = toNum(payload?.qty ?? payload?.quantity ?? payload?.size) ?? 0;
-
-          const fillPrice =
-            toNum(payload?.price) ??
-            toNum(payload?.fillPrice) ??
-            toNum(payload?.averagePrice) ??
-            0;
-
-          // Create / upsert an Order row ONLY if we have a real broker order id.
-          // IMPORTANT: Fill.orderId must reference Order.id (internal), not the broker order id.
-          let orderRow: { id: string } | null = null;
-
-          if (fillOrderExternalId) {
-            orderRow = await db.order.upsert({
-              where: {
-                brokerAccountId_externalId: {
-                  brokerAccountId: brokerAccount.id,
-                  externalId: fillOrderExternalId,
-                },
-              },
-              create: {
-                brokerAccountId: brokerAccount.id,
-                externalId: fillOrderExternalId,
-                symbol: fillSymbol,
-                side: fillSide,
-                type: "MARKET",
-                status: "FILLED",
-                qty: fillQty,
-                price: null,
-                stopPrice: null,
-                filledQty: fillQty,
-                avgFillPrice: fillPrice,
-              },
-              update: {
-                symbol: fillSymbol,
-                side: fillSide,
-                status: "FILLED",
-                filledQty: fillQty,
-                avgFillPrice: fillPrice,
-              },
-              select: { id: true },
-            });
-          }
-
-          // Dedupe fill by (brokerAccountId, externalId) when possible
-          if (fillExternalId) {
-            const exists = await db.fill.findFirst({
-              where: {
-                brokerAccountId: brokerAccount.id,
-                externalId: fillExternalId,
-              },
-              select: { id: true },
-            });
-
-            if (!exists) {
-              await db.fill.create({
-                data: {
-                  brokerAccountId: brokerAccount.id,
-                  orderId: orderRow?.id ?? null,
-                  externalId: fillExternalId,
-                  symbol: fillSymbol,
-                  side: fillSide,
-                  qty: fillQty,
-                  price: fillPrice,
-                },
-              });
-
-              console.log("[projectx-user] FILL_CREATE_OK", {
-                brokerAccountId: brokerAccount.id,
-                externalId: fillExternalId,
-                orderExternalId: fillOrderExternalId ?? null,
-                orderRowId: orderRow?.id ?? null,
-              });
-            }
-          } else {
-            await db.fill.create({
-              data: {
-                brokerAccountId: brokerAccount.id,
-                orderId: orderRow?.id ?? null,
-                externalId: null,
-                symbol: fillSymbol,
-                side: fillSide,
-                qty: fillQty,
-                price: fillPrice,
-              },
-            });
-
-            console.log("[projectx-user] FILL_CREATE_OK", {
-              brokerAccountId: brokerAccount.id,
-              externalId: null,
-              orderExternalId: fillOrderExternalId ?? null,
-              orderRowId: orderRow?.id ?? null,
-            });
-          }
         }
+
+        // Idempotent fill write (no findFirst + create race)
+        if (!fillExternalId) {
+          console.warn("[projectx-user] FILL_SKIPPED_NO_EXTERNAL_ID", {
+            brokerAccountId: brokerAccount.id,
+            orderExternalId: fillOrderExternalId,
+            symbol: fillSymbol,
+          });
+          return;
+        }
+
+        await db.fill.upsert({
+          where: {
+            brokerAccountId_externalId: {
+              brokerAccountId: brokerAccount.id,
+              externalId: fillExternalId,
+            },
+          },
+          create: {
+            brokerAccountId: brokerAccount.id,
+            orderId: orderRow?.id ?? null,
+            externalId: fillExternalId,
+            symbol: fillSymbol,
+            side: fillSide,
+            qty: fillQty,
+            price: fillPrice,
+            filledAt,
+          },
+          update: {
+            // keep linkage updated if we learned Order later
+            orderId: orderRow?.id ?? undefined,
+            symbol: fillSymbol,
+            side: fillSide,
+            qty: fillQty,
+            price: fillPrice,
+            filledAt,
+          },
+        });
+
+        console.log("[projectx-user] FILL_UPSERT_OK", {
+          brokerAccountId: brokerAccount.id,
+          externalId: fillExternalId,
+          orderExternalId: fillOrderExternalId ?? null,
+          orderRowId: orderRow?.id ?? null,
+          filledAt: filledAt ? filledAt.toISOString() : null,
+        });
       } catch (e) {
-        console.warn("[projectx-user] FILL_CREATE_FAILED (non-fatal)", {
+        console.warn("[projectx-user] FILL_UPSERT_FAILED (non-fatal)", {
           err: e instanceof Error ? e.message : String(e),
         });
       }

@@ -63,6 +63,10 @@ model Order {
 model Fill {
   id              String        @id @default(cuid())
   createdAt       DateTime      @default(now())
+
+  // Timestamp from broker payload (e.g. creationTimestamp)
+  filledAt        DateTime?
+
   brokerAccountId String
   orderId         String?
   externalId      String?
@@ -70,12 +74,14 @@ model Fill {
   side            OrderSide
   qty             Decimal
   price           Decimal
+
   brokerAccount   BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
   order           Order?        @relation(fields: [orderId], references: [id])
 
   @@unique([brokerAccountId, externalId])
   @@index([brokerAccountId, createdAt])
   @@index([symbol, createdAt])
+  @@index([filledAt])
 }
 
 model Execution {
