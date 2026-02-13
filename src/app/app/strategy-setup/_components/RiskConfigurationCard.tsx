@@ -1,4 +1,4 @@
-// src/app/app/strategy/_components/RiskConfigurationCard.tsx
+﻿// src/app/app/strategy-setup/_components/RiskConfigurationCard.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -145,8 +145,8 @@ export function RiskConfigurationCard({
 
         <div className="aura-muted aura-text-xs">
           {current
-            ? `Current: $${current.riskUsd} • RR ${current.rr} • Max stop ${current.maxStopTicks} ticks`
-            : "—"}
+            ? `Current: $${current.riskUsd} â€¢ RR ${current.rr} â€¢ Max stop ${current.maxStopTicks} ticks`
+            : "â€”"}
         </div>
       </div>
 
@@ -227,7 +227,7 @@ export function RiskConfigurationCard({
             onClick={applyRisk}
             disabled={disabled || !dirtyRisk}
           >
-            {saving ? "Saving…" : "Apply"}
+            {saving ? "Savingâ€¦" : "Apply"}
           </button>
         </div>
 
@@ -239,3 +239,4 @@ export function RiskConfigurationCard({
     </section>
   );
 }
+

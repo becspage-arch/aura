@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -77,8 +77,8 @@ export function StrategyConfigSummaryCard() {
   const symbols = useMemo(() => cfg?.symbols?.filter(Boolean) ?? [], [cfg]);
   const sessions = useMemo(() => sessionList(cfg?.sessions), [cfg]);
 
-  const preset = cfg?.preset ?? "—";
-  const mode = cfg?.mode ?? "—";
+  const preset = cfg?.preset ?? "â€”";
+  const mode = cfg?.mode ?? "â€”";
 
   return (
     <section className="aura-card">
@@ -90,8 +90,8 @@ export function StrategyConfigSummaryCard() {
           </p>
         </div>
 
-        <Link href="/app/strategy" className="aura-btn aura-btn-subtle">
-          Edit Strategy →
+        <Link href="/app/strategy-setup" className="aura-btn aura-btn-subtle">
+          Edit Strategy â†’
         </Link>
       </div>
 
@@ -104,40 +104,41 @@ export function StrategyConfigSummaryCard() {
 
       <div className="aura-mt-12">
         <div className="aura-muted aura-text-xs">
-          {loading ? "Loading…" : `${preset} • ${String(mode).toUpperCase()}`}
+          {loading ? "Loadingâ€¦" : `${preset} â€¢ ${String(mode).toUpperCase()}`}
         </div>
 
         <div className="aura-mt-12 aura-grid-4">
           <div className="aura-card-muted">
             <div className="aura-stat-label">Risk</div>
-            <div className="aura-mini-value">{loading || !cfg ? "—" : `$${cfg.riskUsd}`}</div>
+            <div className="aura-mini-value">{loading || !cfg ? "â€”" : `$${cfg.riskUsd}`}</div>
             <div className="aura-stat-sub">Max risk per trade</div>
           </div>
 
           <div className="aura-card-muted">
             <div className="aura-stat-label">RR</div>
-            <div className="aura-mini-value">{loading || !cfg ? "—" : `${cfg.rr}R`}</div>
+            <div className="aura-mini-value">{loading || !cfg ? "â€”" : `${cfg.rr}R`}</div>
             <div className="aura-stat-sub">Reward to risk</div>
           </div>
 
           <div className="aura-card-muted">
             <div className="aura-stat-label">Max Stop</div>
-            <div className="aura-mini-value">{loading || !cfg ? "—" : `${cfg.maxStopTicks}t`}</div>
+            <div className="aura-mini-value">{loading || !cfg ? "â€”" : `${cfg.maxStopTicks}t`}</div>
             <div className="aura-stat-sub">Ticks</div>
           </div>
 
           <div className="aura-card-muted">
             <div className="aura-stat-label">Sessions</div>
-            <div className="aura-mini-value">{loading ? "—" : sessions.length ? sessions.join(", ") : "—"}</div>
+            <div className="aura-mini-value">{loading ? "â€”" : sessions.length ? sessions.join(", ") : "â€”"}</div>
             <div className="aura-stat-sub">When Aura can trade</div>
           </div>
         </div>
 
         <div className="aura-mt-12 aura-muted aura-text-xs">
-          Symbols: {loading ? "…" : symbols.length ? symbols.join(", ") : "—"} • Entry:{" "}
-          {loading ? "…" : cfg ? String(cfg.entryType) : "—"}
+          Symbols: {loading ? "â€¦" : symbols.length ? symbols.join(", ") : "â€”"} â€¢ Entry:{" "}
+          {loading ? "â€¦" : cfg ? String(cfg.entryType) : "â€”"}
         </div>
       </div>
     </section>
   );
 }
+

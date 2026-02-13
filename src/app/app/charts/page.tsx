@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import { currentUser } from "@clerk/nextjs/server";
 import { TradingChart } from "@/components/charts/TradingChart";
@@ -39,7 +39,7 @@ export default async function ChartsPage() {
         <div className="aura-row-between">
           <div className="aura-card-title">Live Chart</div>
           <div className="aura-muted aura-text-xs">
-            Channel: {channelName} • Symbol: {symbol}
+            Channel: {channelName} â€¢ Symbol: {symbol}
           </div>
         </div>
 
@@ -52,8 +52,8 @@ export default async function ChartsPage() {
       <section className="aura-card">
         <div className="aura-group-header">
           <div className="aura-group-title">Last 24 Hours</div>
-          <a href="/app/trades" className="aura-link aura-text-xs">
-            View full report →
+          <a href="/app/reports" className="aura-link aura-text-xs">
+            View full report â†’
           </a>
         </div>
 
@@ -107,3 +107,4 @@ export default async function ChartsPage() {
     </div>
   );
 }
+

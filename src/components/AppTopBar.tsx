@@ -1,4 +1,4 @@
-// src/components/AppTopBar.tsx
+﻿// src/components/AppTopBar.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -14,17 +14,16 @@ type PauseGetResponse = {
 };
 
 function titleFromPath(pathname: string) {
-  // Normalize: remove trailing slash
   const p =
     pathname.endsWith("/") && pathname !== "/" ? pathname.slice(0, -1) : pathname;
 
-  // Order matters (more specific first)
   if (p === "/app") return "Dashboard";
-  if (p.startsWith("/app/live-control")) return "Live Control";
-  if (p.startsWith("/app/strategy")) return "Strategy";
-  if (p.startsWith("/app/trades")) return "Trades & Logs";
-  if (p.startsWith("/app/settings")) return "Settings";
-  if (p.startsWith("/app/audit")) return "Audit";
+  if (p.startsWith("/app/live-trading")) return "Live Trading";
+  if (p.startsWith("/app/charts")) return "Charts";
+  if (p.startsWith("/app/strategy-setup")) return "Strategy Setup";
+  if (p.startsWith("/app/reports")) return "Reports";
+  if (p.startsWith("/app/account")) return "Account";
+  if (p.startsWith("/app/activity")) return "Activity";
   if (p.startsWith("/app/profile")) return "Profile";
 
   return "Aura";
@@ -42,9 +41,7 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(
-      `${res.status} ${res.statusText}${text ? ` - ${text}` : ""}`
-    );
+    throw new Error(`${res.status} ${res.statusText}${text ? ` - ${text}` : ""}`);
   }
 
   return (await res.json()) as T;
@@ -60,7 +57,6 @@ export function AppTopBar() {
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [isKillSwitched, setIsKillSwitched] = useState<boolean>(false);
 
-  // Initial fetch (so it renders correctly on first load / refresh)
   useEffect(() => {
     let cancelled = false;
 
@@ -71,7 +67,7 @@ export function AppTopBar() {
         setIsPaused(!!res.isPaused);
         setIsKillSwitched(!!res.isKillSwitched);
       } catch {
-        // If endpoint isn’t available for some reason, don’t break the UI.
+        // don't break UI if endpoint unavailable
       }
     })();
 
@@ -80,7 +76,6 @@ export function AppTopBar() {
     };
   }, []);
 
-  // Realtime updates (instant when Run/Pause/Kill changes)
   useEffect(() => {
     if (!isLoaded) return;
     const clerkUserId = user?.id;
@@ -89,8 +84,6 @@ export function AppTopBar() {
     const statusChannelName = `user:${clerkUserId}`;
 
     const unsubscribeStatus = subscribeUserChannel(statusChannelName, (item) => {
-      // You publish: publishToUser(clerkUserId, "status_update", {...})
-      // So item.name should be "status_update"
       if (item.name !== "status_update") return;
 
       const data = (item.event as any)?.data ?? {};
@@ -103,7 +96,7 @@ export function AppTopBar() {
     };
   }, [isLoaded, user?.id]);
 
-  const statusLabel = isKillSwitched ? "KILL SWITCH" : isPaused ? "PAUSED" : "RUNNING";
+  const statusLabel = isKillSwitched ? "EMERGENCY STOP" : isPaused ? "PAUSED" : "RUNNING";
   const statusIcon = isKillSwitched ? "⛔" : isPaused ? "❚❚" : "▶";
 
   const statusClass = isKillSwitched
@@ -124,11 +117,11 @@ export function AppTopBar() {
           className={statusClass}
           onClick={() => {
             const ok = window.confirm(
-              "Run/Pause controls live on the Live Control page.\n\nGo there now?"
+              "Run/Pause controls are on the Live Trading page.\n\nGo there now?"
             );
-            if (ok) router.push("/app/live-control");
+            if (ok) router.push("/app/live-trading");
           }}
-          title="Open Live Control"
+          title="Open Live Trading"
         >
           <span className="aura-topbar__stateIcon" aria-hidden="true">
             {statusIcon}

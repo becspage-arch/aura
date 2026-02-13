@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
@@ -13,7 +13,7 @@ export default function CopyTradingPage() {
           </p>
         </div>
 
-        <Link href="/app/settings" className="aura-pill aura-link">
+        <Link href="/app/account" className="aura-pill aura-link">
           Back to Settings
         </Link>
       </div>
@@ -41,10 +41,10 @@ export default function CopyTradingPage() {
           <div className="aura-card-muted aura-control-row">
             <div className="aura-control-meta">
               <div className="aura-control-title">Select master account</div>
-              <div className="aura-control-help">This account’s fills are copied to followers.</div>
+              <div className="aura-control-help">This accountâ€™s fills are copied to followers.</div>
             </div>
             <div className="aura-control-right">
-              <span className="aura-select-pill">—</span>
+              <span className="aura-select-pill">â€”</span>
             </div>
           </div>
 
@@ -121,7 +121,7 @@ export default function CopyTradingPage() {
           <div className="aura-card-muted aura-control-row">
             <div className="aura-control-meta">
               <div className="aura-control-title">Symbol mapping</div>
-              <div className="aura-control-help">Map symbols per broker if needed (e.g., MGC ↔ GC).</div>
+              <div className="aura-control-help">Map symbols per broker if needed (e.g., MGC â†” GC).</div>
             </div>
             <div className="aura-control-right">
               <span className="aura-select-pill">Same symbol only (placeholder)</span>
@@ -144,7 +144,7 @@ export default function CopyTradingPage() {
               <div className="aura-control-help">Caps contracts per follower.</div>
             </div>
             <div className="aura-control-right">
-              <span className="aura-select-pill">—</span>
+              <span className="aura-select-pill">â€”</span>
             </div>
           </div>
 
@@ -154,7 +154,7 @@ export default function CopyTradingPage() {
               <div className="aura-control-help">Auto-pause follower routing if hit.</div>
             </div>
             <div className="aura-control-right">
-              <span className="aura-select-pill">—</span>
+              <span className="aura-select-pill">â€”</span>
             </div>
           </div>
 
@@ -180,3 +180,4 @@ export default function CopyTradingPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-// src/app/app/settings/page.tsx
+﻿// src/app/app/account/page.tsx
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
@@ -13,11 +13,11 @@ export default function SettingsPage() {
       <div>
         <p className="aura-page-subtitle">
           Manage broker connections, notifications, safety caps, copy trading, and account preferences. Note your Strategy rules live in{" "}
-          <Link href="/app/strategy" className="aura-link aura-pill">
+          <Link href="/app/strategy-setup" className="aura-link aura-pill">
             Strategy
           </Link>
           . Your Live execution and charts live in{" "}
-          <Link href="/app/live-control" className="aura-link aura-pill">
+          <Link href="/app/live-trading" className="aura-link aura-pill">
             Live Control
           </Link>
           .
@@ -65,7 +65,7 @@ export default function SettingsPage() {
                 Trades originate here and are copied to followers.
               </div>
             </div>
-            <span className="aura-select-pill">—</span>
+            <span className="aura-select-pill">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-control-row aura-disabled">
@@ -120,10 +120,10 @@ export default function SettingsPage() {
             <div className="aura-control-meta">
               <div className="aura-control-title">Default broker account</div>
               <div className="aura-control-help">
-                Used if Live Control hasn’t selected an account.
+                Used if Live Control hasnâ€™t selected an account.
               </div>
             </div>
-            <span className="aura-select-pill">—</span>
+            <span className="aura-select-pill">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-control-row">
@@ -150,7 +150,7 @@ export default function SettingsPage() {
           <div>
             <div className="aura-control-title">What to notify you about</div>
             <div className="aura-control-help">
-              Pick the notifications you want. (We’ll wire these to saved preferences next.)
+              Pick the notifications you want. (Weâ€™ll wire these to saved preferences next.)
             </div>
 
             <NotificationPreferences />
@@ -209,7 +209,7 @@ export default function SettingsPage() {
                 <div className="aura-control-meta">
                   <div className="aura-control-title">Email</div>
                   <div className="aura-control-help">
-                    Test sending now. (We’ll add preferences + daily/session summaries next.)
+                    Test sending now. (Weâ€™ll add preferences + daily/session summaries next.)
                   </div>
                 </div>
 
@@ -235,7 +235,7 @@ export default function SettingsPage() {
                 Aura pauses automatically if reached.
               </div>
             </div>
-            <span className="aura-select-pill">—</span>
+            <span className="aura-select-pill">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-control-row">
@@ -245,7 +245,7 @@ export default function SettingsPage() {
                 Aura pauses automatically if reached.
               </div>
             </div>
-            <span className="aura-select-pill">—</span>
+            <span className="aura-select-pill">â€”</span>
           </div>
         </div>
       </section>
@@ -280,3 +280,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

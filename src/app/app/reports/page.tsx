@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
@@ -51,7 +51,7 @@ export default function TradesAndLogsPage() {
 
           {/* Clickable placeholder rows */}
           {PLACEHOLDER_TRADES.map((t) => (
-            <Link key={t.id} href={`/app/trades/${t.id}`} className="aura-link">
+            <Link key={t.id} href={`/app/reports/${t.id}`} className="aura-link">
               <div className="aura-table-row aura-row-link" role="row" aria-label={`Open trade ${t.id}`}>
                 <div className="aura-skel aura-w-70" />
                 <div className="aura-skel aura-w-55" />
@@ -78,12 +78,12 @@ export default function TradesAndLogsPage() {
         <div className="aura-mt-12 aura-grid-gap-10">
           <div className="aura-card-muted aura-row-between">
             <span>Orders</span>
-            <span className="aura-muted">—</span>
+            <span className="aura-muted">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-row-between">
             <span>Fills</span>
-            <span className="aura-muted">—</span>
+            <span className="aura-muted">â€”</span>
           </div>
         </div>
 
@@ -99,17 +99,17 @@ export default function TradesAndLogsPage() {
         <div className="aura-mt-12 aura-grid-gap-10">
           <div className="aura-card-muted aura-row-between">
             <span>Date range</span>
-            <span className="aura-muted">—</span>
+            <span className="aura-muted">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-row-between">
             <span>Symbol</span>
-            <span className="aura-muted">—</span>
+            <span className="aura-muted">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-row-between">
             <span>Session</span>
-            <span className="aura-muted">—</span>
+            <span className="aura-muted">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-row-between">
@@ -164,3 +164,4 @@ export default function TradesAndLogsPage() {
     </div>
   );
 }
+

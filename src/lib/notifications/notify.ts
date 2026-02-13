@@ -1,4 +1,4 @@
-// src/lib/notifications/notify.ts
+﻿// src/lib/notifications/notify.ts
 
 import type { PrismaClient } from "@prisma/client";
 import type { NotificationEvent } from "./events";
@@ -58,7 +58,7 @@ function fmtMoneyNoCents(v: number) {
 }
 
 function fmtPrice(v: number) {
-  return Number.isFinite(v) ? v.toFixed(2) : "—";
+  return Number.isFinite(v) ? v.toFixed(2) : "â€”";
 }
 
 function londonStamp(iso: string) {
@@ -88,7 +88,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   }
 
   // -----------------------------
-  // Trade closed → In-app + Push + Email (polished)
+  // Trade closed â†’ In-app + Push + Email (polished)
   // -----------------------------
   if (event.type === "trade_closed") {
     const prefs = await getNotificationPrefs(prisma, event.userId);
@@ -107,17 +107,17 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
 
     const body =
       event.result === "win"
-        ? `🟢 WIN ${sign0}$${Math.abs(pnl).toFixed(0)} on ${event.symbol}`
+        ? `ðŸŸ¢ WIN ${sign0}$${Math.abs(pnl).toFixed(0)} on ${event.symbol}`
         : event.result === "loss"
-        ? `🔴 LOSS -$${Math.abs(pnl).toFixed(0)} on ${event.symbol}`
-        : `⚪️ BREAKEVEN $0 on ${event.symbol}`;
+        ? `ðŸ”´ LOSS -$${Math.abs(pnl).toFixed(0)} on ${event.symbol}`
+        : `âšªï¸ BREAKEVEN $0 on ${event.symbol}`;
 
     await publishInAppNotification(event.userId, {
       type: "trade_closed",
       title,
       body,
       ts: event.ts,
-      deepLink: `/app/trades/${event.tradeId}`,
+      deepLink: `/app/reports/${event.tradeId}`,
     });
 
     // Push notification
@@ -144,7 +144,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       });
 
       const appOrigin = "https://tradeaura.net";
-      const viewUrl = `${appOrigin}/app/trades/${event.tradeId}`;
+      const viewUrl = `${appOrigin}/app/reports/${event.tradeId}`;
 
       const pnlUsd = Number(
         (trade?.realizedPnlUsd as any)?.toNumber?.() ??
@@ -180,7 +180,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
         event.ts ??
         new Date().toISOString();
 
-      const subject = `Aura – ${badgeText} on ${symbol} • ${fmtMoneyNoCents(pnlUsd)}`;
+      const subject = `Aura â€“ ${badgeText} on ${symbol} â€¢ ${fmtMoneyNoCents(pnlUsd)}`;
 
       const html = renderAuraEmail({
         preheader: `Aura trade closed: ${badgeText} ${fmtMoneyNoCents(pnlUsd)} on ${symbol}.`,
@@ -193,7 +193,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
         topRightText: fmtMoney(pnlUsd),
 
         title: `${direction} ${qty ? `${qty}x ` : ""}${symbol}`,
-        subtitle: `Entry ${fmtPrice(entryPx)} • Exit ${fmtPrice(exitPx)}`,
+        subtitle: `Entry ${fmtPrice(entryPx)} â€¢ Exit ${fmtPrice(exitPx)}`,
 
         rows: [
           { label: "Opened", value: londonStamp(openedAtIso) },
@@ -209,7 +209,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
         },
 
         footerLine1:
-          "You’re receiving this because trade notifications are enabled for your Aura account.",
+          "Youâ€™re receiving this because trade notifications are enabled for your Aura account.",
       });
 
       await sendEmail({ to: toEmail, subject, html });
@@ -217,10 +217,10 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   }
 
   // -----------------------------
-  // Trade opened → In-app only
+  // Trade opened â†’ In-app only
   // -----------------------------
   if (event.type === "trade_opened") {
-    const dir = event.direction === "long" ? "🟦 ENTERED LONG" : "🟥 ENTERED SHORT";
+    const dir = event.direction === "long" ? "ðŸŸ¦ ENTERED LONG" : "ðŸŸ¥ ENTERED SHORT";
     const px = typeof event.entryPrice === "number" ? ` @ ${event.entryPrice}` : "";
 
     const title = "Aura - Trade Opened";
@@ -231,12 +231,12 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       title,
       body,
       ts: event.ts,
-      deepLink: `/app/trades/${event.tradeId}`,
+      deepLink: `/app/reports/${event.tradeId}`,
     });
   }
 
   // -----------------------------
-  // Session summary → Email (later - emitted from worker)
+  // Session summary â†’ Email (later - emitted from worker)
   // -----------------------------
   if (event.type === "session_summary") {
     // v1: handled by sendEmailSessionSummary in src/lib/notifications/email.ts
@@ -267,3 +267,4 @@ async function tryCreateNotificationLog(args: {
     throw err;
   }
 }
+

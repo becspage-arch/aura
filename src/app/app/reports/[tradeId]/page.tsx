@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
@@ -17,7 +17,7 @@ export default async function TradeDetailPage({ params }: PageProps) {
           <p className="aura-page-subtitle">Trade ID: {tradeId}</p>
         </div>
 
-        <Link href="/app/trades" className="aura-pill aura-link">
+        <Link href="/app/reports" className="aura-pill aura-link">
           Back to Trades
         </Link>
       </div>
@@ -28,27 +28,27 @@ export default async function TradeDetailPage({ params }: PageProps) {
         <div className="aura-mt-12 aura-grid-gap-10">
           <div className="aura-row-between">
             <span className="aura-muted">Symbol</span>
-            <span>—</span>
+            <span>â€”</span>
           </div>
           <div className="aura-row-between">
             <span className="aura-muted">Side</span>
-            <span>—</span>
+            <span>â€”</span>
           </div>
           <div className="aura-row-between">
             <span className="aura-muted">Entry</span>
-            <span>—</span>
+            <span>â€”</span>
           </div>
           <div className="aura-row-between">
             <span className="aura-muted">Stop</span>
-            <span>—</span>
+            <span>â€”</span>
           </div>
           <div className="aura-row-between">
             <span className="aura-muted">Target</span>
-            <span>—</span>
+            <span>â€”</span>
           </div>
           <div className="aura-row-between">
             <span className="aura-muted">Result</span>
-            <span>—</span>
+            <span>â€”</span>
           </div>
         </div>
       </section>
@@ -131,7 +131,7 @@ export default async function TradeDetailPage({ params }: PageProps) {
         </div>
 
         <p className="aura-muted aura-text-xs aura-mt-10">
-          This will show the full sequence of events: signal → order submitted → fills → exits → any pauses or errors.
+          This will show the full sequence of events: signal â†’ order submitted â†’ fills â†’ exits â†’ any pauses or errors.
         </p>
       </section>
 
@@ -157,3 +157,4 @@ export default async function TradeDetailPage({ params }: PageProps) {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-// src/app/app/strategy/page.tsx
+﻿// src/app/app/strategy-setup/page.tsx
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -28,7 +28,7 @@ export default function StrategyPage() {
   const [err, setErr] = useState<string | null>(null);
   const [current, setCurrent] = useState<StrategySettings | null>(null);
 
-  // collapsed by default (we’ll persist per-user in the NEXT step)
+  // collapsed by default (weâ€™ll persist per-user in the NEXT step)
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // Runtime state
@@ -138,14 +138,14 @@ export default function StrategyPage() {
                 Key settings snapshot.
               </div>
             </div>
-            <div className="aura-muted aura-text-xs">{loading ? "Loading…" : " "}</div>
+            <div className="aura-muted aura-text-xs">{loading ? "Loadingâ€¦" : " "}</div>
           </div>
 
           <div className="aura-mt-12 aura-health-strip">
             <div className="aura-health-pill aura-health-pill--static">
               <span className="aura-health-key">Symbol(s)</span>
               <span className="aura-health-val">
-                {current?.symbols?.length ? current.symbols.join(", ") : "—"}
+                {current?.symbols?.length ? current.symbols.join(", ") : "â€”"}
               </span>
             </div>
 
@@ -159,15 +159,15 @@ export default function StrategyPage() {
                       current.sessions.ny ? "NY" : null,
                     ]
                       .filter(Boolean)
-                      .join(", ") || "—"
-                  : "—"}
+                      .join(", ") || "â€”"
+                  : "â€”"}
               </span>
             </div>
 
             <div className="aura-health-pill aura-health-pill--static">
               <span className="aura-health-key">Risk</span>
               <span className="aura-health-val">
-                {current ? `$${current.riskUsd} • RR ${current.rr}` : "—"}
+                {current ? `$${current.riskUsd} â€¢ RR ${current.rr}` : "â€”"}
               </span>
             </div>
 
@@ -233,7 +233,7 @@ export default function StrategyPage() {
                 </div>
               </div>
               <span className="aura-advanced-chevron">
-                {advancedOpen ? "−" : "+"}
+                {advancedOpen ? "âˆ’" : "+"}
               </span>
             </div>
 
@@ -259,3 +259,4 @@ export default function StrategyPage() {
     </div>
   );
 }
+

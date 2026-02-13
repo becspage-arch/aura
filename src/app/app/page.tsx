@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
@@ -7,42 +7,39 @@ import { getDashboardInitialData } from "@/lib/dashboard/server";
 import { DashboardProvider } from "@/components/dashboard/DashboardStore";
 import DashboardView from "@/components/dashboard/DashboardView";
 
+function ShellHeader({ right }: { right: React.ReactNode }) {
+  return (
+    <header className="mx-auto flex max-w-5xl items-center justify-between rounded-xl px-4 py-3 aura-card">
+      <Link href="/" className="text-sm font-medium aura-link">
+        Aura
+      </Link>
+      <nav className="flex items-center gap-3 text-sm">{right}</nav>
+    </header>
+  );
+}
+
 export default async function AppHome() {
   const user = await currentUser();
 
-  // If someone hits /app unauthenticated, give them a way out
   if (!user) {
     return (
-      <main
-        className="min-h-screen p-6"
-        style={{ background: "var(--background)", color: "var(--foreground)" }}
-      >
-        <header
-          className="mx-auto flex max-w-5xl items-center justify-between rounded-xl px-4 py-3"
-          style={{
-            border: "1px solid var(--border)",
-            background: "var(--card)",
-            color: "var(--card-foreground)",
-          }}
-        >
-          <Link href="/" className="text-sm font-medium">
-            Aura
-          </Link>
-          <nav className="flex items-center gap-3 text-sm">
-            <Link href="/sign-in" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
-              Sign in
-            </Link>
-            <Link href="/sign-up" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
-              Sign up
-            </Link>
-          </nav>
-        </header>
+      <main className="min-h-screen p-6">
+        <ShellHeader
+          right={
+            <>
+              <Link href="/sign-in" className="aura-link aura-muted hover:underline">
+                Sign in
+              </Link>
+              <Link href="/sign-up" className="aura-link aura-muted hover:underline">
+                Sign up
+              </Link>
+            </>
+          }
+        />
 
-        <div className="mx-auto mt-10 max-w-5xl" style={{ color: "var(--muted-foreground)" }}>
-          <h1 className="text-2xl font-semibold" style={{ color: "var(--foreground)" }}>
-            Welcome to Aura
-          </h1>
-          <p className="mt-2">Please sign in to view your dashboard.</p>
+        <div className="mx-auto mt-10 max-w-5xl">
+          <h1 className="text-2xl font-semibold">Welcome to Aura</h1>
+          <p className="mt-2 aura-muted">Please sign in to view your dashboard.</p>
         </div>
       </main>
     );
@@ -54,8 +51,7 @@ export default async function AppHome() {
       ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()
       : user.username ?? null;
 
-  // IMPORTANT: keep the returned profile so we have profile.id + any userState
-  const profile = await ensureUserProfile({
+  await ensureUserProfile({
     clerkUserId: user.id,
     email,
     displayName,
@@ -63,54 +59,31 @@ export default async function AppHome() {
 
   let initialDb: any;
   try {
-    // If your getDashboardInitialData expects profile.id, this is correct.
-    // If it expects clerkUserId, change profile.id -> user.id.
     initialDb = await getDashboardInitialData(user.id);
   } catch (e) {
     return (
-      <main
-        className="min-h-screen p-6"
-        style={{ background: "var(--background)", color: "var(--foreground)" }}
-      >
-        <header
-          className="mx-auto flex max-w-5xl items-center justify-between rounded-xl px-4 py-3"
-          style={{
-            border: "1px solid var(--border)",
-            background: "var(--card)",
-            color: "var(--card-foreground)",
-          }}
-        >
-          <Link href="/" className="text-sm font-medium">
-            Aura
-          </Link>
-          <nav className="flex items-center gap-3 text-sm">
-            <Link href="/app" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
-              Dashboard
-            </Link>
-            <Link href="/app/audit" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
-              Audit
-            </Link>
-            <Link href="/sign-out" className="hover:underline" style={{ color: "var(--muted-foreground)" }}>
-              Sign out
-            </Link>
-          </nav>
-        </header>
+      <main className="min-h-screen p-6">
+        <ShellHeader
+          right={
+            <>
+              <Link href="/app" className="aura-link aura-muted hover:underline">
+                Dashboard
+              </Link>
+              <Link href="/app/activity" className="aura-link aura-muted hover:underline">
+                Activity
+              </Link>
+              <Link href="/sign-out" className="aura-link aura-muted hover:underline">
+                Sign out
+              </Link>
+            </>
+          }
+        />
 
         <div className="mx-auto mt-10 max-w-5xl">
-          <h1 className="text-2xl font-semibold" style={{ color: "var(--foreground)" }}>
-            Welcome to Aura
-          </h1>
-          <p className="mt-2" style={{ color: "var(--muted-foreground)" }}>
-            Could not load dashboard data.
-          </p>
-          <pre
-            className="mt-4 overflow-auto rounded-lg p-4 text-xs"
-            style={{
-              border: "1px solid var(--border)",
-              background: "var(--card)",
-              color: "var(--card-foreground)",
-            }}
-          >
+          <h1 className="text-2xl font-semibold">Welcome to Aura</h1>
+          <p className="mt-2 aura-muted">Could not load dashboard data.</p>
+
+          <pre className="mt-4 overflow-auto rounded-lg p-4 text-xs aura-card">
             {e instanceof Error ? e.message : "Unknown error"}
           </pre>
         </div>
@@ -118,7 +91,6 @@ export default async function AppHome() {
     );
   }
 
-  // Be defensive about the shape so TS/build doesn't break
   const accounts = (initialDb?.accounts ?? initialDb?.brokerAccounts ?? []) as any[];
   const orders = (initialDb?.orders ?? []) as any[];
   const fills = (initialDb?.fills ?? []) as any[];
@@ -188,8 +160,7 @@ export default async function AppHome() {
   };
 
   return (
-    <div style={{ background: "var(--background)", color: "var(--foreground)", minHeight: "100vh" }}>
-
+    <div className="min-h-screen">
       <div className="mx-auto max-w-6xl px-6 pb-10">
         <DashboardProvider initial={initial as any}>
           <DashboardView clerkUserId={user.id} />

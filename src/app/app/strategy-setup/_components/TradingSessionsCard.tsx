@@ -1,4 +1,4 @@
-// src/app/app/strategy/_components/TradingSessionsCard.tsx
+﻿// src/app/app/strategy-setup/_components/TradingSessionsCard.tsx
 "use client";
 
 import type { StrategyPostResponse, StrategySettings } from "../_lib/types";
@@ -22,7 +22,7 @@ export function TradingSessionsCard({
   setErr,
 }: Props) {
   const summary = saving
-    ? "Saving…"
+    ? "Savingâ€¦"
     : current
     ? [
         current.sessions.asia ? "Asia" : null,
@@ -31,7 +31,7 @@ export function TradingSessionsCard({
       ]
         .filter(Boolean)
         .join(", ") || "None selected"
-    : "—";
+    : "â€”";
 
   return (
     <section className="aura-card">
@@ -110,3 +110,4 @@ export function TradingSessionsCard({
     </section>
   );
 }
+

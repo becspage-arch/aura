@@ -1,4 +1,4 @@
-// src/lib/notifications/inApp.ts
+﻿// src/lib/notifications/inApp.ts
 
 import Ably from "ably";
 
@@ -25,7 +25,7 @@ export type InAppNotificationPayload = {
   title: string;
   body: string;
   ts: string; // ISO
-  deepLink?: string; // e.g. /app/trades/:id
+  deepLink?: string; // e.g. /app/reports/:id
 };
 
 export async function publishInAppNotification(userId: string, payload: InAppNotificationPayload) {
@@ -34,3 +34,4 @@ export async function publishInAppNotification(userId: string, payload: InAppNot
 
   await channel.publish("notification", payload);
 }
+

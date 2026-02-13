@@ -1,4 +1,4 @@
-// src/app/app/strategy/_components/SafetyLimitsCard.tsx
+﻿// src/app/app/strategy-setup/_components/SafetyLimitsCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -96,7 +96,7 @@ export function SafetyLimitsCard({ current, saving, patchStrategySettings }: Pro
   };
 
   const summary = (() => {
-    if (!current) return "—";
+    if (!current) return "â€”";
     const loss =
       current.safety.maxDailyLossUsd > 0
         ? `Max loss $${current.safety.maxDailyLossUsd}/day`
@@ -110,7 +110,7 @@ export function SafetyLimitsCard({ current, saving, patchStrategySettings }: Pro
         ? `Streak ${current.safety.maxConsecutiveLosses}`
         : "Streak off";
     const ap = current.safety.autoPauseEnabled ? "Auto-pause on" : "Auto-pause off";
-    return [loss, profit, streak, ap].join(" • ");
+    return [loss, profit, streak, ap].join(" â€¢ ");
   })();
 
   return (
@@ -119,13 +119,13 @@ export function SafetyLimitsCard({ current, saving, patchStrategySettings }: Pro
         <div>
           <div className="aura-card-title">Safety &amp; Limits</div>
           <div className="aura-muted aura-text-xs aura-mt-10">
-            These are your “circuit breakers”. Set any value to <span className="aura-mono">0</span>{" "}
+            These are your â€œcircuit breakersâ€. Set any value to <span className="aura-mono">0</span>{" "}
             to turn it off.
           </div>
         </div>
 
         <div className="aura-right">
-          <div className="aura-stat-label">{saving ? "Saving…" : summary}</div>
+          <div className="aura-stat-label">{saving ? "Savingâ€¦" : summary}</div>
         </div>
       </div>
 
@@ -233,7 +233,7 @@ export function SafetyLimitsCard({ current, saving, patchStrategySettings }: Pro
             <div className="aura-control-meta">
               <div className="aura-group-title">Auto-pause</div>
               <div className="aura-control-help">
-                When enabled, Aura will pause itself after a safety trigger so it can’t keep firing.
+                When enabled, Aura will pause itself after a safety trigger so it canâ€™t keep firing.
               </div>
             </div>
 
@@ -273,9 +273,10 @@ export function SafetyLimitsCard({ current, saving, patchStrategySettings }: Pro
       </div>
 
       <p className="aura-muted aura-text-xs aura-mt-10">
-        Note: these limits only stop <span className="aura-mono">new</span> trades. They don’t close an
+        Note: these limits only stop <span className="aura-mono">new</span> trades. They donâ€™t close an
         existing open position.
       </p>
     </section>
   );
 }
+

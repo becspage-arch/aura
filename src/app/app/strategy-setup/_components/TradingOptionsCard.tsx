@@ -1,4 +1,4 @@
-// src/app/app/strategy/_components/TradingOptionsCard.tsx
+﻿// src/app/app/strategy-setup/_components/TradingOptionsCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -63,8 +63,8 @@ export function TradingOptionsCard({
         <div className="aura-right">
           <div className="aura-stat-label">
             {current?.coreplus315
-              ? `Stop-outs ${current.coreplus315.maxStopoutsPerSession} • Cooldown ${current.coreplus315.cooldownMinutesAfterStopout}m`
-              : "—"}
+              ? `Stop-outs ${current.coreplus315.maxStopoutsPerSession} â€¢ Cooldown ${current.coreplus315.cooldownMinutesAfterStopout}m`
+              : "â€”"}
           </div>
         </div>
       </div>
@@ -79,7 +79,7 @@ export function TradingOptionsCard({
                 Limits after losses so Aura can pause and recover.
               </div>
             </div>
-            <div className="aura-muted aura-text-xs">{saving ? "Saving…" : "Auto-save"}</div>
+            <div className="aura-muted aura-text-xs">{saving ? "Savingâ€¦" : "Auto-save"}</div>
           </div>
 
           <div className="aura-divider" />
@@ -409,3 +409,4 @@ export function TradingOptionsCard({
     </section>
   );
 }
+

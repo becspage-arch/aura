@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function ProfilePage() {
@@ -9,7 +9,7 @@ export default function ProfilePage() {
           <p className="aura-page-subtitle">Personal preferences and account overview.</p>
         </div>
 
-        <Link href="/app/settings" className="aura-btn aura-btn-subtle">
+        <Link href="/app/account" className="aura-btn aura-btn-subtle">
           Open Settings
         </Link>
       </div>
@@ -27,7 +27,7 @@ export default function ProfilePage() {
               <div className="aura-control-title">Name</div>
               <div className="aura-control-help">Managed by your sign-in provider.</div>
             </div>
-            <span className="aura-select-pill">—</span>
+            <span className="aura-select-pill">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-control-row">
@@ -35,7 +35,7 @@ export default function ProfilePage() {
               <div className="aura-control-title">Email</div>
               <div className="aura-control-help">Used for alerts and account access.</div>
             </div>
-            <span className="aura-select-pill">—</span>
+            <span className="aura-select-pill">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-control-row">
@@ -110,7 +110,7 @@ export default function ProfilePage() {
               <div className="aura-control-title">Primary email</div>
               <div className="aura-control-help">Where alerts are delivered (rules set in Settings).</div>
             </div>
-            <span className="aura-select-pill">—</span>
+            <span className="aura-select-pill">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-control-row">
@@ -156,7 +156,7 @@ export default function ProfilePage() {
               <div className="aura-control-title">Last sign-in</div>
               <div className="aura-control-help">Recent account activity.</div>
             </div>
-            <span className="aura-select-pill">—</span>
+            <span className="aura-select-pill">â€”</span>
           </div>
 
           <div className="aura-card-muted aura-control-row">
@@ -197,3 +197,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+

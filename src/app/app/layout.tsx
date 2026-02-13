@@ -1,15 +1,23 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { AppTopBar } from "@/components/AppTopBar";
 import { NotificationsListener } from "@/components/NotificationsListener";
 
 const nav = [
   { href: "/app", label: "Dashboard" },
-  { href: "/app/live-control", label: "Live Trading" },
+
+  // CORE
+  { href: "/app/live-trading", label: "Live Trading" },
   { href: "/app/charts", label: "Charts" },
-  { href: "/app/strategy", label: "Strategy Setup" },
-  { href: "/app/trades", label: "Reports" },
-  { href: "/app/settings", label: "Account" },
-  { href: "/app/audit", label: "Activity" },
+
+  // CONFIG
+  { href: "/app/strategy-setup", label: "Strategy Setup" },
+
+  // DATA
+  { href: "/app/reports", label: "Reports" },
+  { href: "/app/activity", label: "Activity" },
+
+  // ACCOUNT
+  { href: "/app/account", label: "Account" },
   { href: "/app/profile", label: "Profile" },
 ];
 
@@ -42,3 +50,4 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+

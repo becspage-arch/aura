@@ -1,4 +1,4 @@
-// src/app/app/strategy/_components/ExecutionPreferencesCard.tsx
+﻿// src/app/app/strategy-setup/_components/ExecutionPreferencesCard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -29,7 +29,7 @@ export function ExecutionPreferencesCard({
         <div>
           <div className="aura-card-title">Execution Preferences</div>
           <div className="aura-muted aura-text-xs aura-mt-10">
-            Controls how often Aura is allowed to act. These settings don’t change
+            Controls how often Aura is allowed to act. These settings donâ€™t change
             the strategy logic - only the execution guardrails.
           </div>
         </div>
@@ -37,7 +37,7 @@ export function ExecutionPreferencesCard({
         <div className="aura-right">
           <div className="aura-stat-label">
             {saving
-              ? "Saving…"
+              ? "Savingâ€¦"
               : current
               ? [
                   current.execution.allowMultipleTradesPerSession
@@ -47,8 +47,8 @@ export function ExecutionPreferencesCard({
                   current.execution.requireFlatBeforeNewEntry
                     ? "Flat first"
                     : "Can re-enter",
-                ].join(" • ")
-              : "—"}
+                ].join(" â€¢ ")
+              : "â€”"}
           </div>
         </div>
       </div>
@@ -150,7 +150,7 @@ export function ExecutionPreferencesCard({
               {
                 key: "requireFlatBeforeNewEntry",
                 title: "Require flat before new entry",
-                help: "If on, Aura won’t enter a new trade until the prior position is flat.",
+                help: "If on, Aura wonâ€™t enter a new trade until the prior position is flat.",
               },
             ];
 
@@ -216,3 +216,4 @@ export function ExecutionPreferencesCard({
     </section>
   );
 }
+

@@ -1,4 +1,4 @@
-// src/app/app/strategy/_lib/types.ts
+﻿// src/app/app/strategy-setup/_lib/types.ts
 
 export type StrategySettings = {
   mode: "paper" | "live";
@@ -38,3 +38,4 @@ export type StrategySettings = {
 
 export type StrategyGetResponse = { ok: true; strategySettings: StrategySettings };
 export type StrategyPostResponse = { ok: true; strategySettings: StrategySettings };
+

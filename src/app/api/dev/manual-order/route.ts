@@ -1,4 +1,4 @@
-// src/app/api/dev/manual-order/route.ts
+﻿// src/app/api/dev/manual-order/route.ts
 import { NextResponse } from "next/server";
 import Ably from "ably";
 import { publishInAppNotification } from "@/lib/notifications/inApp";
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       takeProfitTicks,
     };
 
-    // ✅ REST publish - no hanging serverless connections
+    // âœ… REST publish - no hanging serverless connections
     const ably = new Ably.Rest({ key: ablyKey });
     await ably.channels.get(`aura:exec:${clerkUserId}`).publish(
       "exec.manual_bracket",
@@ -61,9 +61,9 @@ export async function POST(req: Request) {
     await publishInAppNotification(clerkUserId, {
       type: "trade_opened",
       title: "Aura - Manual Order",
-      body: "Manual order submitted ✅",
+      body: "Manual order submitted âœ…",
       ts: new Date().toISOString(),
-      deepLink: "/app/trades",
+      deepLink: "/app/reports",
     });
 
     return NextResponse.json({
@@ -78,3 +78,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
