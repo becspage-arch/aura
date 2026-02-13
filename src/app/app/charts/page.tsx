@@ -71,26 +71,11 @@ export default async function ChartsPage() {
     },
   });
 
-  // Strategy Signals (last 24h) — TAKEN + later-stage blocked candidates (NOT heartbeats)
+  // Strategy Signals (last 24h) — include TAKEN + BLOCKED (we'll filter heartbeats in code safely)
   const rawSignals = await prisma.strategySignal.findMany({
     where: {
       createdAt: { gte: since },
-      OR: [
-        // TAKEN setups always included
-        { status: "TAKEN" },
-
-        // BLOCKED but only later-stage reasons (filters out "heartbeat" style rows)
-        {
-          status: "BLOCKED",
-          blockReason: { in: [...LATE_STAGE_BLOCK_REASONS] },
-        },
-      ],
-
-      // Extra safety: explicitly exclude the heartbeat reason if it exists in your data
-      NOT: [
-        { blockReason: "NO_ACTIVE_FVG" as any },
-        { blockReason: "HEARTBEAT" as any },
-      ],
+      status: { in: ["TAKEN", "BLOCKED"] },
     },
     orderBy: { createdAt: "desc" },
     take: 400,
@@ -112,10 +97,23 @@ export default async function ChartsPage() {
     },
   });
 
-  // IMPORTANT:
-  // Do NOT dedupe by execKey here. signalKey is already unique and
-  // execKey can legitimately repeat (and will collapse your table to 1 row).
-  const signals = rawSignals.slice(0, 200);
+  const signals = rawSignals
+  .filter((s) => {
+    // Keep TAKEN always
+    if (s.status === "TAKEN") return true;
+
+    // For BLOCKED: remove heartbeat-ish noise.
+    // If your heartbeats have 0/0 and missing sizing, this will drop them,
+    // but still keep real "candidate" blocked setups that got as far as sizing.
+    const stop = s.stopTicks != null ? Number(s.stopTicks) : 0;
+    const tp = s.tpTicks != null ? Number(s.tpTicks) : 0;
+
+    // Heartbeats tend to be 0/0 — exclude
+    if (stop <= 0 && tp <= 0) return false;
+
+    return true;
+  })
+  .slice(0, 200);
 
   // only MGC chart
   const symbols = ["MGC"];
