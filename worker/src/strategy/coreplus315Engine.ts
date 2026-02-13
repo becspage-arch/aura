@@ -426,8 +426,11 @@ export class CorePlus315Engine {
     const bearFvg = c0.high < c2.low;
 
     if (bullFvg) {
-      const top = Math.max(c0.low, c2.high);
-      const bottom = Math.min(c0.low, c2.high);
+      // Pine:
+      // bullTop := low
+      // bullBottom := high[2]
+      const top = c0.low;
+      const bottom = c2.high;
 
       this.activeFvg = {
         side: "buy",
@@ -442,8 +445,11 @@ export class CorePlus315Engine {
     }
 
     if (bearFvg) {
-      const top = Math.max(c2.low, c0.high);
-      const bottom = Math.min(c2.low, c0.high);
+      // Pine:
+      // bearTop := low[2]
+      // bearBottom := high
+      const top = c2.low;
+      const bottom = c0.high;
 
       this.activeFvg = {
         side: "sell",
