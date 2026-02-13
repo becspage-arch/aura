@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { TradingChart } from "@/components/charts/TradingChart";
 
 function fmtTime(d: Date) {
-  // simple + predictable (no locale surprises)
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
@@ -32,8 +31,7 @@ function outcomeLabel(outcome: string) {
   return outcome || "–";
 }
 
-function pillClass(kind: "win" | "loss" | "be") {
-  // keep your existing pill styles
+function pillClass(_kind: "win" | "loss" | "be") {
   return "aura-pill";
 }
 
@@ -67,7 +65,6 @@ export default async function ChartsPage() {
       closedAt: true,
       realizedPnlUsd: true,
       outcome: true,
-
       plannedStopTicks: true,
       plannedRiskUsd: true,
       plannedRR: true,
@@ -103,22 +100,38 @@ export default async function ChartsPage() {
     },
   });
 
-  // Dedupe signals by execKey when present
-  const signals = (() => {
-    const seenExec = new Set<string>();
-    const out: typeof rawSignals = [];
-    for (const s of rawSignals) {
-      if (s.execKey) {
-        if (seenExec.has(s.execKey)) continue;
-        seenExec.add(s.execKey);
-      }
-      out.push(s);
-    }
-    return out.slice(0, 200);
-  })();
+  // IMPORTANT:
+  // Do NOT dedupe by execKey here. signalKey is already unique and
+  // execKey can legitimately repeat (and will collapse your table to 1 row).
+  const signals = rawSignals.slice(0, 200);
 
   // only MGC chart
   const symbols = ["MGC"];
+
+  // Fixed grid column layouts to stop wrapping + stop giant empty gaps
+  const tradesGrid = {
+    display: "grid",
+    gridTemplateColumns:
+      "190px 95px 90px 70px 110px 260px 150px 110px 80px",
+    alignItems: "center",
+    columnGap: 16,
+    whiteSpace: "nowrap" as const,
+  };
+
+  const setupsGrid = {
+    display: "grid",
+    gridTemplateColumns:
+      "190px 140px 260px 70px 110px 320px 140px 80px 110px 110px",
+    alignItems: "center",
+    columnGap: 16,
+    whiteSpace: "nowrap" as const,
+  };
+
+  const cellEllipsis = {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+  };
 
   return (
     <div className="aura-page">
@@ -157,24 +170,43 @@ export default async function ChartsPage() {
         </div>
 
         {/* Horizontal scroll + no wrapping */}
-        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <div style={{ minWidth: 980 }}>
-            <div className="aura-table aura-mt-12">
-              <div className="aura-table-header" style={{ whiteSpace: "nowrap" }}>
-                <div>Closed</div>
-                <div>Outcome</div>
-                <div className="aura-right">PnL $</div>
-                <div>Side</div>
-                <div className="aura-right"># Contracts</div>
-                <div>Contract</div>
-                <div className="aura-right">Stop Loss (ticks)</div>
-                <div className="aura-right">Risk $</div>
-                <div className="aura-right">RR</div>
+        <div
+          className="aura-mt-12"
+          style={{
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {/* minWidth MUST be wider than container to force scrollbar */}
+          <div style={{ minWidth: 1160 }}>
+            <div className="aura-table">
+              <div className="aura-table-header" style={tradesGrid}>
+                <div style={cellEllipsis}>Closed</div>
+                <div style={cellEllipsis}>Outcome</div>
+                <div className="aura-right" style={cellEllipsis}>
+                  PnL $
+                </div>
+                <div style={cellEllipsis}>Side</div>
+                <div className="aura-right" style={cellEllipsis}>
+                  # Contracts
+                </div>
+                <div style={cellEllipsis}>Contract</div>
+                <div className="aura-right" style={cellEllipsis}>
+                  Stop Loss (ticks)
+                </div>
+                <div className="aura-right" style={cellEllipsis}>
+                  Risk $
+                </div>
+                <div className="aura-right" style={cellEllipsis}>
+                  RR
+                </div>
               </div>
 
               {trades.length === 0 ? (
-                <div className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
-                  <div className="aura-muted">No trades in last 24h</div>
+                <div className="aura-table-row" style={tradesGrid}>
+                  <div className="aura-muted" style={cellEllipsis}>
+                    No trades in last 24h
+                  </div>
                   <div />
                   <div />
                   <div />
@@ -192,23 +224,34 @@ export default async function ChartsPage() {
 
                   const contract = t.contractId || t.symbol;
 
-                  // risk/rr come from planned fields written by the worker
-                  const riskUsd = t.plannedRiskUsd != null ? Number(t.plannedRiskUsd) : null;
-                  const rrPlanned = t.plannedRR != null ? Number(t.plannedRR) : null;
+                  const riskUsd =
+                    t.plannedRiskUsd != null ? Number(t.plannedRiskUsd) : null;
+                  const rrPlanned =
+                    t.plannedRR != null ? Number(t.plannedRR) : null;
 
                   return (
-                    <div key={t.execKey} className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
-                      <div>{fmtTime(t.closedAt)}</div>
-                      <div>
+                    <div key={t.execKey} className="aura-table-row" style={tradesGrid}>
+                      <div style={cellEllipsis}>{fmtTime(t.closedAt)}</div>
+                      <div style={cellEllipsis}>
                         <span className={pillClass(kind)}>{out}</span>
                       </div>
-                      <div className="aura-right">{fmtNum(t.realizedPnlUsd, 2)}</div>
-                      <div>{t.side}</div>
-                      <div className="aura-right">{t.qty != null ? fmtInt(t.qty) : "–"}</div>
-                      <div>{contract}</div>
-                      <div className="aura-right">{t.plannedStopTicks != null ? fmtInt(t.plannedStopTicks) : "–"}</div>
-                      <div className="aura-right">{riskUsd != null ? fmtNum(riskUsd, 2) : "–"}</div>
-                      <div className="aura-right">{rrPlanned != null ? fmtNum(rrPlanned, 2) : "–"}</div>
+                      <div className="aura-right" style={cellEllipsis}>
+                        {fmtNum(t.realizedPnlUsd, 2)}
+                      </div>
+                      <div style={cellEllipsis}>{t.side}</div>
+                      <div className="aura-right" style={cellEllipsis}>
+                        {t.qty != null ? fmtInt(t.qty) : "–"}
+                      </div>
+                      <div style={cellEllipsis}>{contract}</div>
+                      <div className="aura-right" style={cellEllipsis}>
+                        {t.plannedStopTicks != null ? fmtInt(t.plannedStopTicks) : "–"}
+                      </div>
+                      <div className="aura-right" style={cellEllipsis}>
+                        {riskUsd != null ? fmtNum(riskUsd, 2) : "–"}
+                      </div>
+                      <div className="aura-right" style={cellEllipsis}>
+                        {rrPlanned != null ? fmtNum(rrPlanned, 2) : "–"}
+                      </div>
                     </div>
                   );
                 })
@@ -228,25 +271,41 @@ export default async function ChartsPage() {
         </div>
 
         {/* Horizontal scroll + no wrapping */}
-        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <div style={{ minWidth: 1050 }}>
-            <div className="aura-table aura-mt-12">
-              <div className="aura-table-header" style={{ whiteSpace: "nowrap" }}>
-                <div>Time</div>
-                <div>Strategy</div>
-                <div>Instrument</div>
-                <div>Side</div>
-                <div>Status</div>
-                <div>Reason</div>
-                <div className="aura-right">SL/TP (ticks)</div>
-                <div className="aura-right">RR</div>
-                <div className="aura-right"># Contracts</div>
-                <div className="aura-right">Risk $</div>
+        <div
+          className="aura-mt-12"
+          style={{
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          <div style={{ minWidth: 1500 }}>
+            <div className="aura-table">
+              <div className="aura-table-header" style={setupsGrid}>
+                <div style={cellEllipsis}>Time</div>
+                <div style={cellEllipsis}>Strategy</div>
+                <div style={cellEllipsis}>Instrument</div>
+                <div style={cellEllipsis}>Side</div>
+                <div style={cellEllipsis}>Status</div>
+                <div style={cellEllipsis}>Reason</div>
+                <div className="aura-right" style={cellEllipsis}>
+                  SL/TP (ticks)
+                </div>
+                <div className="aura-right" style={cellEllipsis}>
+                  RR
+                </div>
+                <div className="aura-right" style={cellEllipsis}>
+                  # Contracts
+                </div>
+                <div className="aura-right" style={cellEllipsis}>
+                  Risk $
+                </div>
               </div>
 
               {signals.length === 0 ? (
-                <div className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
-                  <div className="aura-muted">No later-stage setups yet</div>
+                <div className="aura-table-row" style={setupsGrid}>
+                  <div className="aura-muted" style={cellEllipsis}>
+                    No later-stage setups yet
+                  </div>
                   <div />
                   <div />
                   <div />
@@ -270,21 +329,30 @@ export default async function ChartsPage() {
                   const instrument = s.contractId || s.symbol;
 
                   return (
-                    <div key={s.signalKey} className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
-                      <div>{fmtTime(s.createdAt)}</div>
-                      <div>{s.strategy}</div>
-                      <div>{instrument}</div>
-                      <div>{s.side}</div>
-                      <div>
+                    <div key={s.signalKey} className="aura-table-row" style={setupsGrid}>
+                      <div style={cellEllipsis}>{fmtTime(s.createdAt)}</div>
+                      <div style={cellEllipsis}>{s.strategy}</div>
+                      <div style={cellEllipsis}>{instrument}</div>
+                      <div style={cellEllipsis}>{s.side}</div>
+                      <div style={cellEllipsis}>
                         <span className="aura-pill">{statusLabel}</span>
                       </div>
-                      <div className="aura-muted">{reason.toUpperCase()}</div>
-                      <div className="aura-right">
-                        {s.stopTicks != null ? fmtInt(s.stopTicks) : "–"} / {s.tpTicks != null ? fmtInt(s.tpTicks) : "–"}
+                      <div className="aura-muted" style={cellEllipsis}>
+                        {reason.toUpperCase()}
                       </div>
-                      <div className="aura-right">{s.rr != null ? fmtNum(s.rr, 2) : "–"}</div>
-                      <div className="aura-right">{s.contracts != null ? fmtInt(s.contracts) : "–"}</div>
-                      <div className="aura-right">{s.riskUsdPlanned != null ? fmtNum(s.riskUsdPlanned, 2) : "–"}</div>
+                      <div className="aura-right" style={cellEllipsis}>
+                        {s.stopTicks != null ? fmtInt(s.stopTicks) : "–"} /{" "}
+                        {s.tpTicks != null ? fmtInt(s.tpTicks) : "–"}
+                      </div>
+                      <div className="aura-right" style={cellEllipsis}>
+                        {s.rr != null ? fmtNum(s.rr, 2) : "–"}
+                      </div>
+                      <div className="aura-right" style={cellEllipsis}>
+                        {s.contracts != null ? fmtInt(s.contracts) : "–"}
+                      </div>
+                      <div className="aura-right" style={cellEllipsis}>
+                        {s.riskUsdPlanned != null ? fmtNum(s.riskUsdPlanned, 2) : "–"}
+                      </div>
                     </div>
                   );
                 })
