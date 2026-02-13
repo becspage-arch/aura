@@ -27,17 +27,20 @@ export function TradingSessionsCard({
     ? [
         current.sessions.asia ? "Asia" : null,
         current.sessions.london ? "London" : null,
-        current.sessions.ny ? "NY" : null,
+        current.sessions.ny ? "New York" : null,
       ]
         .filter(Boolean)
         .join(", ") || "None selected"
     : "—";
 
   return (
-    <div>
+    <section className="aura-card">
       <div className="aura-row-between">
-        <div className="aura-muted aura-text-xs">
-          Select when Aura is allowed to trade.
+        <div>
+          <div className="aura-card-title">Trading Sessions</div>
+          <div className="aura-muted aura-text-xs aura-mt-6">
+            Select when Aura is allowed to trade.
+          </div>
         </div>
         <div className="aura-muted aura-text-xs">{summary}</div>
       </div>
@@ -104,6 +107,6 @@ export function TradingSessionsCard({
           consistent.
         </p>
       </div>
-    </div>
+    </section>
   );
 }
