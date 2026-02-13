@@ -5,6 +5,7 @@ import { NotificationsListener } from "@/components/NotificationsListener";
 const nav = [
   { href: "/app", label: "Dashboard" },
   { href: "/app/live-control", label: "Live Trading" },
+  { href: "/app/charts", label: "Charts" },
   { href: "/app/strategy", label: "Strategy Setup" },
   { href: "/app/trades", label: "Reports" },
   { href: "/app/settings", label: "Account" },

@@ -225,7 +225,6 @@ export async function startProjectXUserFeed(params: {
                 avgFillPrice: fillPrice,
               },
               update: {
-                // keep it aligned in case we learn more later
                 symbol: fillSymbol,
                 side: fillSide,
                 status: "FILLED",
@@ -250,7 +249,7 @@ export async function startProjectXUserFeed(params: {
               await db.fill.create({
                 data: {
                   brokerAccountId: brokerAccount.id,
-                  orderId: orderRow?.id ?? null, // ✅ real FK target or null
+                  orderId: orderRow?.id ?? null,
                   externalId: fillExternalId,
                   symbol: fillSymbol,
                   side: fillSide,
@@ -258,18 +257,32 @@ export async function startProjectXUserFeed(params: {
                   price: fillPrice,
                 },
               });
+
+              console.log("[projectx-user] FILL_CREATE_OK", {
+                brokerAccountId: brokerAccount.id,
+                externalId: fillExternalId,
+                orderExternalId: fillOrderExternalId ?? null,
+                orderRowId: orderRow?.id ?? null,
+              });
             }
           } else {
             await db.fill.create({
               data: {
                 brokerAccountId: brokerAccount.id,
-                orderId: orderRow?.id ?? null, // ✅ real FK target or null
+                orderId: orderRow?.id ?? null,
                 externalId: null,
                 symbol: fillSymbol,
                 side: fillSide,
                 qty: fillQty,
                 price: fillPrice,
               },
+            });
+
+            console.log("[projectx-user] FILL_CREATE_OK", {
+              brokerAccountId: brokerAccount.id,
+              externalId: null,
+              orderExternalId: fillOrderExternalId ?? null,
+              orderRowId: orderRow?.id ?? null,
             });
           }
         }
