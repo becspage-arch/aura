@@ -575,6 +575,15 @@ export async function startProjectXUserFeed(params: {
         where: {
           userId: ident.userId,
           status: { in: ["ORDER_FILLED", "POSITION_OPEN"] },
+          entryOrderId: {
+            not: null,
+          },
+          // Only close executions whose entry order actually filled
+          entryOrder: {
+            filledQty: {
+              gt: 0,
+            },
+          },
         },
         data: { status: "POSITION_CLOSED" },
       });
