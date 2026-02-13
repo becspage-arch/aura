@@ -177,8 +177,8 @@ export async function startProjectXUserFeed(params: {
             select: { id: true },
           });
 
-          const fillOrderId =
-            toStr(payload?.orderId ?? payload?.parentOrderId ?? payload?.id) ?? "unknown";
+          const fillOrderExternalId =
+            toStr(payload?.orderId ?? payload?.parentOrderId) ?? null;
 
           const fillExternalId = toStr(payload?.id); // ProjectX trade/fill id
 
@@ -199,11 +199,48 @@ export async function startProjectXUserFeed(params: {
             toNum(payload?.averagePrice) ??
             0;
 
-          // If we have an externalId, try to dedupe (ProjectX can emit multiple trade events)
+          // Create / upsert an Order row ONLY if we have a real broker order id.
+          // IMPORTANT: Fill.orderId must reference Order.id (internal), not the broker order id.
+          let orderRow: { id: string } | null = null;
+
+          if (fillOrderExternalId) {
+            orderRow = await db.order.upsert({
+              where: {
+                brokerAccountId_externalId: {
+                  brokerAccountId: brokerAccount.id,
+                  externalId: fillOrderExternalId,
+                },
+              },
+              create: {
+                brokerAccountId: brokerAccount.id,
+                externalId: fillOrderExternalId,
+                symbol: fillSymbol,
+                side: fillSide,
+                type: "MARKET",
+                status: "FILLED",
+                qty: fillQty,
+                price: null,
+                stopPrice: null,
+                filledQty: fillQty,
+                avgFillPrice: fillPrice,
+              },
+              update: {
+                // keep it aligned in case we learn more later
+                symbol: fillSymbol,
+                side: fillSide,
+                status: "FILLED",
+                filledQty: fillQty,
+                avgFillPrice: fillPrice,
+              },
+              select: { id: true },
+            });
+          }
+
+          // Dedupe fill by (brokerAccountId, externalId) when possible
           if (fillExternalId) {
             const exists = await db.fill.findFirst({
               where: {
-                brokerAccountId: brokerAccount.id, // ✅ real FK target
+                brokerAccountId: brokerAccount.id,
                 externalId: fillExternalId,
               },
               select: { id: true },
@@ -212,8 +249,8 @@ export async function startProjectXUserFeed(params: {
             if (!exists) {
               await db.fill.create({
                 data: {
-                  brokerAccountId: brokerAccount.id, // ✅ real FK target
-                  orderId: fillOrderId,
+                  brokerAccountId: brokerAccount.id,
+                  orderId: orderRow?.id ?? null, // ✅ real FK target or null
                   externalId: fillExternalId,
                   symbol: fillSymbol,
                   side: fillSide,
@@ -222,6 +259,20 @@ export async function startProjectXUserFeed(params: {
                 },
               });
             }
+          } else {
+            await db.fill.create({
+              data: {
+                brokerAccountId: brokerAccount.id,
+                orderId: orderRow?.id ?? null, // ✅ real FK target or null
+                externalId: null,
+                symbol: fillSymbol,
+                side: fillSide,
+                qty: fillQty,
+                price: fillPrice,
+              },
+            });
+          }
+
           } else {
             // No externalId available – just write it (worst case: duplicates)
             await db.fill.create({

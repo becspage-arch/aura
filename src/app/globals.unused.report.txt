@@ -1,0 +1,37 @@
+globals.css selectors checked: 144
+used in src/: 144
+NOT referenced in src/: 0
+
+UNUSED (safe candidates to delete if truly not used dynamically):
+
+MOST USED (top 30):
+- .aura-muted  (114)
+- .aura-text-xs  (105)
+- .aura-row-between  (65)
+- .aura-card-muted  (62)
+- .aura-control-help  (58)
+- .aura-card  (54)
+- .aura-control-meta  (52)
+- .aura-card-title  (50)
+- .aura-skel  (50)
+- .aura-control-row  (50)
+- .aura-mt-12  (49)
+- .aura-mt-10  (46)
+- .aura-control-title  (46)
+- .aura-select-pill  (35)
+- .aura-grid-gap-12  (23)
+- .aura-control-right  (23)
+- .aura-disabled  (23)
+- .aura-w-55  (21)
+- .aura-bar  (19)
+- .aura-right  (19)
+- .aura-hide-sm  (18)
+- .aura-stat-label  (17)
+- .aura-health-pill  (16)
+- .aura-health-key  (16)
+- .aura-health-val  (16)
+- .aura-btn  (16)
+- .aura-input  (15)
+- .aura-mt-6  (15)
+- .aura-w-40  (14)
+- .aura-stat-sub  (12)
