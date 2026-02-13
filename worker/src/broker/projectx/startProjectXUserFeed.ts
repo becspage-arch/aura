@@ -410,13 +410,14 @@ export async function startProjectXUserFeed(params: {
         });
       }
 
-      const orderId = toStr(payload?.orderId ?? payload?.entryOrderId ?? payload?.id);
-      if (orderId) {
-        await db.execution.updateMany({
-          where: { entryOrderId: orderId, userId: ident.userId },
-          data: { status: "POSITION_CLOSED" },
-        });
-      }
+      await db.execution.updateMany({
+        where: {
+          userId: ident.userId,
+          status: { in: ["ORDER_FILLED", "POSITION_OPEN"] },
+        },
+        data: { status: "POSITION_CLOSED" },
+      });
+
     },
   });
 
