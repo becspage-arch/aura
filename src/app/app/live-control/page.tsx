@@ -2,28 +2,26 @@ export const dynamic = "force-dynamic";
 
 import { currentUser } from "@clerk/nextjs/server";
 import { ensureUserProfile } from "@/lib/user-profile";
-import { TradingChart } from "@/components/charts/TradingChart";
 import { LiveControlSwitches } from "@/components/live-control/LiveControlSwitches";
 import { StrategyConfigSummaryCard } from "@/components/live-control/StrategyConfigSummaryCard";
 
 export default async function LiveControlPage() {
   const user = await currentUser();
 
-  // Not signed in
   if (!user) {
     return (
       <div className="mx-auto max-w-6xl aura-page">
         <div>
-          <h1 className="aura-page-title">Live Control</h1>
+          <h1 className="aura-page-title">Live Trading</h1>
           <p className="aura-page-subtitle">
-            Sign in to view live controls and monitoring.
+            Sign in to control Aura and manage live execution.
           </p>
         </div>
 
         <section className="aura-card">
           <div className="aura-card-title">Not signed in</div>
           <p className="aura-muted aura-text-xs aura-mt-10">
-            Please sign in to access Live Control.
+            Please sign in to access Live Trading.
           </p>
         </section>
       </div>
@@ -43,43 +41,21 @@ export default async function LiveControlPage() {
     displayName,
   });
 
-  // Live Control should subscribe to the user channel for realtime events
-  const channelName = `user:${user.id}`;
-
-  // For now, keep symbol simple + safe (we can wire selection later)
-  const symbol = "MGC";
-
   return (
     <div className="mx-auto max-w-6xl aura-page">
       <div>
+        <h1 className="aura-page-title">Live Trading</h1>
         <p className="aura-page-subtitle">
-          Turn Aura on or off. See what trades were analysed, what was taken, what wasn't and why. 
+          Start or pause Aura, and use Emergency Stop to prevent new trades.
+          Charts and trade review live in the Charts and Reports tabs.
         </p>
       </div>
 
-      {/* Live controls FIRST (pills + actions only) */}
+      {/* Controls FIRST */}
       <LiveControlSwitches />
 
-      {/* Config summary BELOW controls (read-only) */}
+      {/* Compact, read-only summary BELOW controls */}
       <StrategyConfigSummaryCard />
-
-      {/* Live chart (already wired) */}
-      <section className="aura-card">
-        <div className="aura-row-between">
-          <div className="aura-card-title">Live Chart</div>
-          <div className="aura-muted aura-text-xs">
-            Channel: {channelName} • Symbol: {symbol}
-          </div>
-        </div>
-
-        <div className="aura-mt-12">
-          <TradingChart
-            symbol={symbol}
-            initialTf="15s"
-            channelName={channelName}
-          />
-        </div>
-      </section>
     </div>
   );
 }

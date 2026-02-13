@@ -1,30 +1,54 @@
-export default function ChartsPage() {
+export const dynamic = "force-dynamic";
+
+import { currentUser } from "@clerk/nextjs/server";
+import { TradingChart } from "@/components/charts/TradingChart";
+
+export default async function ChartsPage() {
+  const user = await currentUser();
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-6xl aura-page">
+        <div>
+          <h1 className="aura-page-title">Charts</h1>
+          <p className="aura-page-subtitle">Sign in to view charts and trade activity.</p>
+        </div>
+
+        <section className="aura-card">
+          <div className="aura-card-title">Not signed in</div>
+          <p className="aura-muted aura-text-xs aura-mt-10">Please sign in to access Charts.</p>
+        </section>
+      </div>
+    );
+  }
+
+  const channelName = `user:${user.id}`;
+  const symbol = "MGC";
+
   return (
-    <div className="aura-page">
+    <div className="mx-auto max-w-6xl aura-page">
       <div>
         <h1 className="aura-page-title">Charts</h1>
         <p className="aura-page-subtitle">
-          View live price action, recent trades, and evaluated setups.
+          Visual entries on the chart, plus a quick view of recent trades and evaluated setups.
         </p>
       </div>
 
-      {/* Chart Section */}
+      {/* Live chart */}
       <section className="aura-card">
-        <div className="aura-group-header">
-          <div className="aura-group-title">Live Chart</div>
+        <div className="aura-row-between">
+          <div className="aura-card-title">Live Chart</div>
+          <div className="aura-muted aura-text-xs">
+            Channel: {channelName} • Symbol: {symbol}
+          </div>
         </div>
 
-        <div className="aura-chart-placeholder">
-          <div className="aura-bar aura-bar-55"></div>
-          <div className="aura-bar aura-bar-72"></div>
-          <div className="aura-bar aura-bar-40"></div>
-          <div className="aura-bar aura-bar-82"></div>
-          <div className="aura-bar aura-bar-60"></div>
-          <div className="aura-bar aura-bar-78"></div>
+        <div className="aura-mt-12">
+          <TradingChart symbol={symbol} initialTf="15s" channelName={channelName} />
         </div>
       </section>
 
-      {/* Last 24h Summary */}
+      {/* Last 24h Summary (placeholder structure for now) */}
       <section className="aura-card">
         <div className="aura-group-header">
           <div className="aura-group-title">Last 24 Hours</div>
@@ -54,7 +78,7 @@ export default function ChartsPage() {
         </div>
       </section>
 
-      {/* Evaluated Setups */}
+      {/* Evaluated Setups (placeholder structure for now) */}
       <section className="aura-card">
         <div className="aura-group-header">
           <div className="aura-group-title">Evaluated Setups</div>

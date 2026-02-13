@@ -9,6 +9,7 @@ import {
   type UTCTimestamp,
   type CandlestickData,
   type LogicalRange,
+  type SeriesMarker,
 } from "lightweight-charts";
 import type { Timeframe } from "@/lib/time/timeframes";
 import { floorToTf, TF_SECONDS } from "@/lib/time/timeframes";
@@ -76,11 +77,74 @@ function upsertMarker(list: ChartMarker[], m: ChartMarker): ChartMarker[] {
   return [...list, m];
 }
 
-export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) {
-  const instanceIdRef = useRef(Math.random().toString(16).slice(2));
+function mapAuraMarkersToSeriesMarkers(
+  all: ChartMarker[],
+  symbol: string,
+  tf: Timeframe
+): SeriesMarker<UTCTimestamp>[] {
+  const bucket = TF_SECONDS[tf];
 
+  const mkTime = (t: number) => {
+    if (tf === "15s") return t;
+    return Math.floor(t / bucket) * bucket;
+  };
+
+  const toSeriesMarker = (m: ChartMarker): SeriesMarker<UTCTimestamp> => {
+    const t = mkTime(m.time) as UTCTimestamp;
+
+    // NOTE: colors are part of chart marker config (not CSS)
+    switch (m.kind) {
+      case "order_buy":
+        return {
+          time: t,
+          position: "belowBar",
+          shape: "arrowUp",
+          color: "#7fa8a1",
+          text: m.label ?? "BUY",
+        };
+      case "order_sell":
+        return {
+          time: t,
+          position: "aboveBar",
+          shape: "arrowDown",
+          color: "#b07a7a",
+          text: m.label ?? "SELL",
+        };
+      case "fill_buy_full":
+      case "fill_sell_full":
+        return {
+          time: t,
+          position: "inBar",
+          shape: "circle",
+          color: "#d6c28f",
+          text: m.label ?? "FILL",
+        };
+      case "order_cancelled":
+        return {
+          time: t,
+          position: "inBar",
+          shape: "square",
+          color: "#8a919e",
+          text: m.label ?? "CANCEL",
+        };
+      default:
+        return {
+          time: t,
+          position: "inBar",
+          shape: "circle",
+          color: "#8a919e",
+          text: m.label ?? "EVENT",
+        };
+    }
+  };
+
+  return all
+    .filter((m) => m.symbol === symbol)
+    .map(toSeriesMarker);
+}
+
+export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -115,21 +179,18 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     "3m": null,
   });
 
-  // Marker state (keep as state for rendering)
+  // Aura markers (data)
   const [markers, setMarkers] = useState<ChartMarker[]>([]);
 
-  // Computed screen positions for markers (state for render)
-  const [markerPositions, setMarkerPositions] = useState<Array<ChartMarker & { x: number }>>([]);
-
-  // DEBUG: show how many markers are present vs actually drawn
+  // DEBUG: marker count
   const [debugMarkerStats, setDebugMarkerStats] = useState({ total: 0, shown: 0 });
 
   // DEBUG: shows paging behavior + cache times
   const [debugPaging, setDebugPaging] = useState({
     triggers: 0,
     loads: 0,
-    lastOlderCount: 0, // raw candles returned from API (not filtered)
-    grew: 0, // 1 if cache grew, 0 if not
+    lastOlderCount: 0,
+    grew: 0,
     cursor: null as number | null,
     cacheLen: 0,
     oldest: null as number | null,
@@ -152,44 +213,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     setDebugPaging(pagingDebugRef.current);
   };
 
-  // Keep latest recompute function for chart callbacks (prevents stale closure bug)
-  const recomputeRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    console.log(`[TradingChart ${instanceIdRef.current}] MOUNT`, { symbol });
-    return () => {
-      console.log(`[TradingChart ${instanceIdRef.current}] UNMOUNT`, { symbol });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const recomputeMarkerPositions = useCallback(() => {
-    if (!chartRef.current || !overlayRef.current) return;
-
-    const ts = chartRef.current.timeScale();
-    const bucket = TF_SECONDS[tf];
-
-    const positioned: Array<ChartMarker & { x: number }> = [];
-    for (const m of markers) {
-      if (m.symbol !== symbol) continue;
-
-      const t = tf === "15s" ? m.time : Math.floor(m.time / bucket) * bucket;
-      const x = ts.timeToCoordinate(t as UTCTimestamp);
-      if (x == null || Number.isNaN(x)) continue;
-
-      positioned.push({ ...m, x });
-    }
-
-    setMarkerPositions(positioned);
-
-    const total = markers.filter((m) => m.symbol === symbol).length;
-    setDebugMarkerStats({ total, shown: positioned.length });
-  }, [markers, symbol, tf]);
-
-  useEffect(() => {
-    recomputeRef.current = recomputeMarkerPositions;
-  }, [recomputeMarkerPositions]);
-
   const updateCacheDebugForTf = useCallback((nextTf: Timeframe) => {
     const arr = cacheRef.current[nextTf] ?? [];
     const oldest = arr.length ? arr[0].time : null;
@@ -202,6 +225,19 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
       cursor: nextToRef.current[nextTf],
     });
   }, []);
+
+  const applySeriesMarkers = useCallback(
+    (nextTf: Timeframe) => {
+      if (!seriesRef.current) return;
+
+      const seriesMarkers = mapAuraMarkersToSeriesMarkers(markers, symbol, nextTf);
+      seriesRef.current.setMarkers(seriesMarkers);
+
+      const total = markers.filter((m) => m.symbol === symbol).length;
+      setDebugMarkerStats({ total, shown: seriesMarkers.length });
+    },
+    [markers, symbol]
+  );
 
   const fetchCandles = useCallback(
     async (nextTf: Timeframe) => {
@@ -234,18 +270,15 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         cacheRef.current[nextTf] = candles;
 
         nextToRef.current[nextTf] = json.nextTo ?? null;
-        exhaustedCursorRef.current[nextTf] = null; // clear stuck state after full reload
+        exhaustedCursorRef.current[nextTf] = null;
 
         seriesRef.current.setData(candles.map(toSeries));
         chartRef.current?.timeScale().fitContent();
 
         updateCacheDebugForTf(nextTf);
 
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            recomputeRef.current?.();
-          });
-        });
+        // Ensure markers stay in sync with current tf
+        applySeriesMarkers(nextTf);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         setError(e?.message ?? "Unknown error");
@@ -253,15 +286,17 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         if (seq === fetchSeqRef.current) setIsLoading(false);
       }
     },
-    [symbol, updateCacheDebugForTf]
+    [symbol, updateCacheDebugForTf, applySeriesMarkers]
   );
 
   // Pagination refs
   const isPagingRef = useRef(false);
-
-  // Queue-one-more-page mechanism (prevents blank strip when user drags faster than fetch)
   const pendingPageRef = useRef(false);
   const lastRangeFromRef = useRef<number | null>(null);
+
+  const pagingCooldownAtRef = useRef(0);
+  const pagingCooldownMs = 350;
+  const leftEdgeThresholdBars = 300;
 
   // Reset cursors + debug when symbol changes
   useEffect(() => {
@@ -310,7 +345,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
       const existing = cacheRef.current[nextTf] ?? [];
       if (!existing.length) return;
 
-      // If we previously detected a stuck cursor for this TF, stop.
       const exhaustedCursor = exhaustedCursorRef.current[nextTf];
       if (exhaustedCursor != null && exhaustedCursor === nextToRef.current[nextTf]) return;
 
@@ -321,7 +355,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         const beforeLen = existing.length;
         const beforeCursor = nextToRef.current[nextTf];
 
-        // Prefer server cursor if available, else fall back to inclusive oldestTime, then oldestTime - 1.
         let json: ApiResponse | null = null;
 
         if (beforeCursor != null) {
@@ -333,10 +366,8 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         const raw1 = Array.isArray(json?.candles) ? (json!.candles as Candle[]) : [];
         let raw = raw1;
 
-        // Update cursor from server
         nextToRef.current[nextTf] = json?.nextTo ?? null;
 
-        // If no cursor and we got nothing useful, try the exclusive fallback
         if (beforeCursor == null && raw.length === 0) {
           const json2 = await requestOlderPage(nextTf, oldestTime - 1);
           const raw2 = Array.isArray(json2?.candles) ? (json2!.candles as Candle[]) : [];
@@ -359,7 +390,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
           return;
         }
 
-        // Merge: raw + existing, dedupe by time
         const map = new Map<number, Candle>();
         for (const c of raw) map.set(c.time, c);
         for (const c of existing) map.set(c.time, c);
@@ -375,7 +405,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
           return;
         }
 
-        // --- NO-JUMP FIX (deferred + clamped) ---
         const ts = chartRef.current.timeScale();
         const currentRange = ts.getVisibleLogicalRange();
         const addedBars = merged.length - beforeLen;
@@ -383,7 +412,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         cacheRef.current[nextTf] = merged;
         seriesRef.current.setData(merged.map(toSeries));
 
-        // Defer range shift to next frame so the chart rebuilds its logical indices first.
         if (currentRange && addedBars > 0) {
           requestAnimationFrame(() => {
             if (!chartRef.current) return;
@@ -404,15 +432,11 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         updateCacheDebugForTf(nextTf);
         bumpPagingDebug({ grew });
 
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            recomputeRef.current?.();
-          });
-        });
+        // Keep markers synced after paging
+        applySeriesMarkers(nextTf);
       } finally {
         isPagingRef.current = false;
 
-        // If user dragged super fast and we queued another page, run it immediately
         if (pendingPageRef.current) {
           pendingPageRef.current = false;
 
@@ -425,17 +449,13 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
         }
       }
     },
-    [requestOlderPage, updateCacheDebugForTf]
+    [requestOlderPage, updateCacheDebugForTf, applySeriesMarkers]
   );
 
   const loadOlderRef = useRef<(nextTf: Timeframe) => Promise<void> | void>(() => {});
   useEffect(() => {
     loadOlderRef.current = loadOlderCandles;
   }, [loadOlderCandles]);
-
-  const pagingCooldownAtRef = useRef(0);
-  const pagingCooldownMs = 350;
-  const leftEdgeThresholdBars = 300;
 
   // Create chart once
   useEffect(() => {
@@ -476,11 +496,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     });
     ro.observe(containerRef.current);
 
-    const onRange = () => {
-      recomputeRef.current?.();
-    };
-    chart.timeScale().subscribeVisibleTimeRangeChange(onRange);
-
     const onLogicalRange = (range: LogicalRange | null) => {
       if (!range) return;
 
@@ -508,7 +523,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
     return () => {
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(onLogicalRange);
-      chart.timeScale().unsubscribeVisibleTimeRangeChange(onRange);
       ro.disconnect();
       chart.remove();
       chartRef.current = null;
@@ -522,9 +536,10 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
     const run = async () => {
       try {
-        const res = await fetch(`/api/charts/markers?symbol=${encodeURIComponent(symbol)}&limit=500`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/charts/markers?symbol=${encodeURIComponent(symbol)}&limit=500`,
+          { cache: "no-store" }
+        );
 
         if (!res.ok) return;
 
@@ -549,10 +564,10 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     fetchCandles(tf);
   }, [fetchCandles, tf]);
 
-  // Recompute markers when markers/tf change (non-chart-driven)
+  // Keep series markers synced when marker data changes or tf changes
   useEffect(() => {
-    recomputeMarkerPositions();
-  }, [recomputeMarkerPositions]);
+    applySeriesMarkers(tf);
+  }, [applySeriesMarkers, tf]);
 
   const onAuraEvent = useCallback(
     (evt: AuraRealtimeEvent) => {
@@ -683,22 +698,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     [tf]
   );
 
-  const markerClass = (kind: ChartMarker["kind"]) => {
-    switch (kind) {
-      case "order_buy":
-        return "aura-marker aura-marker-buy";
-      case "order_sell":
-        return "aura-marker aura-marker-sell";
-      case "fill_buy_full":
-      case "fill_sell_full":
-        return "aura-marker aura-marker-fill";
-      case "order_cancelled":
-        return "aura-marker aura-marker-cancel";
-      default:
-        return "aura-marker";
-    }
-  };
-
   return (
     <div className="w-full">
       <div className="aura-chart-top aura-mt-6">
@@ -718,19 +717,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
       <div className="aura-chart-frame">
         <div ref={containerRef} className="aura-chart-surface" />
-
-        <div ref={overlayRef} className="aura-chart-overlay">
-          {markerPositions.map((m) => (
-            <div
-              key={m.id}
-              className={markerClass(m.kind)}
-              style={{ left: `${m.x}px` }}
-              title={`${m.kind}${m.price != null ? ` @ ${m.price}` : ""}`}
-            >
-              {m.label ?? m.kind}
-            </div>
-          ))}
-        </div>
 
         {isLoading && <div className="aura-float aura-float-top-right">Loading…</div>}
 
