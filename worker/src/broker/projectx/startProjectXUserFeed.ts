@@ -468,6 +468,56 @@ export async function startProjectXUserFeed(params: {
         qtyDebug ??
         0;
 
+            // -----------------------------
+      // Pull planned SL/TP + contracts from the most recent open-ish Execution
+      // (ProjectX flat position payload does NOT include these)
+      // -----------------------------
+      const symbolForLookup =
+        toStr(payload?.symbol) ??
+        toStr(payload?.symbolId) ??
+        (envSymbol || contractId || "UNKNOWN");
+
+      const latestExecution = await db.execution.findFirst({
+        where: {
+          userId: ident.userId,
+          brokerName: "projectx",
+          status: { in: ["ORDER_FILLED", "POSITION_OPEN", "BRACKET_ACTIVE", "BRACKET_SUBMITTED"] },
+          OR: [
+            contractId ? { contractId } : undefined,
+            symbolForLookup ? { symbol: symbolForLookup } : undefined,
+          ].filter(Boolean) as any,
+        },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          qty: true,
+          stopLossTicks: true,
+          takeProfitTicks: true,
+        },
+      });
+
+      const contractsFromExec =
+        latestExecution?.qty != null ? Number(latestExecution.qty) : null;
+
+      const stopTicksFromExec =
+        latestExecution?.stopLossTicks != null ? Number(latestExecution.stopLossTicks) : null;
+
+      const tpTicksFromExec =
+        latestExecution?.takeProfitTicks != null ? Number(latestExecution.takeProfitTicks) : null;
+
+      // Tick value mapping (MGC=$1 per tick, GC=$10 per tick). If unknown, leave null.
+      function tickValueUsd(sym: string): number | null {
+        const s = (sym || "").toUpperCase();
+        if (s.includes("MGC")) return 1;
+        if (s.includes("GC")) return 10;
+        return null;
+      }
+
+      const tickUsd = tickValueUsd(symbolForLookup);
+      const plannedRiskUsd =
+        tickUsd != null && stopTicksFromExec != null && contractsFromExec != null
+          ? stopTicksFromExec * tickUsd * contractsFromExec
+          : null;
+
       const entryPrice =
         toNum(payload?.entryPriceAvg) ??
         toNum(payload?.avgEntryPrice) ??
@@ -547,16 +597,20 @@ export async function startProjectXUserFeed(params: {
             contractId,
 
             side,
-            qty: qtyNum,
+            // Prefer contracts from Execution (real contracts) because ProjectX "flat" payload makes size 0
+            qty: contractsFromExec != null ? contractsFromExec : qtyNum,
 
             openedAt: closedAt,
             closedAt,
             durationSec: null,
 
-            plannedStopTicks: null,
-            plannedTakeProfitTicks: null,
-            plannedRiskUsd: null,
-            plannedRR: null,
+            plannedStopTicks: stopTicksFromExec,
+            plannedTakeProfitTicks: tpTicksFromExec,
+            plannedRiskUsd: plannedRiskUsd,
+            plannedRR:
+              stopTicksFromExec != null && tpTicksFromExec != null && stopTicksFromExec > 0
+                ? tpTicksFromExec / stopTicksFromExec
+                : null,
 
             entryPriceAvg: entryPrice,
             exitPriceAvg: exitPrice,
@@ -571,6 +625,14 @@ export async function startProjectXUserFeed(params: {
             closedAt,
             realizedPnlUsd: pnl,
             outcome,
+            qty: contractsFromExec != null ? contractsFromExec : undefined,
+            plannedStopTicks: stopTicksFromExec ?? undefined,
+            plannedTakeProfitTicks: tpTicksFromExec ?? undefined,
+            plannedRiskUsd: plannedRiskUsd ?? undefined,
+            plannedRR:
+              stopTicksFromExec != null && tpTicksFromExec != null && stopTicksFromExec > 0
+                ? tpTicksFromExec / stopTicksFromExec
+                : undefined,
             rrAchieved: rrAchieved ?? null,
           },
         });
@@ -623,19 +685,21 @@ export async function startProjectXUserFeed(params: {
 
       // Best-effort: mark recent matching executions closed.
       // Execution model does NOT have a relation to Order,
-      // so we cannot filter on entryOrder.filledQty here.
-      const recentCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000); // last 2 hours
+      // so we keep this conservative (recent window + same contract).
+      if (contractId) {
+        const recentCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000); // last 2 hours
 
-      await db.execution.updateMany({
-        where: {
-          userId: ident.userId,
-          brokerName: "projectx",
-          contractId: String(payload?.contractId ?? ""),
-          status: { in: ["ORDER_FILLED", "POSITION_OPEN"] },
-          createdAt: { gte: recentCutoff },
-        },
-        data: { status: "POSITION_CLOSED" },
-      });
+        await db.execution.updateMany({
+          where: {
+            userId: ident.userId,
+            brokerName: "projectx",
+            contractId,
+            status: { in: ["ORDER_FILLED", "POSITION_OPEN"] },
+            createdAt: { gte: recentCutoff },
+          },
+          data: { status: "POSITION_CLOSED" },
+        });
+      }
 
     },
   });

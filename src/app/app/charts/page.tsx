@@ -5,34 +5,23 @@ import { TradingChart } from "@/components/charts/TradingChart";
 
 function fmtTime(d: Date) {
   const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(z er0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
   const hh = String(d.getUTCHours()).padStart(2, "0");
   const mi = String(d.getUTCMinutes()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd} ${hh}:${mi} UTC`;
 }
 
-function toNum(n: any): number | null {
-  if (n == null) return null;
-  if (typeof n === "number") return Number.isFinite(n) ? n : null;
-  const v = Number(n);
-  return Number.isFinite(v) ? v : null;
-}
-
 function fmtNum(n: any, dp = 2) {
-  const x = toNum(n);
-  if (x == null) return "–";
+  const x = typeof n === "number" ? n : n != null ? Number(n) : null;
+  if (x == null || Number.isNaN(x)) return "–";
   return x.toFixed(dp);
 }
 
 function fmtInt(n: any) {
-  const x = toNum(n);
-  if (x == null) return "–";
+  const x = typeof n === "number" ? n : n != null ? Number(n) : null;
+  if (x == null || Number.isNaN(x)) return "–";
   return String(Math.trunc(x));
-}
-
-function pillClass() {
-  return "aura-pill";
 }
 
 function outcomeLabel(outcome: string) {
@@ -42,15 +31,9 @@ function outcomeLabel(outcome: string) {
   return outcome || "–";
 }
 
-function statusLabel(status: string) {
-  if (status === "TAKEN") return "TAKEN";
-  if (status === "BLOCKED") return "BLOCKED";
-  return status || "–";
-}
-
-function reasonLabel(blockReason: string | null | undefined) {
-  if (!blockReason) return "–";
-  return String(blockReason).replaceAll("_", " ");
+function pillClass(kind: "win" | "loss" | "be") {
+  // keep your existing pill styles
+  return "aura-pill";
 }
 
 const LATE_STAGE_BLOCK_REASONS = [
@@ -63,42 +46,34 @@ const LATE_STAGE_BLOCK_REASONS = [
   "STOP_INVALID",
   "STOP_TOO_BIG",
   "CONTRACTS_ZERO",
-  // engine/near-miss
-  "NO_ACTIVE_FVG",
-  "FVG_INVALID",
-  "FVG_ALREADY_TRADED",
-  "NOT_RETESTED",
-  "DIRECTION_MISMATCH",
-  "NO_EXPANSION_PATTERN",
 ] as const;
 
 export default async function ChartsPage() {
   const now = new Date();
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  // --- Recent trades (last 24h) ---
+  // Trades (last 24h)
   const trades = await prisma.trade.findMany({
     where: { closedAt: { gte: since } },
     orderBy: { closedAt: "desc" },
     take: 200,
     select: {
       execKey: true,
-      contractId: true,
       symbol: true,
+      contractId: true,
       side: true,
       qty: true,
       closedAt: true,
+      realizedPnlUsd: true,
+      outcome: true,
+
       plannedStopTicks: true,
       plannedRiskUsd: true,
       plannedRR: true,
-      realizedPnlUsd: true,
-      rrAchieved: true,
-      outcome: true,
-      exitReason: true,
     },
   });
 
-  // --- “Aura setups” (taken + later-stage blocked) ---
+  // Strategy Signals (last 24h)
   const rawSignals = await prisma.strategySignal.findMany({
     where: {
       createdAt: { gte: since },
@@ -108,7 +83,7 @@ export default async function ChartsPage() {
       ],
     },
     orderBy: { createdAt: "desc" },
-    take: 600,
+    take: 400,
     select: {
       createdAt: true,
       strategy: true,
@@ -124,11 +99,10 @@ export default async function ChartsPage() {
       contracts: true,
       riskUsdPlanned: true,
       signalKey: true,
-      meta: true,
     },
   });
 
-  // Dedupe by execKey (when present) so reconnect spam doesn’t flood this view
+  // Dedupe signals by execKey when present
   const signals = (() => {
     const seenExec = new Set<string>();
     const out: typeof rawSignals = [];
@@ -139,13 +113,10 @@ export default async function ChartsPage() {
       }
       out.push(s);
     }
-    return out.slice(0, 250);
+    return out.slice(0, 200);
   })();
 
-  const contractForTrade = (t: (typeof trades)[number]) =>
-    (t.contractId && String(t.contractId).trim()) ? String(t.contractId) : String(t.symbol);
-
-  // MGC chart only
+  // only MGC chart
   const symbols = ["MGC"];
 
   return (
@@ -153,18 +124,21 @@ export default async function ChartsPage() {
       <div>
         <div className="aura-page-title">Charts</div>
         <div className="aura-page-subtitle">
-          Live chart + recent trade outcomes + what Aura evaluated (taken or blocked).
+          Live chart + last 24h trades + evaluated setups.
         </div>
       </div>
 
-      {/* 1) Chart FIRST */}
+      {/* Chart (MGC) */}
       <section className="aura-grid-gap-12">
         {symbols.map((s) => (
           <div key={s} className="aura-card">
             <div className="aura-row-between">
               <div className="aura-card-title">{s}</div>
-              <Link className="aura-link aura-btn aura-btn-subtle" href={`/app/reports?symbol=${encodeURIComponent(s)}`}>
-                Report →
+              <Link
+                className="aura-link aura-btn aura-btn-subtle"
+                href={`/app/reports?symbol=${encodeURIComponent(s)}`}
+              >
+                View full report →
               </Link>
             </div>
             <TradingChart symbol={s} initialTf="15s" channelName={null} />
@@ -172,7 +146,7 @@ export default async function ChartsPage() {
         ))}
       </section>
 
-      {/* 2) Recent Trades table SECOND */}
+      {/* Recent Trades */}
       <section className="aura-card">
         <div className="aura-group-header">
           <div className="aura-group-title">Recent Trades (last 24h)</div>
@@ -181,75 +155,69 @@ export default async function ChartsPage() {
           </Link>
         </div>
 
-        <div className="aura-mt-12" style={{ overflowX: "auto" }}>
-          <div className="aura-table aura-table-trades" style={{ minWidth: 1100 }}>
-            <div className="aura-table-header" style={{ whiteSpace: "nowrap" }}>
-              <div>Closed</div>
-              <div>Outcome</div>
-              <div className="aura-right">PnL $</div>
-              <div>Side</div>
-              <div className="aura-right"># Contracts</div>
-              <div>Contract</div>
-              <div className="aura-right">Stop (ticks)</div>
-              <div className="aura-right">Risk $</div>
-              <div className="aura-right">RR</div>
-            </div>
-
-            {trades.length === 0 ? (
-              <div className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
-                <div className="aura-muted">No trades in last 24h</div>
-                <div />
-                <div />
-                <div />
-                <div />
-                <div />
-                <div />
-                <div />
-                <div />
+        {/* Horizontal scroll + no wrapping */}
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <div style={{ minWidth: 980 }}>
+            <div className="aura-table aura-mt-12">
+              <div className="aura-table-header" style={{ whiteSpace: "nowrap" }}>
+                <div>Closed</div>
+                <div>Outcome</div>
+                <div className="aura-right">PnL $</div>
+                <div>Side</div>
+                <div className="aura-right"># Contracts</div>
+                <div>Contract</div>
+                <div className="aura-right">Stop Loss (ticks)</div>
+                <div className="aura-right">Risk $</div>
+                <div className="aura-right">RR</div>
               </div>
-            ) : (
-              trades.map((t) => {
-                const out = outcomeLabel(t.outcome);
 
-                const contracts = toNum(t.qty);
-                const stopTicks = toNum(t.plannedStopTicks);
-                const riskUsd = toNum(t.plannedRiskUsd);
+              {trades.length === 0 ? (
+                <div className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
+                  <div className="aura-muted">No trades in last 24h</div>
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                </div>
+              ) : (
+                trades.map((t) => {
+                  const out = outcomeLabel(t.outcome);
+                  const kind: "win" | "loss" | "be" =
+                    out === "WIN" ? "win" : out === "LOSS" ? "loss" : "be";
 
-                // Prefer rrAchieved if you’ve got it; otherwise fall back to plannedRR;
-                // otherwise if we have planned risk, compute achieved R = pnl / risk.
-                const rr =
-                  toNum(t.rrAchieved) ??
-                  toNum(t.plannedRR) ??
-                  (riskUsd && riskUsd !== 0 ? (toNum(t.realizedPnlUsd) ?? 0) / riskUsd : null);
+                  const contract = t.contractId || t.symbol;
 
-                return (
-                  <div key={t.execKey} className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
-                    <div>{fmtTime(t.closedAt)}</div>
-                    <div>
-                      <span className={pillClass()}>{out}</span>
+                  // risk/rr come from planned fields written by the worker
+                  const riskUsd = t.plannedRiskUsd != null ? Number(t.plannedRiskUsd) : null;
+                  const rrPlanned = t.plannedRR != null ? Number(t.plannedRR) : null;
+
+                  return (
+                    <div key={t.execKey} className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
+                      <div>{fmtTime(t.closedAt)}</div>
+                      <div>
+                        <span className={pillClass(kind)}>{out}</span>
+                      </div>
+                      <div className="aura-right">{fmtNum(t.realizedPnlUsd, 2)}</div>
+                      <div>{t.side}</div>
+                      <div className="aura-right">{t.qty != null ? fmtInt(t.qty) : "–"}</div>
+                      <div>{contract}</div>
+                      <div className="aura-right">{t.plannedStopTicks != null ? fmtInt(t.plannedStopTicks) : "–"}</div>
+                      <div className="aura-right">{riskUsd != null ? fmtNum(riskUsd, 2) : "–"}</div>
+                      <div className="aura-right">{rrPlanned != null ? fmtNum(rrPlanned, 2) : "–"}</div>
                     </div>
-                    <div className="aura-right">{fmtNum(t.realizedPnlUsd, 2)}</div>
-                    <div>{t.side}</div>
-                    <div className="aura-right">{contracts != null ? fmtInt(contracts) : "–"}</div>
-                    <div className="aura-mono">{contractForTrade(t)}</div>
-                    <div className="aura-right">{stopTicks != null ? fmtInt(stopTicks) : "–"}</div>
-                    <div className="aura-right">{riskUsd != null ? fmtNum(riskUsd, 2) : "–"}</div>
-                    <div className="aura-right">{rr != null ? fmtNum(rr, 2) : "–"}</div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="aura-text-xs aura-muted aura-mt-10" style={{ maxWidth: 900 }}>
-            Note: exitReason shows as <span className="aura-mono">UNKNOWN</span> because the worker is currently writing
-            <span className="aura-mono"> exitReason: "UNKNOWN"</span> on close. We can infer TP vs SL from the bracket
-            order tags (SL/TP) once we wire that mapping.
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 3) Setups table THIRD */}
+      {/* Setups Reviewed */}
       <section className="aura-card">
         <div className="aura-group-header">
           <div className="aura-group-title">Setups Reviewed (last 24h)</div>
@@ -258,75 +226,69 @@ export default async function ChartsPage() {
           </Link>
         </div>
 
-        <div className="aura-mt-12" style={{ overflowX: "auto" }}>
-          <div className="aura-table aura-table-signals" style={{ minWidth: 1200 }}>
-            <div className="aura-table-header" style={{ whiteSpace: "nowrap" }}>
-              <div>Time</div>
-              <div>Strategy</div>
-              <div>Instrument</div>
-              <div>Side</div>
-              <div>Status</div>
-              <div>Reason</div>
-              <div className="aura-right">SL/TP (ticks)</div>
-              <div className="aura-right">RR</div>
-              <div className="aura-right"># Contracts</div>
-              <div className="aura-right">Risk $</div>
-            </div>
-
-            {signals.length === 0 ? (
-              <div className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
-                <div className="aura-muted">No evaluated setups yet</div>
-                <div />
-                <div />
-                <div />
-                <div />
-                <div />
-                <div />
-                <div />
-                <div />
-                <div />
+        {/* Horizontal scroll + no wrapping */}
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <div style={{ minWidth: 1050 }}>
+            <div className="aura-table aura-mt-12">
+              <div className="aura-table-header" style={{ whiteSpace: "nowrap" }}>
+                <div>Time</div>
+                <div>Strategy</div>
+                <div>Instrument</div>
+                <div>Side</div>
+                <div>Status</div>
+                <div>Reason</div>
+                <div className="aura-right">SL/TP (ticks)</div>
+                <div className="aura-right">RR</div>
+                <div className="aura-right"># Contracts</div>
+                <div className="aura-right">Risk $</div>
               </div>
-            ) : (
-              signals.map((s) => {
-                const status = statusLabel(s.status);
-                const reason = s.status === "TAKEN" ? "Taken" : reasonLabel(s.blockReason);
 
-                const stop = toNum(s.stopTicks);
-                const tp = toNum(s.tpTicks);
-                const rr = toNum(s.rr);
-                const contracts = toNum(s.contracts);
-                const risk = toNum(s.riskUsdPlanned);
+              {signals.length === 0 ? (
+                <div className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
+                  <div className="aura-muted">No later-stage setups yet</div>
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                </div>
+              ) : (
+                signals.map((s) => {
+                  const statusLabel = s.status === "TAKEN" ? "TAKEN" : "BLOCKED";
+                  const reason =
+                    s.status === "TAKEN"
+                      ? "Taken"
+                      : s.blockReason
+                      ? String(s.blockReason).replaceAll("_", " ")
+                      : "Blocked";
 
-                const instrument =
-                  (s.contractId && String(s.contractId).trim())
-                    ? String(s.contractId)
-                    : String(s.symbol);
+                  const instrument = s.contractId || s.symbol;
 
-                return (
-                  <div key={s.signalKey} className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
-                    <div>{fmtTime(s.createdAt)}</div>
-                    <div>{s.strategy}</div>
-                    <div className="aura-mono">{instrument}</div>
-                    <div>{s.side}</div>
-                    <div>
-                      <span className={pillClass()}>{status}</span>
+                  return (
+                    <div key={s.signalKey} className="aura-table-row" style={{ whiteSpace: "nowrap" }}>
+                      <div>{fmtTime(s.createdAt)}</div>
+                      <div>{s.strategy}</div>
+                      <div>{instrument}</div>
+                      <div>{s.side}</div>
+                      <div>
+                        <span className="aura-pill">{statusLabel}</span>
+                      </div>
+                      <div className="aura-muted">{reason.toUpperCase()}</div>
+                      <div className="aura-right">
+                        {s.stopTicks != null ? fmtInt(s.stopTicks) : "–"} / {s.tpTicks != null ? fmtInt(s.tpTicks) : "–"}
+                      </div>
+                      <div className="aura-right">{s.rr != null ? fmtNum(s.rr, 2) : "–"}</div>
+                      <div className="aura-right">{s.contracts != null ? fmtInt(s.contracts) : "–"}</div>
+                      <div className="aura-right">{s.riskUsdPlanned != null ? fmtNum(s.riskUsdPlanned, 2) : "–"}</div>
                     </div>
-                    <div className="aura-muted">{reason}</div>
-                    <div className="aura-right">
-                      {stop != null ? fmtInt(stop) : "–"} / {tp != null ? fmtInt(tp) : "–"}
-                    </div>
-                    <div className="aura-right">{rr != null ? fmtNum(rr, 2) : "–"}</div>
-                    <div className="aura-right">{contracts != null ? fmtInt(contracts) : "–"}</div>
-                    <div className="aura-right">{risk != null ? fmtNum(risk, 2) : "–"}</div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="aura-text-xs aura-muted aura-mt-10" style={{ maxWidth: 900 }}>
-            This table is intentionally “later-stage only” so it reflects what Aura genuinely evaluated close to execution
-            (TAKEN + key BLOCKED reasons).
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       </section>

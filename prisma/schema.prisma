@@ -70,6 +70,8 @@ model Fill {
   side            OrderSide
   qty             Decimal
   price           Decimal
+  filledAt        DateTime?     // ✅ add this
+
   brokerAccount   BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
   order           Order?        @relation(fields: [orderId], references: [id])
 
