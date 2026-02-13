@@ -1555,8 +1555,8 @@ html.light .aura-topbar__state:hover {
 /* Advanced collapsible container */
 .aura-advanced-container {
   border: 1px solid var(--border);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--card) 92%, var(--background));
+  border-radius: 14px;
+  background: var(--muted);
   overflow: hidden;
 }
 
