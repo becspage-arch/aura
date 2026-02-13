@@ -1,0 +1,49 @@
+DUPLICATE: .aura-table-row
+  [1/2] lines 350-356
+  [2/2] lines 380-383
+  KEEP: lines 380-383
+
+DUPLICATE: .aura-btn
+  [1/2] lines 492-500
+  [2/2] lines 715-729
+  KEEP: lines 715-729
+
+DUPLICATE: .aura-pill-toggle__stack
+  [1/2] lines 839-845
+  [2/2] lines 932-936
+  KEEP: lines 932-936
+
+DUPLICATE: .aura-pill-toggle__sublabel
+  [1/2] lines 847-851
+  [2/2] lines 938-941
+  KEEP: lines 938-941
+
+DUPLICATE: .aura-select-grid
+  [1/2] lines 857-861
+  [2/2] lines 947-951
+  KEEP: lines 947-951
+
+DUPLICATE: .aura-select-card
+  [1/2] lines 869-877
+  [2/2] lines 959-967
+  KEEP: lines 959-967
+
+DUPLICATE: .aura-select-card__top
+  [1/2] lines 895-900
+  [2/2] lines 985-990
+  KEEP: lines 985-990
+
+DUPLICATE: .aura-select-card__title
+  [1/2] lines 902-904
+  [2/2] lines 992-994
+  KEEP: lines 992-994
+
+DUPLICATE: .aura-select-card__desc
+  [1/2] lines 906-911
+  [2/2] lines 996-1001
+  KEEP: lines 996-1001
+
+DUPLICATE: .aura-select-card__dot
+  [1/2] lines 913-921
+  [2/2] lines 1003-1011
+  KEEP: lines 1003-1011
