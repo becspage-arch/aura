@@ -277,7 +277,7 @@ export async function startProjectXUserFeed(params: {
           },
         });
 
-                // --- ROLL UP: Fill -> Order (8E.4b) ---
+        // --- ROLL UP: Fill -> Order (8E.4b) ---
         if (orderRow?.id) {
           try {
             const agg = await db.fill.aggregate({
@@ -289,7 +289,7 @@ export async function startProjectXUserFeed(params: {
             const filledQtySum = Number(agg._sum.qty ?? 0);
             const avgFillPrice = agg._avg.price == null ? null : Number(agg._avg.price);
 
-            // Load intended order qty so we can mark FILLED vs PARTIAL
+            // Load intended order qty so we can mark FILLED vs PARTIALLY_FILLED
             const ord = await db.order.findUnique({
               where: { id: orderRow.id },
               select: { qty: true },
@@ -301,7 +301,11 @@ export async function startProjectXUserFeed(params: {
             const EPS = 1e-9;
 
             const nextStatus =
-              orderQty > 0 && filledQtySum + EPS >= orderQty ? "FILLED" : filledQtySum > 0 ? "PARTIAL" : "NEW";
+              orderQty > 0 && filledQtySum + EPS >= orderQty
+                ? "FILLED"
+                : filledQtySum > 0
+                  ? "PARTIALLY_FILLED"
+                  : "NEW";
 
             await db.order.update({
               where: { id: orderRow.id },
