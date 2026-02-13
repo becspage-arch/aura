@@ -446,6 +446,23 @@ export async function startProjectXUserFeed(params: {
         toStr(payload?.id) ??
         "noorder";
 
+      console.log("[projectx-user] POS_CLOSE_KEYS", {
+        accountId: payload?.accountId ?? params.accountId ?? null,
+        contractId: payload?.contractId ?? payload?.instrumentId ?? payload?.symbolId ?? null,
+
+        positionId: payload?.positionId ?? payload?.id ?? payload?.position?.id ?? null,
+
+        closedAtField: payload?.closedAt ?? null,
+        tsField: payload?.timestamp ?? payload?.ts ?? null,
+
+        entryOrderId: payload?.entryOrderId ?? null,
+        orderId: payload?.orderId ?? null,
+        id: payload?.id ?? null,
+
+        refOrderId,
+        closeKey,
+      });
+
       const execKey = `projectx:close:${ident.clerkUserId}:${symbol}:${refOrderId}:${closeKey}`;
 
       // Dedupe: only emit notify the first time we see this execKey
