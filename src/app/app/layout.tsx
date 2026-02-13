@@ -4,38 +4,27 @@ import { NotificationsListener } from "@/components/NotificationsListener";
 
 const nav = [
   { href: "/app", label: "Dashboard" },
-  { href: "/app/live-control", label: "Live Control" },
-  { href: "/app/strategy", label: "Strategy" },
-  { href: "/app/trades", label: "Trades & Logs" },
-  { href: "/app/settings", label: "Settings" },
-  { href: "/app/audit", label: "Audit" },
+  { href: "/app/live-control", label: "Live Trading" },
+  { href: "/app/strategy", label: "Strategy Setup" },
+  { href: "/app/trades", label: "Reports" },
+  { href: "/app/settings", label: "Account" },
+  { href: "/app/audit", label: "Activity" },
   { href: "/app/profile", label: "Profile" },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-screen grid-cols-[240px_1fr]">
+    <div className="aura-app-layout">
       {/* Sidebar */}
-      <aside
-        style={{
-          borderRight: "1px solid var(--border)",
-          background: "var(--card)",
-          color: "var(--card-foreground)",
-          padding: 16,
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: 16 }}>Aura</div>
+      <aside className="aura-sidebar">
+        <div className="aura-sidebar__brand">Aura</div>
 
-        <nav style={{ display: "grid", gap: 8 }}>
+        <nav className="aura-sidebar__nav">
           {nav.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              style={{
-                padding: "6px 8px",
-                borderRadius: 10,
-                color: "var(--foreground)",
-              }}
+              className="aura-sidebar__link"
             >
               {item.label}
             </Link>
@@ -44,10 +33,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main column */}
-      <div className="min-h-screen">
+      <div className="aura-main">
         <AppTopBar />
         <NotificationsListener />
-        <main style={{ padding: 24, paddingTop: 18 }}>{children}</main>
+        <main className="aura-main__content">{children}</main>
       </div>
     </div>
   );

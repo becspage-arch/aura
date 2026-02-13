@@ -1338,3 +1338,55 @@ html.light .aura-topbar__state:hover {
   color: var(--muted-foreground);
 }
 
+/* ==============================
+   App Layout (Sidebar + Main)
+   ============================== */
+
+.aura-app-layout {
+  display: grid;
+  min-height: 100vh;
+  grid-template-columns: 240px 1fr;
+}
+
+.aura-sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  padding: 16px;
+}
+
+.aura-sidebar__brand {
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.aura-sidebar__nav {
+  display: grid;
+  gap: 8px;
+}
+
+.aura-sidebar__link {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 10px;
+  color: var(--foreground);
+  text-decoration: none;
+  transition: background 120ms ease;
+}
+
+.aura-sidebar__link:hover {
+  background: rgba(214, 194, 143, 0.08);
+}
+
+html.light .aura-sidebar__link:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.aura-main {
+  min-height: 100vh;
+}
+
+.aura-main__content {
+  padding: 24px;
+  padding-top: 18px;
+}
