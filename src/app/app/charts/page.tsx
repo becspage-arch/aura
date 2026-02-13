@@ -71,11 +71,36 @@ export default async function ChartsPage() {
     },
   });
 
-  // Strategy Signals (last 24h) — include TAKEN + BLOCKED (we'll filter heartbeats in code safely)
+  // Strategy Signals (last 24h) — TAKEN + real “setup candidate” BLOCKED rows
+  // Excludes the noisy “heartbeat/every candle” reasons.
+  const SETUP_BLOCK_REASONS = [
+    "FVG_INVALID",
+    "FVG_ALREADY_TRADED",
+    "NOT_RETESTED",
+    "DIRECTION_MISMATCH",
+    "STOP_INVALID",
+    "STOP_TOO_BIG",
+    "CONTRACTS_ZERO",
+
+    // these are “late stage” operational blocks (still worth showing)
+    "IN_TRADE",
+    "PAUSED",
+    "KILL_SWITCH",
+    "NOT_LIVE_CANDLE",
+    "INVALID_BRACKET",
+    "EXECUTION_FAILED",
+  ] as const;
+
   const rawSignals = await prisma.strategySignal.findMany({
     where: {
       createdAt: { gte: since },
-      status: { in: ["TAKEN", "BLOCKED"] },
+      OR: [
+        { status: "TAKEN" },
+        {
+          status: "BLOCKED",
+          blockReason: { in: SETUP_BLOCK_REASONS as any },
+        },
+      ],
     },
     orderBy: { createdAt: "desc" },
     take: 400,
@@ -97,23 +122,8 @@ export default async function ChartsPage() {
     },
   });
 
-  const signals = rawSignals
-  .filter((s) => {
-    // Keep TAKEN always
-    if (s.status === "TAKEN") return true;
-
-    // For BLOCKED: remove heartbeat-ish noise.
-    // If your heartbeats have 0/0 and missing sizing, this will drop them,
-    // but still keep real "candidate" blocked setups that got as far as sizing.
-    const stop = s.stopTicks != null ? Number(s.stopTicks) : 0;
-    const tp = s.tpTicks != null ? Number(s.tpTicks) : 0;
-
-    // Heartbeats tend to be 0/0 — exclude
-    if (stop <= 0 && tp <= 0) return false;
-
-    return true;
-  })
-  .slice(0, 200);
+  // Keep most recent 200. Do NOT dedupe by execKey.
+  const signals = rawSignals.slice(0, 200);
 
   // only MGC chart
   const symbols = ["MGC"];
