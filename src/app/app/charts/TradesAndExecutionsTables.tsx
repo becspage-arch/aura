@@ -47,7 +47,8 @@ export function TradesAndExecutionsTables() {
       const res = await fetch("/api/charts/tables", { method: "GET" });
       const json = (await res.json()) as ApiResp;
       if (!res.ok || !json.ok) {
-        setErr(!res.ok ? `HTTP ${res.status}` : json.error);
+        setErr(!res.ok ? `HTTP ${res.status}` : ("error" in json ? json.error : "unknown error"));
+
         setData(null);
         return;
       }
