@@ -272,21 +272,6 @@ export async function startProjectXUserFeed(params: {
               },
             });
           }
-
-          } else {
-            // No externalId available – just write it (worst case: duplicates)
-            await db.fill.create({
-              data: {
-                brokerAccountId: brokerAccount.id, // ✅ real FK target
-                orderId: fillOrderId,
-                externalId: null,
-                symbol: fillSymbol,
-                side: fillSide,
-                qty: fillQty,
-                price: fillPrice,
-              },
-            });
-          }
         }
       } catch (e) {
         console.warn("[projectx-user] FILL_CREATE_FAILED (non-fatal)", {
