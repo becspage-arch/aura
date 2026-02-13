@@ -1552,35 +1552,35 @@ html.light .aura-topbar__state:hover {
   color: var(--muted-foreground);
 }
 
-/* ==============================
-   Advanced Toggle
-   ============================== */
-
-.aura-advanced-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
+/* Advanced collapsible container */
+.aura-advanced-container {
   border: 1px solid var(--border);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--card) 85%, var(--background));
+  background: color-mix(in srgb, var(--card) 92%, var(--background));
+  overflow: hidden;
+}
+
+.aura-advanced-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
 }
 
-.aura-advanced-toggle:hover {
-  background: color-mix(in srgb, var(--card) 70%, var(--aura-gold-1));
-  border-color: color-mix(in srgb, var(--aura-gold-2) 60%, var(--border));
-}
-
-.aura-advanced-chevron {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--muted-foreground);
+.aura-advanced-header:hover {
+  background: rgba(214, 194, 143, 0.06);
 }
 
 .aura-advanced-content {
-  margin-top: 14px;
+  padding: 16px;
+  border-top: 1px solid var(--border);
   display: grid;
-  gap: 18px;
+  gap: 24px;
+}
+
+.aura-advanced-chevron {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--muted-foreground);
 }

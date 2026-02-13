@@ -2,7 +2,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import type {
   StrategyGetResponse,
@@ -12,6 +11,7 @@ import type {
 
 import { fetchJSON } from "./_lib/api";
 
+import { TradableSymbolsCard } from "./_components/TradableSymbolsCard";
 import { TradingSessionsCard } from "./_components/TradingSessionsCard";
 import { RiskConfigurationCard } from "./_components/RiskConfigurationCard";
 import { PositionSizingCard } from "./_components/PositionSizingCard";
@@ -21,24 +21,17 @@ import { SafetyLimitsCard } from "./_components/SafetyLimitsCard";
 
 export const dynamic = "force-dynamic";
 
-const ADVANCED_KEY = "aura-strategy-advanced-open";
-
 export default function StrategyPage() {
-  const router = useRouter();
-
   const [isTrading, setIsTrading] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [current, setCurrent] = useState<StrategySettings | null>(null);
 
-  // Collapsed by default, remembers per browser/user
-  const [advancedOpen, setAdvancedOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(ADVANCED_KEY) === "true";
-  });
+  // collapsed by default (we’ll persist per-user in the NEXT step)
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  // Runtime state (locks editing while trading)
+  // Runtime state
   useEffect(() => {
     let cancelled = false;
 
@@ -58,7 +51,7 @@ export default function StrategyPage() {
     };
   }, []);
 
-  // Load settings
+  // Load strategy settings
   useEffect(() => {
     let cancelled = false;
 
@@ -112,13 +105,78 @@ export default function StrategyPage() {
 
   const disabled = loading || saving;
 
+  const lockLabel = isTrading ? "Read-only" : "Editable";
+
   return (
     <div className="mx-auto max-w-5xl aura-page">
+      {/* Header */}
       <div>
-        <div className="aura-page-title">Strategy Setup</div>
-        <p className="aura-page-subtitle">
-          Configure how Aura executes trades on your account.
-        </p>
+        <div className="aura-row-between">
+          <div>
+            <div className="aura-page-title">Strategy Setup</div>
+            <div className="aura-page-subtitle">
+              Configure how Aura trades on your account.
+            </div>
+          </div>
+
+          <div
+            className={`aura-lock-badge ${
+              isTrading ? "aura-lock-badge--locked" : "aura-lock-badge--editable"
+            }`}
+            title={isTrading ? "Pause Aura to edit settings" : "Settings can be edited"}
+          >
+            <span className="aura-lock-dot" />
+            <span>{lockLabel}</span>
+          </div>
+        </div>
+
+        <div className="aura-summary-strip" aria-label="Strategy summary">
+          <div className="aura-row-between">
+            <div>
+              <div className="aura-summary-title">Summary</div>
+              <div className="aura-muted aura-text-xs aura-mt-6">
+                Key settings snapshot.
+              </div>
+            </div>
+            <div className="aura-muted aura-text-xs">{loading ? "Loading…" : " "}</div>
+          </div>
+
+          <div className="aura-mt-12 aura-health-strip">
+            <div className="aura-health-pill aura-health-pill--static">
+              <span className="aura-health-key">Symbol(s)</span>
+              <span className="aura-health-val">
+                {current?.symbols?.length ? current.symbols.join(", ") : "—"}
+              </span>
+            </div>
+
+            <div className="aura-health-pill aura-health-pill--static">
+              <span className="aura-health-key">Sessions</span>
+              <span className="aura-health-val">
+                {current
+                  ? [
+                      current.sessions.asia ? "Asia" : null,
+                      current.sessions.london ? "London" : null,
+                      current.sessions.ny ? "NY" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "—"
+                  : "—"}
+              </span>
+            </div>
+
+            <div className="aura-health-pill aura-health-pill--static">
+              <span className="aura-health-key">Risk</span>
+              <span className="aura-health-val">
+                {current ? `$${current.riskUsd} • RR ${current.rr}` : "—"}
+              </span>
+            </div>
+
+            <div className="aura-health-pill aura-health-pill--static">
+              <span className="aura-health-key">State</span>
+              <span className="aura-health-val">{lockLabel}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {err ? (
@@ -128,77 +186,62 @@ export default function StrategyPage() {
         </section>
       ) : null}
 
-      {/* Lock header */}
-      <div className="aura-row-between">
-        <div className="aura-muted aura-text-xs">
-          {isTrading
-            ? "Strategy settings are locked while Aura is running."
-            : "Strategy settings are editable."}
-        </div>
+      {/* Core */}
+      <div className="aura-section-stack">
+        <TradableSymbolsCard
+          current={current}
+          saving={saving}
+          patchStrategySettings={patchStrategySettings}
+        />
 
-        <button
-          type="button"
-          className="aura-btn aura-btn-subtle"
-          onClick={() => router.push("/app/live-control")}
-        >
-          {isTrading ? "Go to Live Control" : "Live Control"}
-        </button>
-      </div>
+        <TradingSessionsCard
+          current={current}
+          saving={saving}
+          disabled={disabled}
+          setCurrent={setCurrent}
+          setSaving={setSaving}
+          setErr={setErr}
+        />
 
-      <div className="aura-lock-wrap">
-        {isTrading ? <div className="aura-lock-overlay" /> : null}
+        <RiskConfigurationCard
+          current={current}
+          saving={saving}
+          disabled={disabled}
+          setCurrent={setCurrent}
+          setSaving={setSaving}
+          setErr={setErr}
+        />
 
-        <div className={isTrading ? "aura-section-stack aura-locked" : "aura-section-stack"}>
-          <TradingSessionsCard
-            current={current}
-            saving={saving}
-            disabled={disabled}
-            setCurrent={setCurrent}
-            setSaving={setSaving}
-            setErr={setErr}
-          />
+        <PositionSizingCard
+          current={current}
+          saving={saving}
+          patchStrategySettings={patchStrategySettings}
+        />
 
-          <RiskConfigurationCard
-            current={current}
-            saving={saving}
-            disabled={disabled}
-            setCurrent={setCurrent}
-            setSaving={setSaving}
-            setErr={setErr}
-          />
+        <SafetyLimitsCard
+          current={current}
+          saving={saving}
+          patchStrategySettings={patchStrategySettings}
+        />
 
-          <PositionSizingCard current={current} />
-
-          <SafetyLimitsCard
-            current={current}
-            saving={saving}
-            patchStrategySettings={patchStrategySettings}
-          />
-
-          {/* Advanced wrapper */}
-          <section className="aura-card">
-            <button
-              type="button"
-              className="aura-advanced-toggle"
-              onClick={() => {
-                setAdvancedOpen((v) => {
-                  const next = !v;
-                  localStorage.setItem(ADVANCED_KEY, String(next));
-                  return next;
-                });
-              }}
-              aria-expanded={advancedOpen}
+        <section className="aura-section">
+          <div className="aura-advanced-container">
+            <div
+              className="aura-advanced-header"
+              onClick={() => setAdvancedOpen((v) => !v)}
             >
-              <div className="aura-advanced-left">
-                <div className="aura-card-title">Advanced</div>
+              <div>
+                <div className="aura-card-title">Advanced Strategy Controls</div>
                 <div className="aura-muted aura-text-xs aura-mt-6">
-                  Optional filters and execution preferences.
+                  Additional filters and execution preferences.
                 </div>
               </div>
-              <div className="aura-advanced-chevron">{advancedOpen ? "–" : "+"}</div>
-            </button>
+              <span className="aura-advanced-chevron">
+                {advancedOpen ? "−" : "+"}
+              </span>
+            </div>
 
-            {advancedOpen ? (
+            {advancedOpen && (
               <div className="aura-advanced-content">
                 <TradingOptionsCard
                   current={current}
@@ -212,9 +255,10 @@ export default function StrategyPage() {
                   patchStrategySettings={patchStrategySettings}
                 />
               </div>
-            ) : null}
-          </section>
-        </div>
+            )}
+          </div>
+        </section>
+
       </div>
     </div>
   );

@@ -27,7 +27,7 @@ export function TradingSessionsCard({
     ? [
         current.sessions.asia ? "Asia" : null,
         current.sessions.london ? "London" : null,
-        current.sessions.ny ? "New York" : null,
+        current.sessions.ny ? "NY" : null,
       ]
         .filter(Boolean)
         .join(", ") || "None selected"
@@ -42,6 +42,7 @@ export function TradingSessionsCard({
             Select when Aura is allowed to trade.
           </div>
         </div>
+
         <div className="aura-muted aura-text-xs">{summary}</div>
       </div>
 
@@ -103,8 +104,7 @@ export function TradingSessionsCard({
         </div>
 
         <p className="aura-muted aura-text-xs aura-mt-10">
-          Tip: most users start with one main session (e.g. New York) to keep results
-          consistent.
+          Tip: most traders start with one main session (e.g. New York) to keep results consistent.
         </p>
       </div>
     </section>
