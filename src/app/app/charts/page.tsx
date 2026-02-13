@@ -72,11 +72,25 @@ export default async function ChartsPage() {
   });
 
 
-// Strategy Signals (last 24h) — include TAKEN + all BLOCKED
+  // Strategy Signals (last 24h) — ONLY real setup candidates (have SL/TP/contracts/risk) + TAKEN
   const rawSignals = await prisma.strategySignal.findMany({
     where: {
       createdAt: { gte: since },
-      OR: [{ status: "TAKEN" }, { status: "BLOCKED" }],
+      OR: [
+        { status: "TAKEN" },
+
+        // BLOCKED but only when it got far enough to compute a bracket / size
+        {
+          status: "BLOCKED",
+          OR: [
+            { stopTicks: { gt: 0 } },
+            { tpTicks: { gt: 0 } },
+            { contracts: { gt: 0 } },
+            { riskUsdPlanned: { gt: 0 } },
+            { rr: { gt: 0 } },
+          ],
+        },
+      ],
     },
     orderBy: { createdAt: "desc" },
     take: 400,
