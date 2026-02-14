@@ -358,14 +358,13 @@ export class CorePlus315Engine {
 
   /**
    * Build 3m candles from closed 15s candles.
-   * A 3m candle closes after 12 x 15s candles.
+   * Robust: closes the 3m candle when the bucket changes (does not require exactly 12 candles).
    */
   private ingest15sInto3m(c: Candle15s): Candle3m | null {
     const bucketStart = floorTo3m(c.time);
 
-    if (!this.pending3m || this.pending3m.bucketStart !== bucketStart) {
-      // If we had a partially built bucket and it didn't finish, we drop it.
-      // (This can happen on gaps/weekend; OK for now.)
+    // first candle ever
+    if (!this.pending3m) {
       this.pending3m = {
         bucketStart,
         open: c.open,
@@ -377,14 +376,8 @@ export class CorePlus315Engine {
       return null;
     }
 
-    // update current bucket
-    this.pending3m.high = Math.max(this.pending3m.high, c.high);
-    this.pending3m.low = Math.min(this.pending3m.low, c.low);
-    this.pending3m.close = c.close;
-    this.pending3m.count += 1;
-
-    // 12 x 15s = 3 minutes
-    if (this.pending3m.count >= 12) {
+    // if we moved into a new 3m bucket, close the previous one (even if count < 12)
+    if (this.pending3m.bucketStart !== bucketStart) {
       const out: Candle3m = {
         symbol: c.symbol,
         time: this.pending3m.bucketStart,
@@ -393,9 +386,25 @@ export class CorePlus315Engine {
         low: this.pending3m.low,
         close: this.pending3m.close,
       };
-      this.pending3m = null;
+
+      // start the new bucket with the current candle
+      this.pending3m = {
+        bucketStart,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        count: 1,
+      };
+
       return out;
     }
+
+    // still inside the same bucket - update
+    this.pending3m.high = Math.max(this.pending3m.high, c.high);
+    this.pending3m.low = Math.min(this.pending3m.low, c.low);
+    this.pending3m.close = c.close;
+    this.pending3m.count += 1;
 
     return null;
   }
