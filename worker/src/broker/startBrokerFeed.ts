@@ -65,6 +65,12 @@ function getPrisma(): PrismaClient {
   return prisma;
 }
 
+const db = getPrisma();
+const r = await db.$queryRawUnsafe<any[]>(
+  `select current_database() as db, current_schema() as schema, now() as now`
+);
+console.log(`[${env.WORKER_NAME}] DB_IDENTITY`, r?.[0] ?? null);
+
 // --- user trading state guard (pause / kill switch) ---
 let cachedUserTradingState:
   | { isPaused: boolean; isKillSwitched: boolean }
