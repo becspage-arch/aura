@@ -1,9 +1,14 @@
 // worker/scripts/replay-coreplus315.ts
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+// ❌ remove this
+// import { PrismaClient } from "@prisma/client";
+
+// ✅ use the same prisma instance your app uses (it has the Neon adapter wired)
+import { prisma } from "../../src/lib/prisma";
 import { CorePlus315Engine } from "../src/strategy/coreplus315Engine.js";
 
-const prisma = new PrismaClient();
+// ❌ remove this
+// const prisma = new PrismaClient();
 
 function numEnv(name: string, fallback: number) {
   const v = process.env[name];
@@ -135,6 +140,7 @@ main()
     console.error("Replay failed:", e);
     process.exitCode = 1;
   })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// ❌ remove this block
+// .finally(async () => {
+//   await prisma.$disconnect();
+// });
