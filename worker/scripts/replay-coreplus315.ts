@@ -140,7 +140,6 @@ main()
     console.error("Replay failed:", e);
     process.exitCode = 1;
   })
-// ❌ remove this block
-// .finally(async () => {
-//   await prisma.$disconnect();
-// });
+  .finally(async () => {
+  // no-op for shared prisma singleton
+  });
