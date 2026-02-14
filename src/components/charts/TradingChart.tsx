@@ -33,8 +33,12 @@ type ApiResponse = {
 };
 
 type SeriesWithOptionalMarkers = ISeriesApi<"Candlestick"> & {
-  // Some lightweight-charts versions expose this at runtime but typings may lag.
+  // Some versions expose this
   setMarkers?: (markers: SeriesMarker<UTCTimestamp>[]) => void;
+};
+
+type MarkersAdapter = {
+  setMarkers: (markers: SeriesMarker<UTCTimestamp>[]) => void;
 };
 
 function toSeries(c: Candle): CandlestickData<UTCTimestamp> {
@@ -121,6 +125,9 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<SeriesWithOptionalMarkers | null>(null);
 
+  // ✅ Works across lightweight-charts versions
+  const markersAdapterRef = useRef<MarkersAdapter | null>(null);
+
   const [tf, setTf] = useState<Timeframe>(initialTf);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,20 +200,17 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
 
   const applySeriesMarkers = useCallback(
     (nextTf: Timeframe) => {
-      const s = seriesRef.current;
-      if (!s) return;
-
       const total = markers.filter((m) => m.symbol === symbol).length;
 
-      // Safe: only call if available at runtime
-      if (typeof s.setMarkers === "function") {
-        const seriesMarkers = mapAuraMarkersToSeriesMarkers(markers, symbol, nextTf);
-        s.setMarkers(seriesMarkers);
-        setDebugMarkerStats({ total, shown: seriesMarkers.length });
-      } else {
-        // Typings/runtime mismatch: don’t crash; keep chart working.
+      const adapter = markersAdapterRef.current;
+      if (!adapter) {
         setDebugMarkerStats({ total, shown: 0 });
+        return;
       }
+
+      const seriesMarkers = mapAuraMarkersToSeriesMarkers(markers, symbol, nextTf);
+      adapter.setMarkers(seriesMarkers);
+      setDebugMarkerStats({ total, shown: seriesMarkers.length });
     },
     [markers, symbol]
   );
@@ -457,6 +461,35 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
     chartRef.current = chart;
     seriesRef.current = series as SeriesWithOptionalMarkers;
 
+    // ✅ Markers adapter: use native setMarkers if present; else use plugin
+    const sAny = seriesRef.current as any;
+    if (typeof sAny?.setMarkers === "function") {
+      markersAdapterRef.current = {
+        setMarkers: (ms) => sAny.setMarkers(ms),
+      };
+    } else {
+      // lightweight-charts v5 uses markers plugin
+      void import("lightweight-charts/plugins/series-markers")
+        .then((mod: any) => {
+          if (!seriesRef.current) return;
+          if (typeof mod?.createSeriesMarkers !== "function") return;
+
+          const api = mod.createSeriesMarkers(seriesRef.current);
+          if (!api || typeof api.setMarkers !== "function") return;
+
+          markersAdapterRef.current = {
+            setMarkers: (ms) => api.setMarkers(ms),
+          };
+
+          // apply immediately once adapter is ready
+          applySeriesMarkers(tfRef.current);
+        })
+        .catch(() => {
+          // no markers support; non-fatal
+          markersAdapterRef.current = null;
+        });
+    }
+
     const ro = new ResizeObserver(() => {
       if (!containerRef.current || !chartRef.current) return;
       chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
@@ -494,8 +527,9 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      markersAdapterRef.current = null;
     };
-  }, []);
+  }, [applySeriesMarkers]);
 
   useEffect(() => {
     let cancelled = false;
@@ -506,7 +540,6 @@ export function TradingChart({ symbol, initialTf = "15s", channelName }: Props) 
           `/api/charts/markers?symbol=${encodeURIComponent(symbol)}&limit=500`,
           { cache: "no-store" }
         );
-
         if (!res.ok) return;
 
         const json: any = await res.json().catch(() => null);
