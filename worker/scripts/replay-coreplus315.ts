@@ -4,7 +4,7 @@ import "dotenv/config";
 // import { PrismaClient } from "@prisma/client";
 
 // ✅ use the same prisma instance your app uses (it has the Neon adapter wired)
-import { prisma } from "../../src/lib/prisma";
+import { prisma } from "../../src/lib/prisma.ts";
 import { CorePlus315Engine } from "../src/strategy/coreplus315Engine.js";
 
 // ❌ remove this
