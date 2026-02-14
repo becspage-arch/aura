@@ -1,145 +1,79 @@
 // worker/scripts/replay-coreplus315.ts
-import "dotenv/config";
-// ❌ remove this
-// import { PrismaClient } from "@prisma/client";
+import path from "node:path";
+import dotenv from "dotenv";
 
-// ✅ use the same prisma instance your app uses (it has the Neon adapter wired)
-import { prisma } from "../../src/lib/prisma.ts";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+
 import { CorePlus315Engine } from "../src/strategy/coreplus315Engine.js";
 
-// ❌ remove this
-// const prisma = new PrismaClient();
+// 1) Load env the same way Next does (so DATABASE_URL exists)
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
-function numEnv(name: string, fallback: number) {
-  const v = process.env[name];
-  if (!v) return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+function getDbUrl() {
+  const url = process.env.DATABASE_URL ?? process.env.DIRECT_URL;
+  if (!url) throw new Error("Missing DATABASE_URL/DIRECT_URL in env.");
+  return url;
 }
 
+// 2) Create Prisma client locally (do NOT import from src/)
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: getDbUrl() }),
+  log: ["error"],
+});
+
 async function main() {
-  // Adjust if you want. This is just for replay diagnostics.
-  const TAKE = numEnv("REPLAY_TAKE", 2000);
-
-  // Use your configured symbol if present; otherwise use what’s in DB.
-  const SYMBOL = (process.env.PROJECTX_SYMBOL || "").trim() || null;
-
-  // Tick size/value only affect sizing math. Defaults here are sane for testing.
-  // Override if you want exact values:
-  //   set REPLAY_TICK_SIZE, REPLAY_TICK_VALUE
-  const tickSize = numEnv("REPLAY_TICK_SIZE", 0.1);
-  const tickValue = numEnv("REPLAY_TICK_VALUE", 1);
-
-  // If your user risk is stored elsewhere, this is fine for replay.
-  const engine = new CorePlus315Engine({
-    tickSize,
-    tickValue,
-    userSettings: { riskUsd: numEnv("REPLAY_RISK_USD", 50) },
-  });
+  // TODO: adjust these as needed for your replay window
+  const symbol = (process.env.PROJECTX_SYMBOL || "CON.F.US.MGC.J26").trim();
 
   const rows = await prisma.candle15s.findMany({
-    where: SYMBOL ? { symbol: SYMBOL } : undefined,
-    orderBy: { time: "desc" },
-    take: TAKE,
+    where: { symbol },
+    orderBy: { time: "asc" },
+    take: 2000,
   });
 
-  if (!rows.length) {
-    console.log("No candle15s rows found for replay.", { SYMBOL, TAKE });
-    return;
-  }
+  console.log(`[replay] loaded ${rows.length} candles for ${symbol}`);
 
-  const candles = rows.slice().reverse();
-
-  console.log("Replay starting", {
-    symbol: candles[0]?.symbol,
-    from: new Date(candles[0].time * 1000).toISOString(),
-    to: new Date(candles[candles.length - 1].time * 1000).toISOString(),
-    count: candles.length,
-    tickSize,
-    tickValue,
+  // tickSize/tickValue for MGC (adjust if you’ve set these elsewhere)
+  const engine = new CorePlus315Engine({
+    tickSize: 0.1,
+    tickValue: 1.0,
+    userSettings: { riskUsd: 10 },
   });
 
-  const counts: Record<string, number> = {};
-  let lastHasActive = false;
+  let intents = 0;
+  let blocked = 0;
 
-  for (const c of candles) {
+  for (const r of rows) {
     const res = engine.evaluateClosed15s({
-      symbol: c.symbol,
-      time: c.time,
-      open: Number(c.open),
-      high: Number(c.high),
-      low: Number(c.low),
-      close: Number(c.close),
-      volume: null,
+      symbol: r.symbol,
+      time: r.time,
+      open: Number(r.open),
+      high: Number(r.high),
+      low: Number(r.low),
+      close: Number(r.close),
     });
 
-    const dbg = engine.getDebugState();
+    if (res.kind === "intent") intents++;
+    if (res.kind === "blocked") blocked++;
 
-    // Track when we first get HTF context and an active FVG
-    if (!lastHasActive && dbg.hasActiveFvg) {
-      console.log("✅ hasActiveFvg became TRUE", {
-        at: new Date(c.time * 1000).toISOString(),
-        fvg: dbg.fvg,
-        last3mCount: dbg.last3mCount,
-      });
-      lastHasActive = true;
-    }
-
-    if (res.kind === "blocked") {
-      counts[res.reason] = (counts[res.reason] ?? 0) + 1;
-      // Only log the most important blocked reasons (keeps output readable)
-      if (
-        res.reason === "NO_ACTIVE_FVG" ||
-        res.reason === "NOT_RETESTED" ||
-        res.reason === "STOP_TOO_BIG" ||
-        res.reason === "FVG_INVALID"
-      ) {
-        console.log("BLOCKED", res.reason, {
-          t: new Date(c.time * 1000).toISOString(),
-          engine: dbg,
-          candidate: {
-            side: res.candidate.side,
-            entryTime: res.candidate.entryTime,
-            fvgTime: res.candidate.fvgTime,
-            entryPrice: res.candidate.entryPrice,
-            stopPrice: res.candidate.stopPrice,
-          },
-        });
-      }
-    }
-
-    if (res.kind === "intent") {
-      counts["INTENT"] = (counts["INTENT"] ?? 0) + 1;
-      console.log("🔥 INTENT", {
-        t: new Date(c.time * 1000).toISOString(),
-        intent: {
-          side: res.intent.side,
-          entryTime: res.intent.entryTime,
-          fvgTime: res.intent.fvgTime,
-          entryPrice: res.intent.entryPrice,
-          stopPrice: res.intent.stopPrice,
-          stopTicks: res.intent.stopTicks,
-          tpTicks: res.intent.tpTicks,
-          contracts: res.intent.contracts,
-          riskUsdPlanned: res.intent.riskUsdPlanned,
-          meta: res.intent.meta,
-        },
-        engine: dbg,
-      });
-    }
+    // Uncomment if you want to print intents:
+    // if (res.kind === "intent") console.log("[intent]", res.intent);
   }
 
-  console.log("Replay summary counts:", counts);
-
-  // Extra sanity:
-  console.log("Final engine state:", engine.getDebugState());
+  console.log("[replay] done", {
+    intents,
+    blocked,
+    debug: engine.getDebugState?.() ?? null,
+  });
 }
 
 main()
   .catch((e) => {
-    console.error("Replay failed:", e);
+    console.error(e);
     process.exitCode = 1;
   })
   .finally(async () => {
-  // no-op for shared prisma singleton
+    await prisma.$disconnect().catch(() => {});
   });
