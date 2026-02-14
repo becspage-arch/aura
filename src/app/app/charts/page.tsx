@@ -38,18 +38,6 @@ function pillClass(_kind: "win" | "loss" | "be") {
   return "aura-pill";
 }
 
-const LATE_STAGE_BLOCK_REASONS = [
-  "IN_TRADE",
-  "PAUSED",
-  "KILL_SWITCH",
-  "NOT_LIVE_CANDLE",
-  "INVALID_BRACKET",
-  "EXECUTION_FAILED",
-  "STOP_INVALID",
-  "STOP_TOO_BIG",
-  "CONTRACTS_ZERO",
-] as const;
-
 export default async function ChartsPage() {
   const now = new Date();
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -75,7 +63,6 @@ export default async function ChartsPage() {
   });
 
   // Strategy Signals (last 24h) — TAKEN + real “setup candidate” BLOCKED rows
-  // Excludes the noisy “heartbeat/every candle” reasons.
   const SETUP_BLOCK_REASONS = [
     "FVG_INVALID",
     "FVG_ALREADY_TRADED",
@@ -85,7 +72,7 @@ export default async function ChartsPage() {
     "STOP_TOO_BIG",
     "CONTRACTS_ZERO",
 
-    // these are “late stage” operational blocks (still worth showing)
+    // late-stage operational blocks (still worth showing)
     "IN_TRADE",
     "PAUSED",
     "KILL_SWITCH",
@@ -128,14 +115,15 @@ export default async function ChartsPage() {
   // Keep most recent 200. Do NOT dedupe by execKey.
   const signals = rawSignals.slice(0, 200);
 
-  // only MGC chart
-  const symbols = ["MGC"];
+  // ✅ Chart symbol: use active ProjectX contract ID (rollover-safe)
+  const primarySymbol =
+    (process.env.PROJECTX_CONTRACT_ID || "").trim() || "CON.F.US.MGC.J26";
 
-  // Fixed grid column layouts to stop wrapping + stop giant empty gaps
+  const symbols = [primarySymbol];
+
   const tradesGrid = {
     display: "grid",
-    gridTemplateColumns:
-      "190px 95px 90px 70px 110px 260px 150px 110px 80px",
+    gridTemplateColumns: "190px 95px 90px 70px 110px 260px 150px 110px 80px",
     alignItems: "center",
     columnGap: 16,
     whiteSpace: "nowrap" as const,
@@ -165,7 +153,7 @@ export default async function ChartsPage() {
         </div>
       </div>
 
-      {/* Chart (MGC) */}
+      {/* Chart */}
       <section className="aura-grid-gap-12">
         {symbols.map((s) => (
           <div key={s} className="aura-card">
@@ -192,7 +180,6 @@ export default async function ChartsPage() {
           </Link>
         </div>
 
-        {/* Horizontal scroll + no wrapping */}
         <div
           className="aura-mt-12"
           style={{
@@ -200,7 +187,6 @@ export default async function ChartsPage() {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          {/* minWidth MUST be wider than container to force scrollbar */}
           <div style={{ minWidth: 1160 }}>
             <div className="aura-table">
               <div className="aura-table-header" style={tradesGrid}>
@@ -249,8 +235,7 @@ export default async function ChartsPage() {
 
                   const riskUsd =
                     t.plannedRiskUsd != null ? Number(t.plannedRiskUsd) : null;
-                  const rrPlanned =
-                    t.plannedRR != null ? Number(t.plannedRR) : null;
+                  const rrPlanned = t.plannedRR != null ? Number(t.plannedRR) : null;
 
                   return (
                     <div key={t.execKey} className="aura-table-row" style={tradesGrid}>
@@ -293,7 +278,6 @@ export default async function ChartsPage() {
           </Link>
         </div>
 
-        {/* Horizontal scroll + no wrapping */}
         <div
           className="aura-mt-12"
           style={{
