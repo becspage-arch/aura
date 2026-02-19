@@ -18,6 +18,16 @@ export default clerkMiddleware((auth, req) => {
   }
 
   /* =====================================================
+     ALWAYS ALLOW INTERNAL SERVICE ROUTES (WORKER CALLS)
+     ===================================================== */
+
+  // Worker is not a browser session, so it will be "signed-out" in Clerk.
+  // These routes are protected by x-aura-token inside the handler.
+  if (pathname === "/api/internal/notifications/ingest") {
+    return NextResponse.next();
+  }
+
+  /* =====================================================
      ALWAYS ALLOW SERVICE WORKERS + PWA ASSETS
      (must not be gated or redirected)
      ===================================================== */
@@ -39,8 +49,7 @@ export default clerkMiddleware((auth, req) => {
 
   if (process.env.NODE_ENV !== "production") {
     const host = req.headers?.get?.("host") ?? "";
-    const isLocal =
-      host.startsWith("localhost") || host.startsWith("127.0.0.1");
+    const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
 
     if (isLocal) {
       if (pathname.startsWith("/api/dev/seed/")) {
@@ -69,10 +78,7 @@ export default clerkMiddleware((auth, req) => {
      AURA COMING SOON PASSWORD GATE
      ===================================================== */
 
-  if (
-    pathname === "/gate" ||
-    pathname === "/api/gate/unlock"
-  ) {
+  if (pathname === "/gate" || pathname === "/api/gate/unlock") {
     return NextResponse.next();
   }
 
