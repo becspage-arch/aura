@@ -238,7 +238,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   // -----------------------------
   // Strategy status changed → In-app + Email (optional)
   // -----------------------------
-  if (event.type === "strategy_status") {
+  if (event.type === "strategy_status_changed") {
     const prefs = await getNotificationPrefs(prisma, event.userId);
     if (prefs && !prefs.strategyStatus) return { ok: true as const, skipped: true as const, key };
 
