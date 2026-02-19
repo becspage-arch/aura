@@ -1,3 +1,4 @@
+// src/components/dashboard/DashboardStore.tsx
 "use client";
 
 import React, { createContext, useContext, useMemo, useReducer } from "react";
@@ -76,7 +77,7 @@ type Action =
       type: "SET_TRADING_STATE";
       payload: Partial<DashboardState["tradingState"]>;
     }
- | { type: "SET_SUMMARY"; payload: any };
+  | { type: "SET_SUMMARY"; payload: any };
 
 /* -------------------------
    Helpers
@@ -124,6 +125,12 @@ function reducer(state: DashboardState, action: Action): DashboardState {
         tradingState: { ...state.tradingState, ...action.payload },
       };
 
+    case "SET_SUMMARY":
+      return {
+        ...state,
+        summary: action.payload,
+      };
+
     default:
       return state;
   }
@@ -153,11 +160,7 @@ export function DashboardProvider({
 
   const value = useMemo(() => ({ state, dispatch }), [state]);
 
-  return (
-    <DashboardContext.Provider value={value}>
-      {children}
-    </DashboardContext.Provider>
-  );
+  return <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>;
 }
 
 /* -------------------------
