@@ -26,7 +26,8 @@ async function fetchFromClerk(clerkUserId: string): Promise<{
   displayName: string | null;
 }> {
   try {
-    const u = await clerkClient.users.getUser(clerkUserId);
+    const client = await clerkClient();
+    const u = await client.users.getUser(clerkUserId);
 
     const email =
       (u as any)?.primaryEmailAddress?.emailAddress ??

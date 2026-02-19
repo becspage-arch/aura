@@ -46,7 +46,8 @@ export async function POST(req: Request) {
 
   for (const p of users) {
     try {
-      const u = await clerkClient.users.getUser(p.clerkUserId);
+      const client = await clerkClient();
+      const u = await client.users.getUser(p.clerkUserId);
 
       const email =
         (u as any)?.primaryEmailAddress?.emailAddress ??
