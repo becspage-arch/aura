@@ -54,8 +54,10 @@ export async function POST(req: Request) {
 
     if (isAuraEventBase(body)) {
       // normalize to legacy NotificationEvent shape for notify()
+      const legacyType = String(body.name || "").replace(/\./g, "_");
+
       event = {
-        type: body.name,
+        type: legacyType, // "trade.closed" -> "trade_closed"
         userId: body.clerkUserId,
         ts: body.ts,
         broker: body.broker,
