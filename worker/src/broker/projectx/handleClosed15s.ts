@@ -438,6 +438,17 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       try {
         const execKey = `coreplus315:${ident.clerkUserId}:${Date.now()}`;
 
+        // ✅ absolute prices from strategy intent (preferred)
+        const stopPriceAbs =
+          intent?.stopPrice != null && Number.isFinite(Number(intent.stopPrice))
+            ? Number(intent.stopPrice)
+            : null;
+
+        const takeProfitPriceAbs =
+          intent?.takeProfitPrice != null && Number.isFinite(Number(intent.takeProfitPrice))
+            ? Number(intent.takeProfitPrice)
+            : null;
+
         const row = await executeBracket({
           prisma: deps.getPrisma(),
           broker: deps.broker,
