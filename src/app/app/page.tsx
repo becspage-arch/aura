@@ -1,4 +1,5 @@
-﻿export const dynamic = "force-dynamic";
+﻿// src/app/app/page.tsx
+export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
@@ -157,6 +158,7 @@ export default async function AppHome() {
       selectedBrokerAccountId: tradingStateDb?.selectedBrokerAccountId ?? null,
       selectedSymbol: tradingStateDb?.selectedSymbol ?? null,
     },
+    summary: null,
   };
 
   return (
