@@ -95,6 +95,12 @@ function isNumber(x: unknown): x is number {
   return typeof x === "number" && Number.isFinite(x);
 }
 
+function fvgBounds(fvg: { top: number; bottom: number }) {
+  const top = Math.max(fvg.top, fvg.bottom);
+  const bottom = Math.min(fvg.top, fvg.bottom);
+  return { top, bottom };
+}
+
 export class CorePlus315Engine {
   private cfg: CorePlus315Config;
 
@@ -233,8 +239,18 @@ export class CorePlus315Engine {
     const side: Side = this.activeFvg?.side ?? inferredSide;
     const fvgTime = this.activeFvg?.time ?? floorTo3m(d.time);
 
-    // Stop is based on the second candle
-    const stopPrice = side === "buy" ? b.low : b.high;
+    // Stop logic:
+    // - If we have an active 3m FVG, stop is the OPPOSITE edge of that 3m FVG (matches PineScript).
+    // - If no active FVG yet, fall back to the "b candle" stop so blocked candidates still have a value.
+    let stopPrice =
+      side === "buy"
+        ? b.low
+        : b.high;
+
+    if (this.activeFvg) {
+      const { top, bottom } = fvgBounds(this.activeFvg);
+      stopPrice = side === "buy" ? bottom : top;
+    }
 
     // TP will be filled in later if we get past risk sizing
     let takeProfitPrice = entryPrice;
@@ -255,8 +271,8 @@ export class CorePlus315Engine {
       contracts: 0,
       riskUsdPlanned: 0,
       meta: {
-        fvgTop: this.activeFvg?.top ?? NaN,
-        fvgBottom: this.activeFvg?.bottom ?? NaN,
+        fvgTop: this.activeFvg ? fvgBounds(this.activeFvg).top : NaN,
+        fvgBottom: this.activeFvg ? fvgBounds(this.activeFvg).bottom : NaN,
         retested: Boolean(this.activeFvg?.retested),
       },
     };
@@ -274,7 +290,8 @@ export class CorePlus315Engine {
 
     // Retest detection (any 15s candle that overlaps the FVG zone)
     if (!this.activeFvg.retested) {
-      const overlaps = c.low <= this.activeFvg.top && c.high >= this.activeFvg.bottom;
+      const { top, bottom } = fvgBounds(this.activeFvg);
+      const overlaps = c.low <= top && c.high >= bottom;
       if (overlaps) this.activeFvg.retested = true;
     }
 
@@ -294,12 +311,22 @@ export class CorePlus315Engine {
     }
 
     // Risk checks
-    const stopDist = side === "buy" ? entryPrice - stopPrice : stopPrice - entryPrice;
+    // Stop must be on the correct side of entry
+    if (side === "buy" && stopPrice >= entryPrice) {
+      return { kind: "blocked", reason: "STOP_INVALID", candidate: candidateBase };
+    }
+    if (side === "sell" && stopPrice <= entryPrice) {
+      return { kind: "blocked", reason: "STOP_INVALID", candidate: candidateBase };
+    }
+
+    const stopDist = Math.abs(entryPrice - stopPrice);
+
     if (!isNumber(stopDist) || stopDist <= 0) {
       return { kind: "blocked", reason: "STOP_INVALID", candidate: candidateBase };
     }
 
     const stopTicks = priceToTicks(stopDist, this.cfg.tickSize);
+
     if (!isNumber(stopTicks) || stopTicks <= 0) {
       return { kind: "blocked", reason: "STOP_INVALID", candidate: candidateBase };
     }
