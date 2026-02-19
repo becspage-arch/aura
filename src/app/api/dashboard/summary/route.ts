@@ -3,22 +3,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 
-function startOfDayLondon(d: Date) {
-  const london = new Date(
-    d.toLocaleString("en-GB", { timeZone: "Europe/London" })
-  );
-  london.setHours(0, 0, 0, 0);
-  return london;
-}
-
-function startOfMonthLondon(d: Date) {
-  const london = new Date(
-    d.toLocaleString("en-GB", { timeZone: "Europe/London" })
-  );
-  london.setDate(1);
-  london.setHours(0, 0, 0, 0);
-  return london;
-}
+type SumRow = { v: string | null };
+type PerfRow = {
+  trade_count: bigint;
+  wins: bigint;
+  gross_profit: string | null;
+  gross_loss_abs: string | null;
+  avg_rr: string | null;
+};
+type DdRow = { max_dd: string | null; peak: string | null };
+type DailyRow = { day: string; pnl: string };
 
 export async function GET() {
   const { userId: clerkUserId } = await auth();
@@ -35,118 +29,193 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "user profile not found" }, { status: 404 });
   }
 
-  const now = new Date();
-  const startOfToday = startOfDayLondon(now);
-  const startOfMonth = startOfMonthLondon(now);
-
-  const trades = await prisma.trade.findMany({
-    where: { clerkUserId },
-    orderBy: { closedAt: "asc" },
+  const userState = await prisma.userTradingState.findUnique({
+    where: { userId: userProfile.id },
+    select: {
+      isPaused: true,
+      isKillSwitched: true,
+      selectedSymbol: true,
+      selectedBrokerAccountId: true,
+    },
   });
 
-  // ---------------------------
-  // KPI CALCULATIONS
-  // ---------------------------
+  // ---- KPI sums (Europe/London day/month boundaries)
+  const [todaySum] = await prisma.$queryRaw<SumRow[]>`
+    SELECT COALESCE(SUM("realizedPnlUsd"), 0)::text AS v
+    FROM "Trade"
+    WHERE "clerkUserId" = ${clerkUserId}
+      AND ("closedAt" AT TIME ZONE 'Europe/London')::date
+          = (NOW() AT TIME ZONE 'Europe/London')::date
+  `;
 
-  let totalProfit = 0;
-  let todayProfit = 0;
-  let monthProfit = 0;
+  const [monthSum] = await prisma.$queryRaw<SumRow[]>`
+    SELECT COALESCE(SUM("realizedPnlUsd"), 0)::text AS v
+    FROM "Trade"
+    WHERE "clerkUserId" = ${clerkUserId}
+      AND date_trunc('month', "closedAt" AT TIME ZONE 'Europe/London')
+          = date_trunc('month', NOW() AT TIME ZONE 'Europe/London')
+  `;
 
-  for (const t of trades) {
-    const pnl = Number(t.realizedPnlUsd);
-    totalProfit += pnl;
+  const [totalSum] = await prisma.$queryRaw<SumRow[]>`
+    SELECT COALESCE(SUM("realizedPnlUsd"), 0)::text AS v
+    FROM "Trade"
+    WHERE "clerkUserId" = ${clerkUserId}
+  `;
 
-    if (t.closedAt >= startOfToday) {
-      todayProfit += pnl;
-    }
+  // ---- Performance 30d (rolling, based on closedAt)
+  const [perf30] = await prisma.$queryRaw<PerfRow[]>`
+    SELECT
+      COUNT(*)::bigint AS trade_count,
+      SUM(CASE WHEN "outcome" = 'WIN' THEN 1 ELSE 0 END)::bigint AS wins,
+      COALESCE(SUM(CASE WHEN "realizedPnlUsd" > 0 THEN "realizedPnlUsd" ELSE 0 END), 0)::text AS gross_profit,
+      COALESCE(ABS(SUM(CASE WHEN "realizedPnlUsd" < 0 THEN "realizedPnlUsd" ELSE 0 END)), 0)::text AS gross_loss_abs,
+      AVG("rrAchieved")::text AS avg_rr
+    FROM "Trade"
+    WHERE "clerkUserId" = ${clerkUserId}
+      AND "closedAt" >= (NOW() - INTERVAL '30 days')
+  `;
 
-    if (t.closedAt >= startOfMonth) {
-      monthProfit += pnl;
-    }
-  }
-
-  // ---------------------------
-  // PERFORMANCE (30D)
-  // ---------------------------
-
-  const thirtyDaysAgo = new Date(now);
-  thirtyDaysAgo.setDate(now.getDate() - 30);
-
-  const trades30 = trades.filter(t => t.closedAt >= thirtyDaysAgo);
-
-  const tradeCount = trades30.length;
-  const wins = trades30.filter(t => t.outcome === "WIN").length;
-
-  const grossProfit = trades30
-    .filter(t => Number(t.realizedPnlUsd) > 0)
-    .reduce((sum, t) => sum + Number(t.realizedPnlUsd), 0);
-
-  const grossLoss = trades30
-    .filter(t => Number(t.realizedPnlUsd) < 0)
-    .reduce((sum, t) => sum + Number(t.realizedPnlUsd), 0);
-
+  const tradeCount = Number(perf30?.trade_count ?? 0);
+  const wins = Number(perf30?.wins ?? 0);
   const winRatePct = tradeCount > 0 ? (wins / tradeCount) * 100 : null;
-  const profitFactor =
-    grossLoss !== 0 ? grossProfit / Math.abs(grossLoss) : null;
 
-  const avgRR =
-    trades30
-      .filter(t => t.rrAchieved !== null)
-      .reduce((sum, t, _, arr) => sum + Number(t.rrAchieved ?? 0) / arr.length, 0) || null;
+  const grossProfit = Number(perf30?.gross_profit ?? 0);
+  const grossLossAbs = Number(perf30?.gross_loss_abs ?? 0);
+  const profitFactor = tradeCount > 0 && grossLossAbs > 0 ? grossProfit / grossLossAbs : null;
 
-  // Max drawdown (30d equity curve)
-  let running = 0;
-  let peak = 0;
-  let maxDd = 0;
+  const avgRR = perf30?.avg_rr ? Number(perf30.avg_rr) : null;
 
-  for (const t of trades30) {
-    running += Number(t.realizedPnlUsd);
-    if (running > peak) peak = running;
-    const dd = peak - running;
-    if (dd > maxDd) maxDd = dd;
-  }
+  // ---- Max drawdown 30d using daily equity curve (Europe/London days)
+  const [dd] = await prisma.$queryRaw<DdRow[]>`
+    WITH daily AS (
+      SELECT
+        ("closedAt" AT TIME ZONE 'Europe/London')::date AS day,
+        SUM("realizedPnlUsd") AS pnl
+      FROM "Trade"
+      WHERE "clerkUserId" = ${clerkUserId}
+        AND "closedAt" >= (NOW() - INTERVAL '30 days')
+      GROUP BY 1
+    ),
+    curve AS (
+      SELECT
+        day,
+        SUM(pnl) OVER (ORDER BY day) AS equity
+      FROM daily
+    ),
+    peaks AS (
+      SELECT
+        day,
+        equity,
+        MAX(equity) OVER (ORDER BY day) AS peak
+      FROM curve
+    )
+    SELECT
+      COALESCE(MAX(peak - equity), 0)::text AS max_dd,
+      COALESCE(MAX(peak), 0)::text AS peak
+    FROM peaks
+  `;
 
-  const maxDrawdownUsd = maxDd || null;
-  const maxDrawdownPct =
-    peak > 0 ? (maxDd / peak) * 100 : null;
+  const maxDrawdownUsdNum = dd?.max_dd ? Number(dd.max_dd) : 0;
+  const peakNum = dd?.peak ? Number(dd.peak) : 0;
+  const maxDrawdownUsd = tradeCount > 0 ? maxDrawdownUsdNum : null;
+  const maxDrawdownPct = peakNum > 0 ? (maxDrawdownUsdNum / peakNum) * 100 : null;
 
-  // ---------------------------
-  // CHART (1Y cumulative)
-  // ---------------------------
+  // ---- Cumulative chart (1Y) daily points (Europe/London days)
+  const daily1Y = await prisma.$queryRaw<DailyRow[]>`
+    SELECT
+      ("closedAt" AT TIME ZONE 'Europe/London')::date::text AS day,
+      COALESCE(SUM("realizedPnlUsd"), 0)::text AS pnl
+    FROM "Trade"
+    WHERE "clerkUserId" = ${clerkUserId}
+      AND "closedAt" >= (NOW() - INTERVAL '1 year')
+    GROUP BY 1
+    ORDER BY 1 ASC
+  `;
 
-  const oneYearAgo = new Date(now);
-  oneYearAgo.setFullYear(now.getFullYear() - 1);
-
-  const trades1Y = trades.filter(t => t.closedAt >= oneYearAgo);
-
-  const dailyMap = new Map<string, number>();
-
-  for (const t of trades1Y) {
-    const day = t.closedAt.toISOString().slice(0, 10);
-    dailyMap.set(day, (dailyMap.get(day) || 0) + Number(t.realizedPnlUsd));
-  }
-
-  const sortedDays = Array.from(dailyMap.keys()).sort();
-
-  let cumulative = 0;
-  const cumulativePoints = sortedDays.map(day => {
-    const pnl = dailyMap.get(day) || 0;
-    cumulative += pnl;
-    return {
-      day,
-      pnlUsd: pnl.toFixed(2),
-      cumulativeUsd: cumulative.toFixed(2),
-    };
+  let cum = 0;
+  const cumulativePoints = daily1Y.map((r) => {
+    const pnl = Number(r.pnl);
+    cum += pnl;
+    return { day: r.day, pnlUsd: pnl.toFixed(2), cumulativeUsd: cum.toFixed(2) };
   });
 
-  // ---------------------------
-  // RECENT TRADES
-  // ---------------------------
+  // ---- Month calendar (current month only, Europe/London)
+  const monthDays = await prisma.$queryRaw<DailyRow[]>`
+    SELECT
+      ("closedAt" AT TIME ZONE 'Europe/London')::date::text AS day,
+      COALESCE(SUM("realizedPnlUsd"), 0)::text AS pnl
+    FROM "Trade"
+    WHERE "clerkUserId" = ${clerkUserId}
+      AND date_trunc('month', "closedAt" AT TIME ZONE 'Europe/London')
+          = date_trunc('month', NOW() AT TIME ZONE 'Europe/London')
+    GROUP BY 1
+    ORDER BY 1 ASC
+  `;
 
-  const recentTrades = trades
-    .slice(-10)
-    .reverse()
-    .map(t => ({
+  // ---- Recent trades (10)
+  const recentTrades = await prisma.trade.findMany({
+    where: { clerkUserId },
+    orderBy: { closedAt: "desc" },
+    take: 10,
+    select: {
+      closedAt: true,
+      symbol: true,
+      contractId: true,
+      side: true,
+      qty: true,
+      entryPriceAvg: true,
+      exitPriceAvg: true,
+      realizedPnlUsd: true,
+      rrAchieved: true,
+      outcome: true,
+      exitReason: true,
+      execKey: true,
+    },
+  });
+
+  // ---- lastTradeAt
+  const lastTradeAt = recentTrades.length ? recentTrades[0].closedAt.toISOString() : null;
+
+  return NextResponse.json({
+    ok: true,
+    asOf: new Date().toISOString(),
+    clerkUserId,
+
+    kpis: {
+      todayPnlUsd: Number(todaySum?.v ?? 0).toFixed(2),
+      monthPnlUsd: Number(monthSum?.v ?? 0).toFixed(2),
+      totalProfitUsd: Number(totalSum?.v ?? 0).toFixed(2),
+      accountEquityUsd: null,
+    },
+
+    status: {
+      strategy: userState?.isPaused ? "PAUSED" : "ACTIVE",
+      trading: userState?.isKillSwitched ? "STOPPED" : "LIVE",
+      broker: "UNKNOWN",
+      riskMode: "NORMAL",
+      symbol: userState?.selectedSymbol ?? "MGC",
+      selectedBrokerAccountId: userState?.selectedBrokerAccountId ?? null,
+      lastTradeAt,
+    },
+
+    performance30d: {
+      tradeCount,
+      winRatePct,
+      profitFactor,
+      avgRR,
+      maxDrawdownPct,
+      maxDrawdownUsd: maxDrawdownUsd === null ? null : maxDrawdownUsd.toFixed(2),
+    },
+
+    charts: {
+      cumulativePnl: { range: "1Y", points: cumulativePoints },
+      monthCalendar: {
+        month: new Date().toISOString().slice(0, 7),
+        days: monthDays.map((r) => ({ day: r.day, pnlUsd: Number(r.pnl).toFixed(2) })),
+      },
+    },
+
+    recentTrades: recentTrades.map((t) => ({
       closedAt: t.closedAt.toISOString(),
       symbol: t.symbol,
       contractId: t.contractId,
@@ -159,53 +228,6 @@ export async function GET() {
       outcome: t.outcome,
       exitReason: t.exitReason,
       execKey: t.execKey,
-    }));
-
-  const userState = await prisma.userTradingState.findUnique({
-    where: { userId: userProfile.id },
-  });
-
-  return NextResponse.json({
-    ok: true,
-    asOf: new Date().toISOString(),
-    kpis: {
-      todayPnlUsd: todayProfit.toFixed(2),
-      monthPnlUsd: monthProfit.toFixed(2),
-      totalProfitUsd: totalProfit.toFixed(2),
-      accountEquityUsd: null,
-    },
-    status: {
-      strategy: userState?.isPaused ? "PAUSED" : "ACTIVE",
-      trading: userState?.isKillSwitched ? "STOPPED" : "LIVE",
-      broker: "UNKNOWN",
-      riskMode: "NORMAL",
-      symbol: userState?.selectedSymbol ?? "MGC",
-      selectedBrokerAccountId: userState?.selectedBrokerAccountId ?? null,
-      lastTradeAt: trades.length
-        ? trades[trades.length - 1].closedAt.toISOString()
-        : null,
-    },
-    performance30d: {
-      tradeCount,
-      winRatePct,
-      profitFactor,
-      avgRR,
-      maxDrawdownPct,
-      maxDrawdownUsd: maxDrawdownUsd?.toFixed(2) ?? null,
-    },
-    charts: {
-      cumulativePnl: {
-        range: "1Y",
-        points: cumulativePoints,
-      },
-      monthCalendar: {
-        month: now.toISOString().slice(0, 7),
-        days: sortedDays.map(day => ({
-          day,
-          pnlUsd: (dailyMap.get(day) || 0).toFixed(2),
-        })),
-      },
-    },
-    recentTrades,
+    })),
   });
 }
