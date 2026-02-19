@@ -1,6 +1,7 @@
 // src/app/api/trading-state/pause/route.ts
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { ensureUserProfile } from "@/lib/user-profile";
 import { publishToUser } from "@/lib/ably/server";
 import { writeAuditLog, writeEventLog } from "@/lib/logging/server";
@@ -73,12 +74,13 @@ export async function POST(req: Request) {
   if (prevPaused !== isPaused) {
     await notify(
       {
-        type: "strategy_status_changed",
-        userId: clerkUserId, // notify expects Clerk userId
-        ts: next.updatedAt.toISOString(),
-        isPaused,
-      },
-      { prisma: db as any }
+        type: "strategy_status",
+        userId: clerkUserId,
+        ts: new Date().toISOString(),
+        isPaused: next.isPaused,
+        isKillSwitched: false, // pause route doesn’t change this; keep explicit
+      } as any,
+      { prisma }
     );
   }
 

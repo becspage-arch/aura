@@ -236,6 +236,68 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   }
 
   // -----------------------------
+  // Strategy status changed → In-app + Email (optional)
+  // -----------------------------
+  if (event.type === "strategy_status") {
+    const prefs = await getNotificationPrefs(prisma, event.userId);
+    if (prefs && !prefs.strategyStatus) return { ok: true as const, skipped: true as const, key };
+
+    const isPaused = !!(event as any).isPaused;
+    const isKillSwitched = !!(event as any).isKillSwitched;
+
+    const title = "Aura - Strategy Status";
+    const body = isKillSwitched
+      ? "⛔ EMERGENCY STOP enabled"
+      : isPaused
+      ? "❚❚ Aura paused"
+      : "▶ Aura running";
+
+    await publishInAppNotification(event.userId, {
+      type: "strategy_status",
+      title,
+      body,
+      ts: event.ts,
+      deepLink: "/app/live-trading",
+    });
+
+    const toEmail = await getUserEmailByClerkUserId(prisma, event.userId);
+    if (toEmail) {
+      const appOrigin = "https://tradeaura.net";
+      const subject = `Aura – ${isKillSwitched ? "Emergency Stop" : isPaused ? "Paused" : "Running"}`;
+
+      const html = renderAuraEmail({
+        preheader: body,
+        headerKickerLeft: "Aura",
+        headerKickerRight: "Status",
+        headerSubline: londonStamp(event.ts),
+
+        badgeText: isKillSwitched ? "STOP" : isPaused ? "PAUSED" : "RUNNING",
+        badgeTone: isKillSwitched ? "loss" : isPaused ? "neutral" : "win",
+        topRightText: "",
+
+        title: "Strategy status updated",
+        subtitle: body,
+
+        rows: [
+          { label: "Status", value: isKillSwitched ? "EMERGENCY STOP" : isPaused ? "PAUSED" : "RUNNING" },
+          { label: "Time", value: londonStamp(event.ts) },
+        ],
+
+        cta: {
+          label: "Open Live Trading",
+          href: `${appOrigin}/app/live-trading`,
+          hintRight: "",
+        },
+
+        footerLine1:
+          "You’re receiving this because strategy status notifications are enabled for your Aura account.",
+      });
+
+      await sendEmail({ to: toEmail, subject, html });
+    }
+  }
+
+  // -----------------------------
   // Session summary â†’ Email (later - emitted from worker)
   // -----------------------------
   if (event.type === "session_summary") {
