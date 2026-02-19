@@ -1446,3 +1446,110 @@ html.light .aura-sidebar__link:hover {
   padding: 24px;
   padding-top: 18px;
 }
+
+/* --------------------------------------------------
+   Aura month heatmap (Dashboard)
+-------------------------------------------------- */
+
+.aura-heat {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.aura-heat-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.aura-heat-weekday {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.aura-heat-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+
+.aura-heat-cell {
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 8px;
+}
+
+.aura-heat-cell--blank {
+  background: transparent;
+  border-color: transparent;
+}
+
+.aura-heat-dom {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+
+/* Base states */
+.aura-heat-cell--zero {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.aura-heat-cell--pos {
+  border-color: rgba(127, 168, 161, 0.28);
+}
+
+.aura-heat-cell--neg {
+  border-color: rgba(176, 122, 122, 0.28);
+}
+
+/* Intensity levels (1..4) */
+.aura-heat-cell--pos.aura-heat-cell--l1 { background: rgba(127, 168, 161, 0.10); }
+.aura-heat-cell--pos.aura-heat-cell--l2 { background: rgba(127, 168, 161, 0.18); }
+.aura-heat-cell--pos.aura-heat-cell--l3 { background: rgba(127, 168, 161, 0.26); }
+.aura-heat-cell--pos.aura-heat-cell--l4 { background: rgba(127, 168, 161, 0.34); }
+
+.aura-heat-cell--neg.aura-heat-cell--l1 { background: rgba(176, 122, 122, 0.10); }
+.aura-heat-cell--neg.aura-heat-cell--l2 { background: rgba(176, 122, 122, 0.18); }
+.aura-heat-cell--neg.aura-heat-cell--l3 { background: rgba(176, 122, 122, 0.26); }
+.aura-heat-cell--neg.aura-heat-cell--l4 { background: rgba(176, 122, 122, 0.34); }
+
+/* Legend */
+.aura-heat-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.aura-heat-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.aura-heat-swatch--zero {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.aura-heat-swatch--pos.aura-heat-swatch--l2 {
+  background: rgba(127, 168, 161, 0.18);
+  border-color: rgba(127, 168, 161, 0.28);
+}
+
+.aura-heat-swatch--neg.aura-heat-swatch--l2 {
+  background: rgba(176, 122, 122, 0.18);
+  border-color: rgba(176, 122, 122, 0.28);
+}

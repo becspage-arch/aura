@@ -1,4 +1,3 @@
-// src/components/dashboard/DashboardStore.tsx
 "use client";
 
 import React, { createContext, useContext, useMemo, useReducer } from "react";
@@ -73,10 +72,7 @@ type Action =
   | { type: "ADD_EVENT"; payload: DashboardEvent }
   | { type: "UPSERT_ORDER"; payload: DashboardOrder }
   | { type: "UPSERT_FILL"; payload: DashboardFill }
-  | {
-      type: "SET_TRADING_STATE";
-      payload: Partial<DashboardState["tradingState"]>;
-    }
+  | { type: "SET_TRADING_STATE"; payload: Partial<DashboardState["tradingState"]> }
   | { type: "SET_SUMMARY"; payload: any };
 
 /* -------------------------
@@ -169,8 +165,6 @@ export function DashboardProvider({
 
 export function useDashboard() {
   const ctx = useContext(DashboardContext);
-  if (!ctx) {
-    throw new Error("useDashboard must be used within DashboardProvider");
-  }
+  if (!ctx) throw new Error("useDashboard must be used within DashboardProvider");
   return ctx;
 }
