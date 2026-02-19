@@ -100,7 +100,6 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       if (isLoss && !prefs.tradeClosedLosses) return { ok: true as const, skipped: true as const, key };
     }
 
-    // In-app body
     const pnl = event.realisedPnlUsd;
     const sign0 = pnl > 0 ? "+" : "";
     const title = "Aura - Trade Closed";
@@ -120,12 +119,9 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       deepLink: `/app/reports/${event.tradeId}`,
     });
 
-    // Push notification
     await sendPushTradeClosed(event, { prisma });
 
-    // Email (only if user has an email stored in UserProfile)
     const toEmail = await getUserEmailByClerkUserId(prisma, event.userId);
-
     if (toEmail) {
       const trade = await prisma.trade.findUnique({
         where: { id: event.tradeId },
@@ -252,7 +248,6 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       ? "❚❚ Aura paused"
       : "▶ Aura running";
 
-    // ✅ IMPORTANT: keep the notification type aligned with the event type
     await publishInAppNotification(event.userId, {
       type: "strategy_status_changed",
       title,
@@ -325,7 +320,6 @@ async function tryCreateNotificationLog(args: {
     });
     return true;
   } catch (err: any) {
-    // Prisma unique constraint error (P2002) means we've already sent it.
     if (err?.code === "P2002") return false;
     throw err;
   }
