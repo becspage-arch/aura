@@ -58,7 +58,7 @@ function fmtMoneyNoCents(v: number) {
 }
 
 function fmtPrice(v: number) {
-  return Number.isFinite(v) ? v.toFixed(2) : "â€”";
+  return Number.isFinite(v) ? v.toFixed(2) : "—";
 }
 
 function londonStamp(iso: string) {
@@ -88,7 +88,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   }
 
   // -----------------------------
-  // Trade closed â†’ In-app + Push + Email (polished)
+  // Trade closed → In-app + Push + Email (polished)
   // -----------------------------
   if (event.type === "trade_closed") {
     const prefs = await getNotificationPrefs(prisma, event.userId);
@@ -107,10 +107,10 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
 
     const body =
       event.result === "win"
-        ? `ðŸŸ¢ WIN ${sign0}$${Math.abs(pnl).toFixed(0)} on ${event.symbol}`
+        ? `🟢 WIN ${sign0}$${Math.abs(pnl).toFixed(0)} on ${event.symbol}`
         : event.result === "loss"
-        ? `ðŸ”´ LOSS -$${Math.abs(pnl).toFixed(0)} on ${event.symbol}`
-        : `âšªï¸ BREAKEVEN $0 on ${event.symbol}`;
+        ? `🔴 LOSS -$${Math.abs(pnl).toFixed(0)} on ${event.symbol}`
+        : `⚪️ BREAKEVEN $0 on ${event.symbol}`;
 
     await publishInAppNotification(event.userId, {
       type: "trade_closed",
@@ -180,7 +180,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
         event.ts ??
         new Date().toISOString();
 
-      const subject = `Aura â€“ ${badgeText} on ${symbol} â€¢ ${fmtMoneyNoCents(pnlUsd)}`;
+      const subject = `Aura – ${badgeText} on ${symbol} • ${fmtMoneyNoCents(pnlUsd)}`;
 
       const html = renderAuraEmail({
         preheader: `Aura trade closed: ${badgeText} ${fmtMoneyNoCents(pnlUsd)} on ${symbol}.`,
@@ -193,7 +193,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
         topRightText: fmtMoney(pnlUsd),
 
         title: `${direction} ${qty ? `${qty}x ` : ""}${symbol}`,
-        subtitle: `Entry ${fmtPrice(entryPx)} â€¢ Exit ${fmtPrice(exitPx)}`,
+        subtitle: `Entry ${fmtPrice(entryPx)} • Exit ${fmtPrice(exitPx)}`,
 
         rows: [
           { label: "Opened", value: londonStamp(openedAtIso) },
@@ -209,7 +209,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
         },
 
         footerLine1:
-          "Youâ€™re receiving this because trade notifications are enabled for your Aura account.",
+          "You’re receiving this because trade notifications are enabled for your Aura account.",
       });
 
       await sendEmail({ to: toEmail, subject, html });
@@ -217,10 +217,10 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   }
 
   // -----------------------------
-  // Trade opened â†’ In-app only
+  // Trade opened → In-app only
   // -----------------------------
   if (event.type === "trade_opened") {
-    const dir = event.direction === "long" ? "ðŸŸ¦ ENTERED LONG" : "ðŸŸ¥ ENTERED SHORT";
+    const dir = event.direction === "long" ? "🟦 ENTERED LONG" : "🟥 ENTERED SHORT";
     const px = typeof event.entryPrice === "number" ? ` @ ${event.entryPrice}` : "";
 
     const title = "Aura - Trade Opened";
@@ -252,8 +252,9 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       ? "❚❚ Aura paused"
       : "▶ Aura running";
 
+    // ✅ IMPORTANT: keep the notification type aligned with the event type
     await publishInAppNotification(event.userId, {
-      type: "strategy_status",
+      type: "strategy_status_changed",
       title,
       body,
       ts: event.ts,
@@ -298,7 +299,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
   }
 
   // -----------------------------
-  // Session summary â†’ Email (later - emitted from worker)
+  // Session summary → Email (later - emitted from worker)
   // -----------------------------
   if (event.type === "session_summary") {
     // v1: handled by sendEmailSessionSummary in src/lib/notifications/email.ts
@@ -329,4 +330,3 @@ async function tryCreateNotificationLog(args: {
     throw err;
   }
 }
-

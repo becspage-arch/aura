@@ -68,20 +68,25 @@ export async function POST(req: Request) {
     userId: user.id,
   });
 
+  // realtime status for UI topbar etc.
   await publishToUser(clerkUserId, "status_update" as any, { isPaused });
 
-  // 🔔 Only notify if it changed
+  // 🔔 Only notify if it changed (best-effort: NEVER break pause/run UX)
   if (prevPaused !== isPaused) {
-    await notify(
-      {
-        type: "strategy_status",
-        userId: clerkUserId,
-        ts: new Date().toISOString(),
-        isPaused: next.isPaused,
-        isKillSwitched: false, // pause route doesn’t change this; keep explicit
-      } as any,
-      { prisma }
-    );
+    try {
+      await notify(
+        {
+          type: "strategy_status_changed",
+          userId: clerkUserId,
+          ts: new Date().toISOString(),
+          isPaused: next.isPaused,
+          isKillSwitched: false, // pause route doesn’t change this; keep explicit
+        } as any,
+        { prisma }
+      );
+    } catch (err) {
+      console.error("STRATEGY_STATUS_NOTIFY_FAILED", err);
+    }
   }
 
   return Response.json({
