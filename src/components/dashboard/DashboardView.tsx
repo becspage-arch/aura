@@ -166,29 +166,45 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
         <p className="aura-muted aura-text-xs aura-mt-10">Placeholder only. We’ll wire real daily P&L later.</p>
       </section>
 
-      {/* Section 4: Performance ratios (placeholder) */}
+      {/* Section 4: Performance ratios */}
       <section className="aura-grid-4">
         <div className="aura-card">
           <div className="aura-stat-label">Win Rate</div>
-          <div className="aura-mini-value">—%</div>
+          <div className="aura-mini-value">
+            {state.summary
+              ? `${Math.round(state.summary.performance30d.winRatePct)}%`
+              : "—%"}
+          </div>
           <div className="aura-stat-sub">Last 30 days</div>
         </div>
 
         <div className="aura-card">
           <div className="aura-stat-label">Profit Factor</div>
-          <div className="aura-mini-value">—</div>
+          <div className="aura-mini-value">
+            {state.summary
+              ? state.summary.performance30d.profitFactor.toFixed(2)
+              : "—"}
+          </div>
           <div className="aura-stat-sub">Last 30 days</div>
         </div>
 
         <div className="aura-card">
           <div className="aura-stat-label">Avg R:R</div>
-          <div className="aura-mini-value">—R</div>
+          <div className="aura-mini-value">
+            {state.summary
+              ? `${state.summary.performance30d.avgRR.toFixed(2)}R`
+              : "—R"}
+          </div>
           <div className="aura-stat-sub">Last 30 days</div>
         </div>
 
         <div className="aura-card">
           <div className="aura-stat-label">Max Drawdown</div>
-          <div className="aura-mini-value">—%</div>
+          <div className="aura-mini-value">
+            {state.summary?.performance30d?.maxDrawdownUsd != null
+              ? `$${state.summary.performance30d.maxDrawdownUsd}`
+              : "—"}
+          </div>
           <div className="aura-stat-sub">Last 30 days</div>
         </div>
       </section>
