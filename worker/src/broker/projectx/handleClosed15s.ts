@@ -160,7 +160,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       // Nothing to record
       if (!evalRes || evalRes.kind === "none") {
         const dbg = deps.strategy.getDebugState?.() as any;
-        logTag(`[${deps.env.WORKER_NAME}] NO_TRADE_DEBUG`, {
+        logTag("NO_TRADE_DEBUG", {
+          worker: deps.env.WORKER_NAME,
           source: params.source,
           symbol,
           time,
@@ -181,7 +182,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
 
       if (!candidate) {
         const dbg = deps.strategy.getDebugState?.() as any;
-        logTag(`[${deps.env.WORKER_NAME}] NO_TRADE_DEBUG`, {
+        logTag("NO_TRADE_DEBUG", {
+          worker: deps.env.WORKER_NAME,
           source: params.source,
           symbol,
           time,
@@ -261,7 +263,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           },
         });
 
-        logTag(`[${deps.env.WORKER_NAME}] SIGNAL_ENGINE_BLOCKED`, {
+        logTag("SIGNAL_ENGINE_BLOCKED", {
+          worker: deps.env.WORKER_NAME,
           signalKey,
           reason: String(evalRes.reason),
         });
@@ -274,8 +277,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       // -----------------------------
       const intent = evalRes.intent;
 
-      logTag(`[${deps.env.WORKER_NAME}] TRADE_INTENT`, intent);
-      logTag(`[${deps.env.WORKER_NAME}] BRACKET`, bracket);
+      logTag("TRADE_INTENT", { worker: deps.env.WORKER_NAME, intent });
+      logTag("BRACKET", { worker: deps.env.WORKER_NAME, bracket });
 
       // Upsert the signal as DETECTED (idempotent)
       await db.strategySignal.upsert({
@@ -425,7 +428,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
             meta: { intent, bracket, reason: "in_trade" },
           },
         });
-        logTag(`[${deps.env.WORKER_NAME}] SIGNAL_BLOCKED_IN_TRADE`, {
+        logTag("SIGNAL_BLOCKED_IN_TRADE", {
+          worker: deps.env.WORKER_NAME,
           signalKey,
           contractId: contractIdFromBracket,
           side,
@@ -463,7 +467,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
             maxContracts: process.env.AURA_MAX_CONTRACTS
               ? Number(process.env.AURA_MAX_CONTRACTS)
               : null,
-            entryType: "market",
+            entryType: (deps.strategy?.getConfig?.()?.entryType ?? "market"),
             stopLossTicks: Number(stopLossTicks),
             takeProfitTicks: Number(takeProfitTicks),
 
@@ -489,7 +493,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           },
         });
 
-        logTag(`[${deps.env.WORKER_NAME}] SIGNAL_TAKEN`, {
+        logTag("SIGNAL_TAKEN", {
+          worker: deps.env.WORKER_NAME,
           signalKey,
           execKey,
           executionId: row.id,
