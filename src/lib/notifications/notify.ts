@@ -249,7 +249,7 @@ export async function notify(event: NotificationEvent, deps: NotifyDeps) {
       : "▶ Aura running";
 
     await publishInAppNotification(event.userId, {
-      type: "strategy_status_changed",
+      type: "strategy_status",
       title,
       body,
       ts: event.ts,
