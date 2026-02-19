@@ -64,6 +64,7 @@ export type DashboardState = {
     selectedBrokerAccountId?: string | null;
     selectedSymbol?: string | null;
   };
+  summary: any | null;
 };
 
 type Action =
@@ -74,7 +75,8 @@ type Action =
   | {
       type: "SET_TRADING_STATE";
       payload: Partial<DashboardState["tradingState"]>;
-    };
+    }
+ | { type: "SET_SUMMARY"; payload: any };
 
 /* -------------------------
    Helpers

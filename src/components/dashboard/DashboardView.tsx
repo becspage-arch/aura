@@ -1,40 +1,74 @@
+// src/components/dashboard/DashboardView.tsx
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useDashboard } from "@/components/dashboard/DashboardStore";
 
 export default function DashboardView({ clerkUserId }: { clerkUserId?: string }) {
-  const { state } = useDashboard();
+  const { state, dispatch } = useDashboard();
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/dashboard/summary", { method: "GET" });
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.ok) {
+          dispatch({ type: "SET_SUMMARY", payload: json });
+        }
+      } catch {
+        // ignore for now
+      }
+    }
+    load();
+  }, [dispatch]);
 
   const channelName = useMemo(
     () => (clerkUserId ? `user:${clerkUserId}` : null),
     [clerkUserId]
   );
 
-  // Placeholder values for now (wire later)
-  const totalProfit = "$—";
-  const todayPnl = "$—";
-  const monthPnl = "$—";
+  const totalProfit = state.summary ? `$${state.summary.kpis.totalProfitUsd}` : "$—";
+  const todayPnl = state.summary ? `$${state.summary.kpis.todayPnlUsd}` : "$—";
+  const monthPnl = state.summary ? `$${state.summary.kpis.monthPnlUsd}` : "$—";
 
-  // “Account” placeholders (still UI-only)
-  const accountEquity = "$—";
+  const accountEquity =
+    state.summary?.kpis?.accountEquityUsd != null
+      ? `$${state.summary.kpis.accountEquityUsd}`
+      : "$—";
+
   const allUsersProfit = "$—";
 
-  const strategyStatus = state.tradingState?.isPaused ? "Paused" : "Active";
-  const tradingStatus = state.tradingState?.isKillSwitched ? "Stopped" : "Live";
-  const brokerStatus = "Connected"; // placeholder until we surface broker status
-  const symbol = state.tradingState?.selectedSymbol ?? "MGC";
-  const riskMode = "Normal"; // placeholder
-  const lastTrade = "—"; // placeholder
+  const strategyStatus = state.summary
+    ? state.summary.status.strategy === "PAUSED"
+      ? "Paused"
+      : "Active"
+    : state.tradingState?.isPaused
+      ? "Paused"
+      : "Active";
+
+  const tradingStatus = state.summary
+    ? state.summary.status.trading === "STOPPED"
+      ? "Stopped"
+      : "Live"
+    : state.tradingState?.isKillSwitched
+      ? "Stopped"
+      : "Live";
+
+  const brokerStatus = state.summary?.status?.broker ?? "Unknown";
+  const symbol = state.summary?.status?.symbol ?? state.tradingState?.selectedSymbol ?? "MGC";
+  const riskMode = state.summary?.status?.riskMode ?? "Normal";
+
+  const lastTrade =
+    state.summary?.status?.lastTradeAt
+      ? new Date(state.summary.status.lastTradeAt).toLocaleTimeString()
+      : "—";
 
   return (
     <div className="aura-page">
       {/* Header */}
       <div className="aura-row-between">
         <div>
-          <p className="aura-page-subtitle">
-            Profit-first overview. Calm, clear, in control.
-          </p>
+          <p className="aura-page-subtitle">Profit-first overview. Calm, clear, in control.</p>
         </div>
       </div>
 
@@ -112,10 +146,7 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
           <div className="aura-muted aura-text-xs">Last 14 days</div>
         </div>
 
-        <div
-          className="aura-chart-placeholder"
-          aria-label="Cumulative P&L placeholder chart"
-        >
+        <div className="aura-chart-placeholder" aria-label="Cumulative P&L placeholder chart">
           <div className="aura-bar aura-bar-35" />
           <div className="aura-bar aura-bar-42" />
           <div className="aura-bar aura-bar-40" />
@@ -132,9 +163,7 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
           <div className="aura-bar aura-bar-98" />
         </div>
 
-        <p className="aura-muted aura-text-xs aura-mt-10">
-          Placeholder only. We’ll wire real daily P&L later.
-        </p>
+        <p className="aura-muted aura-text-xs aura-mt-10">Placeholder only. We’ll wire real daily P&L later.</p>
       </section>
 
       {/* Section 4: Performance ratios (placeholder) */}
@@ -164,76 +193,53 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
         </div>
       </section>
 
-      {/* Section 5: Recent trades (placeholder) */}
+      {/* Section 5: Recent trades */}
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Recent Trades</div>
-          <div className="aura-muted aura-text-xs">Last 5</div>
+          <div className="aura-muted aura-text-xs">Last 10</div>
         </div>
 
-      <div className="aura-mt-12 aura-table" role="table" aria-label="Recent trades placeholder table">
-        <div className="aura-table-header" role="row">
-          <div role="columnheader">Time</div>
-          <div role="columnheader">Symbol</div>
-          <div role="columnheader">Side</div>
-          <div role="columnheader" className="aura-hide-sm">Setup</div>
-          <div role="columnheader" className="aura-right">Result</div>
+        <div className="aura-mt-12 aura-table" role="table" aria-label="Recent trades table">
+          <div className="aura-table-header" role="row">
+            <div role="columnheader">Time</div>
+            <div role="columnheader">Symbol</div>
+            <div role="columnheader">Side</div>
+            <div role="columnheader" className="aura-hide-sm">Exit</div>
+            <div role="columnheader" className="aura-right">
+              Result
+            </div>
+          </div>
+
+          {state.summary?.recentTrades?.length ? (
+            state.summary.recentTrades.map((t: any) => (
+              <div className="aura-table-row" role="row" key={t.execKey}>
+                <div>{new Date(t.closedAt).toLocaleTimeString()}</div>
+                <div>{t.symbol}</div>
+                <div>{t.side}</div>
+                <div className="aura-hide-sm">{t.exitReason}</div>
+                <div className="aura-right">${t.realizedPnlUsd}</div>
+              </div>
+            ))
+          ) : (
+            <div className="aura-table-row" role="row">
+              <div className="aura-muted">—</div>
+              <div className="aura-muted">—</div>
+              <div className="aura-muted">—</div>
+              <div className="aura-muted aura-hide-sm">—</div>
+              <div className="aura-muted aura-right">—</div>
+            </div>
+          )}
         </div>
 
-        {/* Placeholder rows */}
-        <div className="aura-table-row" role="row">
-          <div className="aura-skel aura-w-70" />
-          <div className="aura-skel aura-w-55" />
-          <div className="aura-skel aura-w-40" />
-          <div className="aura-skel aura-w-85 aura-hide-sm" />
-          <div className="aura-skel aura-w-55 aura-right" />
-        </div>
-
-        <div className="aura-table-row" role="row">
-          <div className="aura-skel aura-w-55" />
-          <div className="aura-skel aura-w-70" />
-          <div className="aura-skel aura-w-40" />
-          <div className="aura-skel aura-w-70 aura-hide-sm" />
-          <div className="aura-skel aura-w-40 aura-right" />
-        </div>
-
-        <div className="aura-table-row" role="row">
-          <div className="aura-skel aura-w-70" />
-          <div className="aura-skel aura-w-55" />
-          <div className="aura-skel aura-w-40" />
-          <div className="aura-skel aura-w-85 aura-hide-sm" />
-          <div className="aura-skel aura-w-55 aura-right" />
-        </div>
-
-        <div className="aura-table-row" role="row">
-          <div className="aura-skel aura-w-55" />
-          <div className="aura-skel aura-w-70" />
-          <div className="aura-skel aura-w-40" />
-          <div className="aura-skel aura-w-70 aura-hide-sm" />
-          <div className="aura-skel aura-w-40 aura-right" />
-        </div>
-
-        <div className="aura-table-row" role="row">
-          <div className="aura-skel aura-w-70" />
-          <div className="aura-skel aura-w-55" />
-          <div className="aura-skel aura-w-40" />
-          <div className="aura-skel aura-w-85 aura-hide-sm" />
-          <div className="aura-skel aura-w-55 aura-right" />
-        </div>
-      </div>
-
-        <p className="aura-muted aura-text-xs aura-mt-10">
-          Placeholder only. The full trade log lives in Trades & Logs.
-        </p>
+        <p className="aura-muted aura-text-xs aura-mt-10">The full trade log lives in Trades & Logs.</p>
       </section>
 
       {/* Section 6: Aura-wide (belongs near the bottom) */}
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Aura Network</div>
-          <div className="aura-muted aura-text-xs">
-            Platform-wide (placeholder)
-          </div>
+          <div className="aura-muted aura-text-xs">Platform-wide (placeholder)</div>
         </div>
 
         <div className="aura-mt-12 aura-grid-gap-10">

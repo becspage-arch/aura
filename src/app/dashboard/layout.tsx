@@ -1,12 +1,9 @@
+// src/app/dashboard/layout.tsx
 "use client";
 
 import { DashboardProvider } from "@/components/dashboard/DashboardStore";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const initial = {
     accounts: [],
     orders: [],
@@ -19,6 +16,7 @@ export default function DashboardLayout({
       selectedBrokerAccountId: null,
       selectedSymbol: null,
     },
+    summary: null,
   };
 
   return <DashboardProvider initial={initial}>{children}</DashboardProvider>;
