@@ -32,34 +32,54 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
 
+  // Only rows missing email AND that have a Clerk user id
   const users = await prisma.userProfile.findMany({
     where: {
-      OR: [{ email: null }, { displayName: null }],
+      email: null,
+      clerkUserId: { not: null },
     },
-    select: { id: true, clerkUserId: true, email: true, displayName: true },
-    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      clerkUserId: true,
+      email: true,
+      displayName: true,
+    },
   });
 
   let updated = 0;
   let skipped = 0;
   const errors: Array<{ clerkUserId: string; error: string }> = [];
 
+  // Create the Clerk client once (not on every loop)
+  const client = await clerkClient();
+
   for (const p of users) {
+    // ✅ Guard: TS + runtime safety
+    if (!p.clerkUserId) {
+      skipped++;
+      continue;
+    }
+
     try {
-      const client = await clerkClient();
       const u = await client.users.getUser(p.clerkUserId);
 
       const email =
         (u as any)?.primaryEmailAddress?.emailAddress ??
-        (Array.isArray((u as any)?.emailAddresses) && (u as any).emailAddresses[0]?.emailAddress) ??
+        (Array.isArray((u as any)?.emailAddresses) &&
+          (u as any).emailAddresses[0]?.emailAddress) ??
         null;
 
       const displayName = deriveDisplayName(u);
 
       const data: { email?: string; displayName?: string } = {};
 
-      if (p.email == null && typeof email === "string" && email.trim()) data.email = email.trim();
-      if (p.displayName == null && displayName) data.displayName = displayName;
+      if (p.email == null && typeof email === "string" && email.trim()) {
+        data.email = email.trim();
+      }
+
+      if (p.displayName == null && displayName) {
+        data.displayName = displayName;
+      }
 
       if (Object.keys(data).length === 0) {
         skipped++;

@@ -120,6 +120,93 @@ export async function startProjectXUserFeed(params: {
       const orderId = toStr(payload?.orderId ?? payload?.id);
       const customTag = toStr(payload?.customTag ?? payload?.tag);
 
+      // --- PERSIST ORDER (even if it never fills) ---
+      try {
+        const acctExternalId = toStr(payload?.accountId ?? params.accountId);
+        const orderExternalId = toStr(payload?.id ?? payload?.orderId);
+        if (acctExternalId && orderExternalId) {
+          const brokerAccount = await db.brokerAccount.upsert({
+            where: {
+              brokerName_externalId: {
+                brokerName: "projectx",
+                externalId: acctExternalId,
+              },
+            },
+            create: {
+              userId: ident.userId,
+              brokerName: "projectx",
+              externalId: acctExternalId,
+              accountLabel: null,
+            },
+            update: { userId: ident.userId },
+            select: { id: true },
+          });
+
+          const symbol =
+            toStr(payload?.symbol) ??
+            toStr(payload?.contractId) ??
+            toStr(payload?.instrumentId) ??
+            toStr(payload?.symbolId) ??
+            "UNKNOWN";
+
+          const side = normalizeSide(payload?.side);
+          const qty = toNum(payload?.size ?? payload?.qty ?? payload?.quantity) ?? 0;
+
+          const stopPrice = toNum(payload?.stopPrice);
+          const limitPrice = toNum(payload?.limitPrice);
+
+          const type = stopPrice != null ? "STOP" : limitPrice != null ? "LIMIT" : "MARKET";
+
+          // Best-effort status mapping (keep conservative)
+          const status = "NEW";
+
+          await db.order.upsert({
+            where: {
+              brokerAccountId_externalId: {
+                brokerAccountId: brokerAccount.id,
+                externalId: orderExternalId,
+              },
+            },
+            create: {
+              brokerAccountId: brokerAccount.id,
+              externalId: orderExternalId,
+              symbol,
+              side,
+              type,
+              status,
+              qty,
+              price: limitPrice ?? null,
+              stopPrice: stopPrice ?? null,
+              filledQty: 0,
+              avgFillPrice: null,
+            },
+            update: {
+              symbol,
+              side,
+              type,
+              qty: qty > 0 ? qty : undefined,
+              price: limitPrice ?? undefined,
+              stopPrice: stopPrice ?? undefined,
+            },
+          });
+
+          console.log("[projectx-user] ORDER_UPSERT_OK", {
+            brokerAccountId: brokerAccount.id,
+            externalId: orderExternalId,
+            type,
+            side,
+            qty,
+            stopPrice: stopPrice ?? null,
+            limitPrice: limitPrice ?? null,
+            customTag: toStr(payload?.customTag ?? payload?.tag) ?? null,
+          });
+        }
+      } catch (e) {
+        console.warn("[projectx-user] ORDER_UPSERT_FAILED (non-fatal)", {
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+
       if (!orderId && !customTag) return;
 
       try {
