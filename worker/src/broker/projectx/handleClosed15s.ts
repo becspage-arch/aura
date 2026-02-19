@@ -67,7 +67,7 @@ async function hasOpenTrade(params: {
     "INTENT_CREATED",
     "ORDER_SUBMITTED",
     "ORDER_ACCEPTED",
-    "ORDER_FILLED",
+    // IMPORTANT: DO NOT include ORDER_FILLED (can be a DB ghost while broker is flat)
     "BRACKET_SUBMITTED",
     "BRACKET_ACTIVE",
     "POSITION_OPEN",
@@ -455,6 +455,11 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
             entryType: "market",
             stopLossTicks: Number(stopLossTicks),
             takeProfitTicks: Number(takeProfitTicks),
+
+            // ✅ NEW: absolute prices from strategy intent
+            stopPrice: stopPriceAbs,
+            takeProfitPrice: takeProfitPriceAbs,
+
             customTag: `aura-coreplus315-${Date.now()}`,
           },
         });

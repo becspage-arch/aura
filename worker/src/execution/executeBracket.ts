@@ -24,6 +24,10 @@ export type ExecuteBracketInput = {
   stopLossTicks?: number | null;
   takeProfitTicks?: number | null;
 
+  // NEW: absolute prices from strategy (preferred)
+  stopPrice?: number | null;
+  takeProfitPrice?: number | null;
+
   // optional user-provided tag (keep short if you use it)
   customTag?: string | null;
 };
@@ -480,8 +484,14 @@ export async function executeBracket(params: {
           contractId: input.contractId,
           side: input.side,
           size: qtyClamped,
+
           stopLossTicks: sl,
           takeProfitTicks: tp,
+
+          // NEW: pass absolute prices if provided
+          stopPrice: input.stopPrice ?? null,
+          takeProfitPrice: input.takeProfitPrice ?? null,
+
           customTag: brokerTag,
         });
 

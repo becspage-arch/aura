@@ -797,8 +797,15 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     contractId: string;
     side: "buy" | "sell";
     size: number;
+
+    // ticks (fallback)
     stopLossTicks?: number | null;
     takeProfitTicks?: number | null;
+
+    // NEW: absolute prices (preferred)
+    stopPrice?: number | null;
+    takeProfitPrice?: number | null;
+
     customTag?: string | null;
   }): Promise<{
     ok: boolean;
@@ -1028,23 +1035,88 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       );
     }
 
-    const slRaw = wantsSL
-      ? isLong
-        ? refPrice - slAbs! * tickSize
-        : refPrice + slAbs! * tickSize
-      : null;
+    // Prefer absolute prices from strategy when provided.
+    // Fallback to refPrice±ticks only if prices are missing.
 
-    const tpRaw = wantsTP
-      ? isLong
-        ? refPrice + tpAbs! * tickSize
-        : refPrice - tpAbs! * tickSize
-      : null;
+    const stopPxIn = input.stopPrice != null ? Number(input.stopPrice) : null;
+    const tpPxIn = input.takeProfitPrice != null ? Number(input.takeProfitPrice) : null;
 
-    const slPrice = slRaw != null ? roundToTick(slRaw) : null;
-    const tpPrice = tpRaw != null ? roundToTick(tpRaw) : null;
+    const hasStopPx = stopPxIn != null && Number.isFinite(stopPxIn) && stopPxIn > 0;
+    const hasTpPx = tpPxIn != null && Number.isFinite(tpPxIn) && tpPxIn > 0;
 
-    if (wantsSL && slPrice != null) assertValidExitPrice("SL", slPrice, refPrice);
-    if (wantsTP && tpPrice != null) assertValidExitPrice("TP", tpPrice, refPrice);
+    const slRawPreferred =
+      wantsSL
+        ? hasStopPx
+          ? stopPxIn!
+          : isLong
+            ? refPrice - slAbs! * tickSize
+            : refPrice + slAbs! * tickSize
+        : null;
+
+    const tpRawPreferred =
+      wantsTP
+        ? hasTpPx
+          ? tpPxIn!
+          : isLong
+            ? refPrice + tpAbs! * tickSize
+            : refPrice - tpAbs! * tickSize
+        : null;
+
+    let slPrice = slRawPreferred != null ? roundToTick(slRawPreferred) : null;
+    let tpPrice = tpRawPreferred != null ? roundToTick(tpRawPreferred) : null;
+
+    // If absolute prices are on the wrong side due to slippage, fallback to ticks from refPrice.
+    if (wantsSL && slPrice != null) {
+      try {
+        assertValidExitPrice("SL", slPrice, refPrice);
+      } catch (e) {
+        const fallback = isLong
+          ? refPrice - slAbs! * tickSize
+          : refPrice + slAbs! * tickSize;
+
+        const slFallback = roundToTick(fallback);
+
+        console.warn("[projectx-adapter] SL absolute invalid vs refPrice - falling back to ticks", {
+          entryOrderId: input.entryOrderId ?? null,
+          isLong,
+          refPrice,
+          stopPxIn: hasStopPx ? stopPxIn : null,
+          slAbs,
+          tickSize,
+          slPriceAttempt: slPrice,
+          slPriceFallback: slFallback,
+        });
+
+        slPrice = slFallback;
+        assertValidExitPrice("SL", slPrice, refPrice);
+      }
+    }
+
+    if (wantsTP && tpPrice != null) {
+      try {
+        assertValidExitPrice("TP", tpPrice, refPrice);
+      } catch (e) {
+        const fallback = isLong
+          ? refPrice + tpAbs! * tickSize
+          : refPrice - tpAbs! * tickSize;
+
+        const tpFallback = roundToTick(fallback);
+
+        console.warn("[projectx-adapter] TP absolute invalid vs refPrice - falling back to ticks", {
+          entryOrderId: input.entryOrderId ?? null,
+          isLong,
+          refPrice,
+          tpPxIn: hasTpPx ? tpPxIn : null,
+          tpAbs,
+          tickSize,
+          tpPriceAttempt: tpPrice,
+          tpPriceFallback: tpFallback,
+        });
+
+        tpPrice = tpFallback;
+        assertValidExitPrice("TP", tpPrice, refPrice);
+      }
+    }
 
     // Exit orders are always the OPPOSITE side
     const exitSide = isLong ? 1 : 0; // 1=Ask(sell), 0=Bid(buy)
