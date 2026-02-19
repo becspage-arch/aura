@@ -1553,3 +1553,122 @@ html.light .aura-sidebar__link:hover {
   background: rgba(176, 122, 122, 0.18);
   border-color: rgba(176, 122, 122, 0.28);
 }
+
+/* --------------------------------------------------
+   Aura monthly heatmap (Monthly P&L)
+-------------------------------------------------- */
+
+.aura-heat {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.aura-heat-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.aura-heat-weekday {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.aura-heat-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--muted);
+}
+
+.aura-heat-cell {
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.12);
+  min-height: 56px;
+  padding: 10px;
+  display: grid;
+  align-content: space-between;
+}
+
+html.light .aura-heat-cell {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.aura-heat-cell--blank {
+  background: transparent;
+  border-color: transparent;
+}
+
+.aura-heat-dom {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.aura-heat-pnl {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+/* Neutral (0 pnl) */
+.aura-heat-cell--zero .aura-heat-pnl {
+  color: var(--muted-foreground);
+}
+
+/* Positive / negative base */
+.aura-heat-cell--pos .aura-heat-pnl {
+  color: var(--aura-success);
+}
+.aura-heat-cell--neg .aura-heat-pnl {
+  color: var(--aura-error);
+}
+
+/* Intensity levels (1..4). Keep subtle. */
+.aura-heat-cell--pos.aura-heat-cell--l1 { background: rgba(127, 168, 161, 0.12); border-color: rgba(127, 168, 161, 0.20); }
+.aura-heat-cell--pos.aura-heat-cell--l2 { background: rgba(127, 168, 161, 0.18); border-color: rgba(127, 168, 161, 0.26); }
+.aura-heat-cell--pos.aura-heat-cell--l3 { background: rgba(127, 168, 161, 0.24); border-color: rgba(127, 168, 161, 0.34); }
+.aura-heat-cell--pos.aura-heat-cell--l4 { background: rgba(127, 168, 161, 0.30); border-color: rgba(127, 168, 161, 0.42); }
+
+.aura-heat-cell--neg.aura-heat-cell--l1 { background: rgba(176, 122, 122, 0.12); border-color: rgba(176, 122, 122, 0.20); }
+.aura-heat-cell--neg.aura-heat-cell--l2 { background: rgba(176, 122, 122, 0.18); border-color: rgba(176, 122, 122, 0.26); }
+.aura-heat-cell--neg.aura-heat-cell--l3 { background: rgba(176, 122, 122, 0.24); border-color: rgba(176, 122, 122, 0.34); }
+.aura-heat-cell--neg.aura-heat-cell--l4 { background: rgba(176, 122, 122, 0.30); border-color: rgba(176, 122, 122, 0.42); }
+
+/* Legend */
+.aura-heat-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.aura-heat-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.aura-heat-swatch--zero {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.aura-heat-swatch--pos.aura-heat-swatch--l2 {
+  background: rgba(127, 168, 161, 0.22);
+  border-color: rgba(127, 168, 161, 0.28);
+}
+
+.aura-heat-swatch--neg.aura-heat-swatch--l2 {
+  background: rgba(176, 122, 122, 0.22);
+  border-color: rgba(176, 122, 122, 0.28);
+}
