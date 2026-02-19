@@ -297,8 +297,9 @@ export class CorePlus315Engine {
 
     if (!this.activeFvg.retested) {
       candidateBase.meta.retested = false;
-      candidateBase.meta.fvgTop = this.activeFvg.top;
-      candidateBase.meta.fvgBottom = this.activeFvg.bottom;
+      const { top, bottom } = fvgBounds(this.activeFvg);
+      candidateBase.meta.fvgTop = top;
+      candidateBase.meta.fvgBottom = bottom;
       return { kind: "blocked", reason: "NOT_RETESTED", candidate: candidateBase };
     }
 
@@ -364,8 +365,8 @@ export class CorePlus315Engine {
       riskUsdPlanned: plannedRisk,
       takeProfitPrice,
       meta: {
-        fvgTop: this.activeFvg.top,
-        fvgBottom: this.activeFvg.bottom,
+        fvgTop: fvgBounds(this.activeFvg).top,
+        fvgBottom: fvgBounds(this.activeFvg).bottom,
         retested: this.activeFvg.retested,
       },
     };
