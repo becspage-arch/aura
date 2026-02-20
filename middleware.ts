@@ -7,113 +7,114 @@ function isResponseLike(x: any): x is Response {
   return !!x && typeof x === "object" && x.headers && typeof x.headers.get === "function";
 }
 
-export default clerkMiddleware((auth, req) => {
-  const { pathname } = new URL(req.url);
+export default clerkMiddleware(
+  (auth, req) => {
+    const { pathname } = new URL(req.url);
 
-  // DIAGNOSTIC: prove middleware runs on production for "/"
-  if (pathname === "/") {
-    const res = NextResponse.next();
-    res.headers.set("x-aura-mw", "1");
-    return res;
-  }
+    // DIAGNOSTIC: prove middleware runs on production for "/"
+    if (pathname === "/") {
+      const res = NextResponse.next();
+      res.headers.set("x-aura-mw", "1");
+      return res;
+    }
 
-  /* =====================================================
-     ALWAYS ALLOW INTERNAL SERVICE ROUTES (WORKER CALLS)
-     ===================================================== */
+    /* =====================================================
+       ALWAYS ALLOW INTERNAL SERVICE ROUTES (WORKER CALLS)
+       ===================================================== */
 
-  // Worker is not a browser session, so it will be "signed-out" in Clerk.
-  // These routes are protected by x-aura-token inside the handler.
-  if (pathname === "/api/internal/notifications/ingest") {
-    const res = NextResponse.next();
-    res.headers.set("x-aura-mw-ingest", "1");
-    return res;
-  }
+    // Worker is not a browser session, so it will be "signed-out" in Clerk.
+    // These routes are protected by x-aura-token inside the handler.
+    if (pathname === "/api/internal/notifications/ingest") {
+      const res = NextResponse.next();
+      res.headers.set("x-aura-mw-ingest", "1");
+      return res;
+    }
 
-  /* =====================================================
-     ALWAYS ALLOW SERVICE WORKERS + PWA ASSETS
-     (must not be gated or redirected)
-     ===================================================== */
+    /* =====================================================
+       ALWAYS ALLOW SERVICE WORKERS + PWA ASSETS
+       (must not be gated or redirected)
+       ===================================================== */
 
-  if (
-    pathname === "/OneSignalSDKWorker.js" ||
-    pathname === "/OneSignalSDKUpdaterWorker.js" ||
-    pathname === "/manifest.json" ||
-    pathname.startsWith("/icons/") ||
-    pathname === "/favicon.ico" ||
-    pathname.startsWith("/favicon") // keep your existing
-  ) {
-    return NextResponse.next();
-  }
+    if (
+      pathname === "/OneSignalSDKWorker.js" ||
+      pathname === "/OneSignalSDKUpdaterWorker.js" ||
+      pathname === "/manifest.json" ||
+      pathname.startsWith("/icons/") ||
+      pathname === "/favicon.ico" ||
+      pathname.startsWith("/favicon")
+    ) {
+      return NextResponse.next();
+    }
 
-  /* =====================================================
-     ALWAYS ALLOW API DATA ENDPOINTS (DEV ONLY, LOCALHOST)
-     ===================================================== */
+    /* =====================================================
+       ALWAYS ALLOW API DATA ENDPOINTS (DEV ONLY, LOCALHOST)
+       ===================================================== */
 
-  if (process.env.NODE_ENV !== "production") {
-    const host = req.headers?.get?.("host") ?? "";
-    const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
+    if (process.env.NODE_ENV !== "production") {
+      const host = req.headers?.get?.("host") ?? "";
+      const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
 
-    if (isLocal) {
-      if (pathname.startsWith("/api/dev/seed/")) {
-        return NextResponse.next();
-      }
-      if (pathname.startsWith("/api/charts/")) {
-        return NextResponse.next();
+      if (isLocal) {
+        if (pathname.startsWith("/api/dev/seed/")) return NextResponse.next();
+        if (pathname.startsWith("/api/charts/")) return NextResponse.next();
       }
     }
-  }
 
-  /* =====================================================
-     NEXT INTERNALS & STATIC ASSETS
-     ===================================================== */
+    /* =====================================================
+       NEXT INTERNALS & STATIC ASSETS
+       ===================================================== */
 
-  if (
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    pathname.startsWith("/robots.txt") ||
-    pathname.startsWith("/sitemap")
-  ) {
+    if (
+      pathname.startsWith("/_next") ||
+      pathname.startsWith("/favicon") ||
+      pathname.startsWith("/robots.txt") ||
+      pathname.startsWith("/sitemap")
+    ) {
+      return NextResponse.next();
+    }
+
+    /* =====================================================
+       AURA COMING SOON PASSWORD GATE
+       ===================================================== */
+
+    if (pathname === "/gate" || pathname === "/api/gate/unlock") {
+      return NextResponse.next();
+    }
+
+    const isUnlocked = req.cookies.get("aura_gate")?.value === "1";
+
+    if (!isUnlocked) {
+      const url = new URL(req.url);
+      url.pathname = "/gate";
+      return NextResponse.redirect(url);
+    }
+
+    /* =====================================================
+       PUBLIC ROUTES (AFTER GATE)
+       ===================================================== */
+
+    if (
+      pathname === "/" ||
+      pathname.startsWith("/sign-in") ||
+      pathname.startsWith("/sign-up") ||
+      pathname.startsWith("/sign-out")
+    ) {
+      return NextResponse.next();
+    }
+
+    /* =====================================================
+       CLERK AUTH
+       ===================================================== */
+
+    const maybe = auth.protect();
+    if (isResponseLike(maybe)) return maybe;
+
     return NextResponse.next();
+  },
+  {
+    publicRoutes: ["/api/internal/notifications/ingest"],
   }
-
-  /* =====================================================
-     AURA COMING SOON PASSWORD GATE
-     ===================================================== */
-
-  if (pathname === "/gate" || pathname === "/api/gate/unlock") {
-    return NextResponse.next();
-  }
-
-  const isUnlocked = req.cookies.get("aura_gate")?.value === "1";
-
-  if (!isUnlocked) {
-    const url = new URL(req.url);
-    url.pathname = "/gate";
-    return NextResponse.redirect(url);
-  }
-
-  /* =====================================================
-     PUBLIC ROUTES (AFTER GATE)
-     ===================================================== */
-
-  if (
-    pathname === "/" ||
-    pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/sign-up") ||
-    pathname.startsWith("/sign-out")
-  ) {
-    return NextResponse.next();
-  }
-
-  /* =====================================================
-     CLERK AUTH
-     ===================================================== */
-
-  const maybe = auth.protect();
-  if (isResponseLike(maybe)) return maybe;
-
-  return NextResponse.next();
-});
+);
 
 export const config = {
   matcher: ["/:path*"],
