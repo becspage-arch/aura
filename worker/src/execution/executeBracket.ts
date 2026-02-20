@@ -395,6 +395,7 @@ export async function executeBracket(params: {
 
     const entryReq = {
       contractId: input.contractId,
+      symbol: input.symbol ?? null,
       side: input.side,
       size: qtyClamped,
       type: input.entryType,
