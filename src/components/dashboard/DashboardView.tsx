@@ -6,6 +6,22 @@ import { useDashboard } from "@/components/dashboard/DashboardStore";
 
 const LONDON_TZ = "Europe/London";
 
+function normalizeSummary(raw: any) {
+  if (!raw) return null;
+
+  // Most common shapes we might see:
+  // A) { ok: true, kpis: {...}, status: {...}, ... }
+  // B) { ok: true, data: { kpis: {...}, status: {...}, ... } }
+  // C) { kpis: {...}, status: {...}, ... } (already unwrapped)
+
+  if (raw?.ok && raw?.kpis) return raw;
+  if (raw?.ok && raw?.data && raw.data?.kpis) return raw.data;
+  if (raw?.kpis) return raw;
+
+  // Unknown shape - don't let it crash the UI
+  return null;
+}
+
 function fmtMoneyUsd(v: any) {
   if (v == null) return "$—";
   const n = typeof v === "number" ? v : Number(v);
@@ -55,8 +71,14 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       try {
         const res = await fetch(`/api/dashboard/summary?range=${cumRange}`, { method: "GET" });
         const json = await res.json().catch(() => null);
-        if (res.ok && json?.ok) {
-          dispatch({ type: "SET_SUMMARY", payload: json });
+        if (res.ok) {
+          const normalized = normalizeSummary(json);
+          if (normalized) {
+            dispatch({ type: "SET_SUMMARY", payload: normalized });
+          } else if (json?.ok) {
+            // keep the UI alive even if payload is unexpected
+            console.error("DASHBOARD_SUMMARY_UNEXPECTED_SHAPE", json);
+          }
         }
       } catch {
         // ignore
@@ -67,14 +89,14 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
 
   const channelName = useMemo(() => (clerkUserId ? `user:${clerkUserId}` : null), [clerkUserId]);
 
-  const totalProfit = state.summary ? fmtMoneyUsd(state.summary.kpis.totalProfitUsd) : "$—";
-  const todayPnl = state.summary ? fmtMoneyUsd(state.summary.kpis.todayPnlUsd) : "$—";
-  const monthPnl = state.summary ? fmtMoneyUsd(state.summary.kpis.monthPnlUsd) : "$—";
+  const totalProfit = state.summary?.kpis ? fmtMoneyUsd(state.summary.kpis.totalProfitUsd) : "$—";
+  const todayPnl = state.summary?.kpis ? fmtMoneyUsd(state.summary.kpis.todayPnlUsd) : "$—";
+  const monthPnl = state.summary?.kpis ? fmtMoneyUsd(state.summary.kpis.monthPnlUsd) : "$—";
 
   const accountEquity =
     state.summary?.kpis?.accountEquityUsd != null ? fmtMoneyUsd(state.summary.kpis.accountEquityUsd) : "$—";
 
-  const strategyStatus = state.summary
+  const strategyStatus = state.summary?.status
     ? state.summary.status.strategy === "PAUSED"
       ? "Paused"
       : "Active"
@@ -82,7 +104,7 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       ? "Paused"
       : "Active";
 
-  const tradingStatus = state.summary
+  const tradingStatus = state.summary?.status
     ? state.summary.status.trading === "STOPPED"
       ? "Stopped"
       : "Live"
