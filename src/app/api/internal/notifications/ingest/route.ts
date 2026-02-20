@@ -84,3 +84,12 @@ export async function POST(req: Request) {
     );
   }
 }
+
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    route: "/api/internal/notifications/ingest",
+    hasPost: true,
+    ts: new Date().toISOString(),
+  });
+}
