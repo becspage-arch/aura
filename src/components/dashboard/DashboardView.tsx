@@ -1,7 +1,7 @@
 // src/components/dashboard/DashboardView.tsx
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDashboard } from "@/components/dashboard/DashboardStore";
 
 const LONDON_TZ = "Europe/London";
@@ -48,10 +48,12 @@ function weekdayIndexMondayFirst(d: Date) {
 export default function DashboardView({ clerkUserId }: { clerkUserId?: string }) {
   const { state, dispatch } = useDashboard();
 
+  const [cumRange, setCumRange] = useState<"1M" | "3M" | "6M" | "1Y" | "ALL">("1Y");
+
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/dashboard/summary", { method: "GET" });
+        const res = await fetch(`/api/dashboard/summary?range=${cumRange}`, { method: "GET" });
         const json = await res.json().catch(() => null);
         if (res.ok && json?.ok) {
           dispatch({ type: "SET_SUMMARY", payload: json });
@@ -61,7 +63,7 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       }
     }
     load();
-  }, [dispatch]);
+  }, [dispatch, cumRange]);
 
   const channelName = useMemo(() => (clerkUserId ? `user:${clerkUserId}` : null), [clerkUserId]);
 
@@ -96,41 +98,48 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
 
   const perf = state.summary?.performance30d ?? null;
 
-    // ---------- Cumulative (Daily) model (last 14 points) ----------
-  const cumModel = useMemo(() => {
+  // ---------- Cumulative line chart model ----------
+  const cumChart = useMemo(() => {
     const pts = state.summary?.charts?.cumulativePnl?.points;
-    if (!Array.isArray(pts) || pts.length === 0) return null;
+    if (!Array.isArray(pts) || pts.length < 2) return null;
 
-    const last = pts.slice(-14).map((p: any) => {
-      const day = String(p.day);
-      const pnl = Number(p.pnlUsd);
-      const cum = Number(p.cumulativeUsd);
-      return {
-        day,
-        pnl,
-        cum,
-        dom: Number(day.slice(8, 10)),
-      };
-    });
+    const ys = pts.map((p: any) => Number(p.cumulativeUsd));
+    const xs = pts.map((p: any) => String(p.day));
 
-    const vals = last.map((x) => x.cum).filter((n) => Number.isFinite(n));
-    if (vals.length === 0) return null;
+    const yMin = Math.min(...ys);
+    const yMax = Math.max(...ys);
+    const span = yMax - yMin || 1;
 
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    const span = Math.max(1, max - min);
+    // SVG coordinate system
+    const W = 1000;
+    const H = 260;
+    const padL = 22;
+    const padR = 18;
+    const padT = 16;
+    const padB = 26;
 
-    function bucketPct(v: number) {
-      // 0..20 (21 buckets) to avoid inline styles
-      const pct = ((v - min) / span) * 100;
-      const b = Math.round((pct / 100) * 20);
-      return Math.max(0, Math.min(20, b));
-    }
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
 
-    return last.map((x) => ({
-      ...x,
-      h: bucketPct(x.cum),
-    }));
+    const toX = (i: number) => padL + (i / (pts.length - 1)) * innerW;
+    const toY = (v: number) => padT + (1 - (v - yMin) / span) * innerH;
+
+    const lineD = pts
+      .map((p: any, i: number) => {
+        const x = toX(i);
+        const y = toY(Number(p.cumulativeUsd));
+        return `${i === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(" ");
+
+    const areaD = `${lineD} L ${(padL + innerW).toFixed(2)} ${(padT + innerH).toFixed(
+      2
+    )} L ${padL.toFixed(2)} ${(padT + innerH).toFixed(2)} Z`;
+
+    const startLabel = xs[0];
+    const endLabel = xs[xs.length - 1];
+
+    return { W, H, lineD, areaD, startLabel, endLabel };
   }, [state.summary?.charts?.cumulativePnl?.points]);
 
   // ---------- Month heatmap model ----------
@@ -274,24 +283,46 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
         </div>
       </section>
 
-      {/* Section 3: Cumulative P&L (Daily) */}
+      {/* Section 3: Cumulative P&L (Line) */}
       <section className="aura-card">
         <div className="aura-row-between">
-          <div className="aura-card-title">Cumulative P&L (Daily)</div>
-          <div className="aura-muted aura-text-xs">Last 14 days</div>
+          <div>
+            <div className="aura-card-title">Cumulative P&L</div>
+            <div className="aura-muted aura-text-xs">Performance overview</div>
+          </div>
+
+          <div className="aura-range-tabs" role="tablist" aria-label="Cumulative P&L range">
+            {(["1M", "3M", "6M", "1Y", "ALL"] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                className={`aura-range-tab ${cumRange === r ? "aura-range-tab--active" : ""}`}
+                onClick={() => setCumRange(r)}
+                role="tab"
+                aria-selected={cumRange === r}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {cumModel ? (
-          <div className="aura-cum" role="img" aria-label="Cumulative P&L chart (last 14 days)">
-            {cumModel.map((p) => (
-              <div
-                key={p.day}
-                className={`aura-cum-bar aura-cum-bar--h${p.h}`}
-                title={`${p.day}  pnl ${fmtMoneyUsd(p.pnl)}  cum ${fmtMoneyUsd(p.cum)}`}
-              >
-                <div className="aura-cum-day">{p.dom}</div>
-              </div>
-            ))}
+        {cumChart ? (
+          <div className="aura-linechart">
+            <svg
+              className="aura-linechart__svg"
+              viewBox={`0 0 ${cumChart.W} ${cumChart.H}`}
+              role="img"
+              aria-label="Cumulative P&L line chart"
+            >
+              <path className="aura-linechart__area" d={cumChart.areaD} />
+              <path className="aura-linechart__line" d={cumChart.lineD} />
+            </svg>
+
+            <div className="aura-linechart__x">
+              <span className="aura-muted aura-text-xs">{cumChart.startLabel}</span>
+              <span className="aura-muted aura-text-xs">{cumChart.endLabel}</span>
+            </div>
           </div>
         ) : (
           <div className="aura-muted aura-text-xs aura-mt-10">No chart data yet.</div>
