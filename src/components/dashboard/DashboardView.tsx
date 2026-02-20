@@ -432,7 +432,7 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
             state.summary.recentTrades.map((t: any) => (
               <div className="aura-table-row" role="row" key={t.execKey}>
                 <div>{fmtTimeLondon(t.closedAt)}</div>
-                <div>{t.symbol}</div>
+                <div>{t.symbol} </div>
                 <div>{t.side}</div>
                 <div className="aura-hide-sm">{t.exitReason}</div>
                 <div className="aura-right">{fmtMoneyUsd(t.realizedPnlUsd)}</div>
