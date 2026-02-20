@@ -479,14 +479,7 @@ export class CorePlus315Engine {
       const top = c0.low;
       const bottom = c2.high;
 
-      console.log(
-        `[coreplus315] NEW_3M_FVG ${JSON.stringify({
-          kind: "bull",
-          c0: { time: c0.time, open: c0.open, high: c0.high, low: c0.low, close: c0.close },
-          c2: { time: c2.time, open: c2.open, high: c2.high, low: c2.low, close: c2.close },
-          computed: { side: "buy", top, bottom },
-        })}`
-      );
+      console.log(`[coreplus315] NEW_3M_FVG kind=bull side=buy top=${top} bottom=${bottom} c0_low=${c0.low} c2_high=${c2.high}`);
 
       this.activeFvg = {
         side: "buy",
@@ -504,14 +497,7 @@ export class CorePlus315Engine {
       const top = c2.low;
       const bottom = c0.high;
 
-      console.log(
-        `[coreplus315] NEW_3M_FVG ${JSON.stringify({
-          kind: "bear",
-          c0: { time: c0.time, open: c0.open, high: c0.high, low: c0.low, close: c0.close },
-          c2: { time: c2.time, open: c2.open, high: c2.high, low: c2.low, close: c2.close },
-          computed: { side: "sell", top, bottom },
-        })}`
-      );
+      console.log(`[coreplus315] NEW_3M_FVG kind=bear side=sell top=${top} bottom=${bottom} c0_high=${c0.high} c2_low=${c2.low}`);
 
       this.activeFvg = {
         side: "sell",
