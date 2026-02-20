@@ -1,5 +1,6 @@
+// middleware.ts
 import { NextResponse } from "next/server";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
 export const runtime = "edge";
 
@@ -7,17 +8,7 @@ function isResponseLike(x: any): x is Response {
   return !!x && typeof x === "object" && x.headers && typeof x.headers.get === "function";
 }
 
-// Clerk-supported public route matcher (works on older versions that don't have `publicRoutes`)
-const isPublicRoute = createRouteMatcher(["/api/internal/notifications/ingest"]);
-
 export default clerkMiddleware((auth, req) => {
-  // IMPORTANT: if this is the ingest endpoint, do NOT let Clerk protect/rewrite it.
-  if (isPublicRoute(req)) {
-    const res = NextResponse.next();
-    res.headers.set("x-aura-mw-ingest", "1");
-    return res;
-  }
-
   const { pathname } = new URL(req.url);
 
   // DIAGNOSTIC: prove middleware runs on production for "/"
@@ -28,10 +19,17 @@ export default clerkMiddleware((auth, req) => {
   }
 
   /* =====================================================
-     ALWAYS ALLOW SERVICE WORKERS + PWA ASSETS
-     (must not be gated or redirected)
+     ALWAYS ALLOW INTERNAL SERVICE ROUTES (WORKER CALLS)
      ===================================================== */
+  if (pathname === "/api/internal/notifications/ingest") {
+    const res = NextResponse.next();
+    res.headers.set("x-aura-mw-ingest", "1");
+    return res;
+  }
 
+  /* =====================================================
+     ALWAYS ALLOW SERVICE WORKERS + PWA ASSETS
+     ===================================================== */
   if (
     pathname === "/OneSignalSDKWorker.js" ||
     pathname === "/OneSignalSDKUpdaterWorker.js" ||
@@ -44,13 +42,11 @@ export default clerkMiddleware((auth, req) => {
   }
 
   /* =====================================================
-     ALWAYS ALLOW API DATA ENDPOINTS (DEV ONLY, LOCALHOST)
+     DEV-ONLY LOCAL API ROUTES
      ===================================================== */
-
   if (process.env.NODE_ENV !== "production") {
     const host = req.headers?.get?.("host") ?? "";
     const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
-
     if (isLocal) {
       if (pathname.startsWith("/api/dev/seed/")) return NextResponse.next();
       if (pathname.startsWith("/api/charts/")) return NextResponse.next();
@@ -60,11 +56,9 @@ export default clerkMiddleware((auth, req) => {
   /* =====================================================
      NEXT INTERNALS & STATIC ASSETS
      ===================================================== */
-
   if (
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    pathname.startsWith("/robots.txt") ||
+    pathname === "/robots.txt" ||
     pathname.startsWith("/sitemap")
   ) {
     return NextResponse.next();
@@ -73,13 +67,11 @@ export default clerkMiddleware((auth, req) => {
   /* =====================================================
      AURA COMING SOON PASSWORD GATE
      ===================================================== */
-
   if (pathname === "/gate" || pathname === "/api/gate/unlock") {
     return NextResponse.next();
   }
 
   const isUnlocked = req.cookies.get("aura_gate")?.value === "1";
-
   if (!isUnlocked) {
     const url = new URL(req.url);
     url.pathname = "/gate";
@@ -89,7 +81,6 @@ export default clerkMiddleware((auth, req) => {
   /* =====================================================
      PUBLIC ROUTES (AFTER GATE)
      ===================================================== */
-
   if (
     pathname === "/" ||
     pathname.startsWith("/sign-in") ||
@@ -102,7 +93,6 @@ export default clerkMiddleware((auth, req) => {
   /* =====================================================
      CLERK AUTH
      ===================================================== */
-
   const maybe = auth.protect();
   if (isResponseLike(maybe)) return maybe;
 
