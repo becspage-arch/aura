@@ -164,9 +164,7 @@ export default async function AppHome() {
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-6xl px-6 pb-10">
-        <DashboardProvider initial={initial as any}>
-          <DashboardView clerkUserId={user.id} />
-        </DashboardProvider>
+        <DashboardView clerkUserId={user.id} />
       </div>
     </div>
   );
