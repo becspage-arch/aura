@@ -441,15 +441,17 @@ export class CorePlus315Engine {
    * Detect new 3m FVG and invalidation (mirrors your indicator defaults: onlyWhen50=false etc).
    */
   private onClosed3m(c3: Candle3m) {
-    console.log(`[coreplus315] CLOSED_3M`, {
-      time: c3.time,
-      iso: new Date(c3.time * 1000).toISOString(),
-      bucketMod: c3.time % 180,
-      o: c3.open,
-      h: c3.high,
-      l: c3.low,
-      c: c3.close,
-    });
+    console.log(
+      `[coreplus315] CLOSED_3M ${JSON.stringify({
+        time: c3.time,
+        iso: new Date(c3.time * 1000).toISOString(),
+        bucketMod: c3.time % 180,
+        o: c3.open,
+        h: c3.high,
+        l: c3.low,
+        c: c3.close,
+      })}`
+    );
 
     this.last3m.push(c3);
 
@@ -477,28 +479,14 @@ export class CorePlus315Engine {
       const top = c0.low;
       const bottom = c2.high;
 
-      console.log(`[coreplus315] NEW_3M_FVG`, {
-        kind: "bull",
-        c0: {
-          time: c0.time,
-          open: c0.open,
-          high: c0.high,
-          low: c0.low,
-          close: c0.close,
-        },
-        c2: {
-          time: c2.time,
-          open: c2.open,
-          high: c2.high,
-          low: c2.low,
-          close: c2.close,
-        },
-        computed: {
-          side: "buy",
-          top,
-          bottom,
-        },
-      });
+      console.log(
+        `[coreplus315] NEW_3M_FVG ${JSON.stringify({
+          kind: "bull",
+          c0: { time: c0.time, open: c0.open, high: c0.high, low: c0.low, close: c0.close },
+          c2: { time: c2.time, open: c2.open, high: c2.high, low: c2.low, close: c2.close },
+          computed: { side: "buy", top, bottom },
+        })}`
+      );
 
       this.activeFvg = {
         side: "buy",
@@ -516,28 +504,14 @@ export class CorePlus315Engine {
       const top = c2.low;
       const bottom = c0.high;
 
-      console.log(`[coreplus315] NEW_3M_FVG`, {
-        kind: "bear",
-        c0: {
-          time: c0.time,
-          open: c0.open,
-          high: c0.high,
-          low: c0.low,
-          close: c0.close,
-        },
-        c2: {
-          time: c2.time,
-          open: c2.open,
-          high: c2.high,
-          low: c2.low,
-          close: c2.close,
-        },
-        computed: {
-          side: "sell",
-          top,
-          bottom,
-        },
-      });
+      console.log(
+        `[coreplus315] NEW_3M_FVG ${JSON.stringify({
+          kind: "bear",
+          c0: { time: c0.time, open: c0.open, high: c0.high, low: c0.low, close: c0.close },
+          c2: { time: c2.time, open: c2.open, high: c2.high, low: c2.low, close: c2.close },
+          computed: { side: "sell", top, bottom },
+        })}`
+      );
 
       this.activeFvg = {
         side: "sell",
