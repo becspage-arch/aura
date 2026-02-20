@@ -7,7 +7,8 @@ function isResponseLike(x: any): x is Response {
   return !!x && typeof x === "object" && x.headers && typeof x.headers.get === "function";
 }
 
-export default clerkMiddleware((auth, req) => {
+// Create the Clerk middleware once
+const clerkMw = clerkMiddleware((auth, req) => {
   const { pathname } = new URL(req.url);
 
   // DIAGNOSTIC: prove middleware runs on production for "/"
@@ -18,22 +19,7 @@ export default clerkMiddleware((auth, req) => {
   }
 
   /* =====================================================
-     ALWAYS ALLOW INTERNAL SERVICE ROUTES (WORKER CALLS)
-     ===================================================== */
-
-  // Worker is not a browser session, so it will be "signed-out" in Clerk.
-  // These routes are protected by x-aura-token inside the handler.
-  // NOTE: With the matcher below, this middleware will NOT run on this path in production.
-  // Keeping this block is harmless and useful locally if your matcher changes.
-  if (pathname === "/api/internal/notifications/ingest") {
-    const res = NextResponse.next();
-    res.headers.set("x-aura-mw-ingest", "1");
-    return res;
-  }
-
-  /* =====================================================
      ALWAYS ALLOW SERVICE WORKERS + PWA ASSETS
-     (must not be gated or redirected)
      ===================================================== */
 
   if (
@@ -113,9 +99,20 @@ export default clerkMiddleware((auth, req) => {
   return NextResponse.next();
 });
 
+// IMPORTANT: export our own middleware that SKIPS Clerk entirely for the worker endpoint.
+export default function middleware(req: any, event: any) {
+  const { pathname } = new URL(req.url);
+
+  // Worker ingest must NOT be seen by Clerk at all.
+  if (pathname === "/api/internal/notifications/ingest") {
+    const res = NextResponse.next();
+    res.headers.set("x-aura-mw-ingest", "1");
+    return res;
+  }
+
+  return clerkMw(req, event);
+}
+
 export const config = {
-  matcher: [
-    // Run middleware on everything EXCEPT the worker ingest endpoint
-    "/((?!api/internal/notifications/ingest).*)",
-  ],
+  matcher: ["/:path*"],
 };
