@@ -127,13 +127,14 @@ export async function executeBracket(params: {
   input: ExecuteBracketInput;
 }) {
   const { prisma, broker, input } = params;
+  const resolvedSymbol = (input.symbol ?? input.contractId ?? null);
 
   // --- MAX OPEN TRADES (DB guard) + anti-double-click lock ---
   const maxOpenTrades =
     process.env.AURA_MAX_OPEN_TRADES != null ? Number(process.env.AURA_MAX_OPEN_TRADES) : 1;
 
   const lockKey1 = `aura:${input.userId}`;
-  const lockKey2 = `openTrade:${input.brokerName}:${input.contractId}:${input.symbol ?? ""}`;
+  const lockKey2 = `openTrade:${input.brokerName}:${input.contractId}:${resolvedSymbol ?? ""}`;
 
   // Acquire lock (best-effort)
   try {
@@ -161,7 +162,7 @@ export async function executeBracket(params: {
       try {
         const pos = await getPosFn.call(broker, {
           contractId: input.contractId,
-          symbol: (input.symbol ?? input.contractId ?? null),
+          symbol: resolvedSymbol,
         });
 
         const rawSize =
@@ -179,7 +180,7 @@ export async function executeBracket(params: {
             userId: input.userId,
             brokerName: input.brokerName,
             contractId: input.contractId,
-            symbol: input.symbol ?? null,
+            symbol: resolvedSymbol,
             brokerPositionSize: sizeNum,
           });
 
@@ -188,7 +189,7 @@ export async function executeBracket(params: {
             userId: input.userId,
             brokerName: input.brokerName,
             contractId: input.contractId,
-            symbol: input.symbol ?? null,
+            symbol: resolvedSymbol,
             brokerPositionSize: sizeNum,
           });
 
@@ -243,7 +244,7 @@ export async function executeBracket(params: {
             userId: input.userId,
             brokerName: input.brokerName,
             contractId: input.contractId,
-            ...(input.symbol ? { symbol: input.symbol } : {}),
+            ...(resolvedSymbol ? { symbol: resolvedSymbol } : {}),
             status: { in: ghostStatuses },
             updatedAt: { lt: staleBefore },
           },
@@ -303,7 +304,7 @@ export async function executeBracket(params: {
           userId: input.userId,
           brokerName: input.brokerName,
           contractId: input.contractId,
-          ...(input.symbol ? { symbol: input.symbol } : {}),
+          ...(resolvedSymbol ? { symbol: resolvedSymbol } : {}),
           status: { in: openStatuses },
         },
       });
@@ -379,7 +380,7 @@ export async function executeBracket(params: {
         userId: input.userId,
         brokerName: input.brokerName,
         contractId: input.contractId,
-        symbol: input.symbol ?? null,
+        symbol: resolvedSymbol,
         side: input.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
         qty: qtyClamped,
         entryType: input.entryType,
@@ -395,7 +396,7 @@ export async function executeBracket(params: {
 
     const entryReq = {
       contractId: input.contractId,
-      symbol: input.symbol ?? null,
+      symbol: resolvedSymbol,
       side: input.side,
       size: qtyClamped,
       type: input.entryType,
@@ -442,7 +443,7 @@ export async function executeBracket(params: {
         executionId: updatedAfterEntry.id,
         broker: (broker as any)?.name ?? null,
         contractId: input.contractId,
-        symbol: input.symbol ?? null,
+        symbol: resolvedSymbol,
         side: input.side,
         qty: qtyClamped,
         entryType: input.entryType,
