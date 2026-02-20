@@ -442,6 +442,16 @@ export class CorePlus315Engine {
    */
   private onClosed3m(c3: Candle3m) {
     this.last3m.push(c3);
+
+    console.log(`[coreplus315] CLOSED_3M`, {
+      time: c3.time,
+      o: c3.open,
+      h: c3.high,
+      l: c3.low,
+      c: c3.close,
+      last3mLen: this.last3m.length,
+    });
+
     if (this.last3m.length > 50) this.last3m.shift();
 
     // Invalidate existing active FVG using latest 3m close (on subsequent bars)
