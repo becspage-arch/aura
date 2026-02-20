@@ -96,6 +96,43 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
 
   const perf = state.summary?.performance30d ?? null;
 
+    // ---------- Cumulative (Daily) model (last 14 points) ----------
+  const cumModel = useMemo(() => {
+    const pts = state.summary?.charts?.cumulativePnl?.points;
+    if (!Array.isArray(pts) || pts.length === 0) return null;
+
+    const last = pts.slice(-14).map((p: any) => {
+      const day = String(p.day);
+      const pnl = Number(p.pnlUsd);
+      const cum = Number(p.cumulativeUsd);
+      return {
+        day,
+        pnl,
+        cum,
+        dom: Number(day.slice(8, 10)),
+      };
+    });
+
+    const vals = last.map((x) => x.cum).filter((n) => Number.isFinite(n));
+    if (vals.length === 0) return null;
+
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const span = Math.max(1, max - min);
+
+    function bucketPct(v: number) {
+      // 0..20 (21 buckets) to avoid inline styles
+      const pct = ((v - min) / span) * 100;
+      const b = Math.round((pct / 100) * 20);
+      return Math.max(0, Math.min(20, b));
+    }
+
+    return last.map((x) => ({
+      ...x,
+      h: bucketPct(x.cum),
+    }));
+  }, [state.summary?.charts?.cumulativePnl?.points]);
+
   // ---------- Month heatmap model ----------
   const monthModel = useMemo(() => {
     const cal = state.summary?.charts?.monthCalendar;
@@ -237,31 +274,28 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
         </div>
       </section>
 
-      {/* Section 3: Cumulative P&L (still placeholder for now) */}
+      {/* Section 3: Cumulative P&L (Daily) */}
       <section className="aura-card">
         <div className="aura-row-between">
           <div className="aura-card-title">Cumulative P&L (Daily)</div>
           <div className="aura-muted aura-text-xs">Last 14 days</div>
         </div>
 
-        <div className="aura-chart-placeholder" aria-label="Cumulative P&L placeholder chart">
-          <div className="aura-bar aura-bar-35" />
-          <div className="aura-bar aura-bar-42" />
-          <div className="aura-bar aura-bar-40" />
-          <div className="aura-bar aura-bar-55" />
-          <div className="aura-bar aura-bar-60" />
-          <div className="aura-bar aura-bar-68" />
-          <div className="aura-bar aura-bar-72" />
-          <div className="aura-bar aura-bar-78" />
-          <div className="aura-bar aura-bar-82" />
-          <div className="aura-bar aura-bar-88" />
-          <div className="aura-bar aura-bar-92" />
-          <div className="aura-bar aura-bar-96" />
-          <div className="aura-bar aura-bar-100" />
-          <div className="aura-bar aura-bar-98" />
-        </div>
-
-        <p className="aura-muted aura-text-xs aura-mt-10">Placeholder only. We’ll wire real daily P&L later.</p>
+        {cumModel ? (
+          <div className="aura-cum" role="img" aria-label="Cumulative P&L chart (last 14 days)">
+            {cumModel.map((p) => (
+              <div
+                key={p.day}
+                className={`aura-cum-bar aura-cum-bar--h${p.h}`}
+                title={`${p.day}  pnl ${fmtMoneyUsd(p.pnl)}  cum ${fmtMoneyUsd(p.cum)}`}
+              >
+                <div className="aura-cum-day">{p.dom}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="aura-muted aura-text-xs aura-mt-10">No chart data yet.</div>
+        )}
       </section>
 
       {/* Section 3b: Monthly calendar heatmap */}

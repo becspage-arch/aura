@@ -1672,3 +1672,65 @@ html.light .aura-heat-cell {
   background: rgba(176, 122, 122, 0.22);
   border-color: rgba(176, 122, 122, 0.28);
 }
+
+/* --------------------------------------------------
+   Dashboard - Cumulative P&L (Daily) chart
+-------------------------------------------------- */
+
+.aura-cum {
+  margin-top: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  padding: 12px;
+  height: 220px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.aura-cum-bar {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(214, 194, 143, 0.22);
+  background: rgba(214, 194, 143, 0.30);
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.aura-cum-day {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(230, 233, 239, 0.70);
+}
+
+html.light .aura-cum-day {
+  color: rgba(14, 17, 22, 0.55);
+}
+
+/* Heights 0..20 (bucketed, no inline styles) */
+.aura-cum-bar--h0 { height: 2%; }
+.aura-cum-bar--h1 { height: 5%; }
+.aura-cum-bar--h2 { height: 8%; }
+.aura-cum-bar--h3 { height: 11%; }
+.aura-cum-bar--h4 { height: 14%; }
+.aura-cum-bar--h5 { height: 17%; }
+.aura-cum-bar--h6 { height: 20%; }
+.aura-cum-bar--h7 { height: 23%; }
+.aura-cum-bar--h8 { height: 26%; }
+.aura-cum-bar--h9 { height: 29%; }
+.aura-cum-bar--h10 { height: 32%; }
+.aura-cum-bar--h11 { height: 36%; }
+.aura-cum-bar--h12 { height: 40%; }
+.aura-cum-bar--h13 { height: 44%; }
+.aura-cum-bar--h14 { height: 48%; }
+.aura-cum-bar--h15 { height: 54%; }
+.aura-cum-bar--h16 { height: 60%; }
+.aura-cum-bar--h17 { height: 68%; }
+.aura-cum-bar--h18 { height: 76%; }
+.aura-cum-bar--h19 { height: 88%; }
+.aura-cum-bar--h20 { height: 100%; }
