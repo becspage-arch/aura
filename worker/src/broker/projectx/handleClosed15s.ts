@@ -56,6 +56,68 @@ function makeSignalKey(params: {
   return `${params.strategy}:${params.userId}:${params.symbol}:${params.side}:${params.entryTime}:${params.fvgTime}`;
 }
 
+async function backfillMissing15sCandles(params: {
+  db: PrismaClient;
+  symbol: string;
+  currentTime: number; // current candle open-time in seconds
+  emitSafe: HandleClosed15sDeps["emitSafe"];
+  brokerNameForEvent: string;
+}) {
+  const { db, symbol, currentTime, emitSafe, brokerNameForEvent } = params;
+
+  // Find the most recent candle strictly before the current one
+  const prev = await db.candle15s.findFirst({
+    where: { symbol, time: { lt: currentTime } },
+    orderBy: { time: "desc" },
+    select: { time: true, close: true },
+  });
+
+  if (!prev) return;
+
+  const gap = currentTime - prev.time;
+  if (gap <= 15) return;
+
+  // Use last known close as a flat filler (O=H=L=C)
+  const fillPrice = Number(prev.close);
+
+  for (let t = prev.time + 15; t < currentTime; t += 15) {
+    await db.candle15s.upsert({
+      where: { symbol_time: { symbol, time: t } },
+      create: {
+        symbol,
+        time: t,
+        open: fillPrice,
+        high: fillPrice,
+        low: fillPrice,
+        close: fillPrice,
+      },
+      update: {
+        open: fillPrice,
+        high: fillPrice,
+        low: fillPrice,
+        close: fillPrice,
+      },
+    });
+
+    // Emit a close event for downstream (3m builder / UI / Ably later)
+    // Marked clearly as backfill so nothing trades on it.
+    await emitSafe({
+      name: "candle.15s.closed",
+      ts: new Date().toISOString(),
+      broker: brokerNameForEvent,
+      data: {
+        t0: t * 1000,
+        o: fillPrice,
+        h: fillPrice,
+        l: fillPrice,
+        c: fillPrice,
+        ticks: 0,
+        backfill: true,
+      },
+    });
+  }
+}
+
 async function hasOpenTrade(params: {
   db: PrismaClient;
   userId: string;
@@ -115,6 +177,15 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
 
       const symbol = (process.env.PROJECTX_SYMBOL || "").trim() || closed.data.contractId;
       const time = Math.floor(closed.data.t0 / 1000);
+
+      // ✅ Backfill missing 15s candles if the broker feed "jumped"
+      await backfillMissing15sCandles({
+        db,
+        symbol,
+        currentTime: time,
+        emitSafe: deps.emitSafe,
+        brokerNameForEvent: "projectx",
+      });
 
       await db.candle15s.upsert({
         where: { symbol_time: { symbol, time } },
