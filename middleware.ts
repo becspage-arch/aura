@@ -24,7 +24,9 @@ export default clerkMiddleware((auth, req) => {
   // Worker is not a browser session, so it will be "signed-out" in Clerk.
   // These routes are protected by x-aura-token inside the handler.
   if (pathname === "/api/internal/notifications/ingest") {
-    return NextResponse.next();
+    const res = NextResponse.next();
+    res.headers.set("x-aura-mw-ingest", "1");
+    return res;
   }
 
   /* =====================================================
