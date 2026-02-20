@@ -154,6 +154,24 @@ model Candle15s {
   @@index([symbol, time])
 }
 
+model Candle3m {
+  id        String   @id @default(cuid())
+
+  symbol    String
+  time      Int      // 3-minute candle open time (epoch seconds)
+
+  open      Decimal
+  high      Decimal
+  low       Decimal
+  close     Decimal
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([symbol, time], name: "symbol_time_3m")
+  @@index([symbol, time])
+}
+
 /**
  * -----------------------------
  * Normalized market quote storage (ProjectX + future brokers)
