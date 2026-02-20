@@ -1,10 +1,19 @@
 ﻿// src/app/api/dev/manual-order/route.ts
 import { NextResponse } from "next/server";
 import Ably from "ably";
+import { auth } from "@clerk/nextjs/server";
 import { publishInAppNotification } from "@/lib/notifications/inApp";
 
 export async function POST(req: Request) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json(
+        { ok: false, error: "unauthenticated" },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json().catch(() => ({} as any));
 
     const contractId = String(body.contractId || "CON.F.US.MGC.J26");
@@ -25,14 +34,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const clerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
-    if (!clerkUserId) {
-      return NextResponse.json(
-        { ok: false, error: "Missing AURA_CLERK_USER_ID on app server" },
-        { status: 500 }
-      );
-    }
-
     const manualToken = (process.env.MANUAL_EXEC_TOKEN || "").trim();
     if (!manualToken) {
       return NextResponse.json(
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
 
     const payload = {
       token: manualToken,
-      clerkUserId,
+      clerkUserId: userId,
       contractId,
       side,
       size,
@@ -51,17 +52,17 @@ export async function POST(req: Request) {
       takeProfitTicks,
     };
 
-    // âœ… REST publish - no hanging serverless connections
+    // ✅ REST publish - no hanging serverless connections
     const ably = new Ably.Rest({ key: ablyKey });
-    await ably.channels.get(`aura:exec:${clerkUserId}`).publish(
+    await ably.channels.get(`aura:exec:${userId}`).publish(
       "exec.manual_bracket",
       payload
     );
 
-    await publishInAppNotification(clerkUserId, {
+    await publishInAppNotification(userId, {
       type: "trade_opened",
       title: "Aura - Manual Order",
-      body: "Manual order submitted âœ…",
+      body: "Manual order submitted ✅",
       ts: new Date().toISOString(),
       deepLink: "/app/reports",
     });
@@ -69,6 +70,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       published: true,
+      clerkUserIdUsed: userId,
+      channel: `aura:exec:${userId}`,
       order: { contractId, side, size, stopLossTicks, takeProfitTicks },
     });
   } catch (e) {
@@ -78,4 +81,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
