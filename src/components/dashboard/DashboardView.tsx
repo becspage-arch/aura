@@ -56,6 +56,12 @@ function parseDayToUTCDate(day: string) {
   return new Date(`${day}T00:00:00.000Z`);
 }
 
+function fmtFixed(v: any, digits = 2) {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(digits);
+}
+
 function weekdayIndexMondayFirst(d: Date) {
   const js = d.getUTCDay();
   return (js + 6) % 7;
@@ -414,13 +420,13 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
 
         <div className="aura-card">
           <div className="aura-stat-label">Profit Factor</div>
-          <div className="aura-mini-value">{perf ? perf.profitFactor.toFixed(2) : "—"}</div>
+          <div className="aura-mini-value">{perf ? fmtFixed(perf.profitFactor, 2) : "—"}</div>
           <div className="aura-stat-sub">Last 30 days</div>
         </div>
 
         <div className="aura-card">
           <div className="aura-stat-label">Avg R:R</div>
-          <div className="aura-mini-value">{perf ? `${perf.avgRR.toFixed(2)}R` : "—R"}</div>
+          <div className="aura-mini-value">{perf ? `${fmtFixed(perf.avgRR, 2)}R` : "—R"}</div>
           <div className="aura-stat-sub">Last 30 days</div>
         </div>
 
