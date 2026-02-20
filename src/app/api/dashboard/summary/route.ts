@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
+import { Prisma } from "@prisma/client";
 
 type SumRow = { v: string | null };
 type PerfRow = {
@@ -14,11 +15,41 @@ type PerfRow = {
 type DdRow = { max_dd: string | null; peak: string | null };
 type DailyRow = { day: string; pnl: string };
 
-export async function GET() {
+type RangeKey = "1M" | "3M" | "6M" | "1Y" | "ALL";
+
+function normalizeRange(v: string | null): RangeKey {
+  const s = (v || "").toUpperCase().trim();
+  if (s === "1M" || s === "3M" || s === "6M" || s === "1Y" || s === "ALL") return s;
+  return "1Y";
+}
+
+function rangeIntervalSql(range: RangeKey): Prisma.Sql {
+  // Only used for cumulative chart windowing.
+  // ALL = no filter.
+  switch (range) {
+    case "1M":
+      return Prisma.sql`AND "closedAt" >= (NOW() - INTERVAL '30 days')`;
+    case "3M":
+      return Prisma.sql`AND "closedAt" >= (NOW() - INTERVAL '90 days')`;
+    case "6M":
+      return Prisma.sql`AND "closedAt" >= (NOW() - INTERVAL '180 days')`;
+    case "1Y":
+      return Prisma.sql`AND "closedAt" >= (NOW() - INTERVAL '1 year')`;
+    case "ALL":
+    default:
+      return Prisma.empty;
+  }
+}
+
+export async function GET(req: Request) {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) {
     return NextResponse.json({ ok: false, error: "unauthenticated" }, { status: 401 });
   }
+
+  const url = new URL(req.url);
+  const range = normalizeRange(url.searchParams.get("range"));
+  const rangeWhere = rangeIntervalSql(range);
 
   const userProfile = await prisma.userProfile.findFirst({
     where: { clerkUserId },
@@ -120,20 +151,20 @@ export async function GET() {
   const maxDrawdownUsd = tradeCount > 0 ? maxDrawdownUsdNum : null;
   const maxDrawdownPct = peakNum > 0 ? (maxDrawdownUsdNum / peakNum) * 100 : null;
 
-  // ---- Cumulative chart (1Y) daily points (Europe/London days)
-  const daily1Y = await prisma.$queryRaw<DailyRow[]>`
+  // ---- Cumulative chart (range-controlled) daily points (Europe/London days)
+  const dailyRange = await prisma.$queryRaw<DailyRow[]>`
     SELECT
       ("closedAt" AT TIME ZONE 'Europe/London')::date::text AS day,
       COALESCE(SUM("realizedPnlUsd"), 0)::text AS pnl
     FROM "Trade"
     WHERE "clerkUserId" = ${clerkUserId}
-      AND "closedAt" >= (NOW() - INTERVAL '1 year')
+      ${rangeWhere}
     GROUP BY 1
     ORDER BY 1 ASC
   `;
 
   let cum = 0;
-  const cumulativePoints = daily1Y.map((r) => {
+  const cumulativePoints = dailyRange.map((r) => {
     const pnl = Number(r.pnl);
     cum += pnl;
     return { day: r.day, pnlUsd: pnl.toFixed(2), cumulativeUsd: cum.toFixed(2) };
@@ -173,7 +204,6 @@ export async function GET() {
     },
   });
 
-  // ---- lastTradeAt
   const lastTradeAt = recentTrades.length ? recentTrades[0].closedAt.toISOString() : null;
 
   return NextResponse.json({
@@ -208,7 +238,7 @@ export async function GET() {
     },
 
     charts: {
-      cumulativePnl: { range: "1Y", points: cumulativePoints },
+      cumulativePnl: { range, points: cumulativePoints },
       monthCalendar: {
         month: new Date().toISOString().slice(0, 7),
         days: monthDays.map((r) => ({ day: r.day, pnlUsd: Number(r.pnl).toFixed(2) })),
