@@ -54,9 +54,7 @@ export async function ensureUserProfile(input: {
 }) {
   const { clerkUserId } = input;
 
-  // 1) Best-effort derive details:
-  // - If caller provides non-null values, prefer them
-  // - Otherwise, pull from Clerk
+  // 1) Best-effort derive details
   let email = input.email;
   let displayName = input.displayName;
 
@@ -66,32 +64,74 @@ export async function ensureUserProfile(input: {
     if (!displayName) displayName = fromClerk.displayName;
   }
 
-  const existing = await prisma.userProfile.findUnique({
+  // Normalize email for consistent uniqueness
+  const emailNorm =
+    typeof email === "string" && email.trim()
+      ? email.trim().toLowerCase()
+      : null;
+
+  const existingByClerk = await prisma.userProfile.findUnique({
     where: { clerkUserId },
   });
 
-  if (existing) {
-    // 2) IMPORTANT: never overwrite with null
+  if (existingByClerk) {
+    // never overwrite with null
     const data: { email?: string; displayName?: string } = {};
 
-    if (email && email !== existing.email) data.email = email;
-    if (displayName && displayName !== existing.displayName) data.displayName = displayName;
+    if (emailNorm && emailNorm !== (existingByClerk.email ?? null)) data.email = emailNorm;
+    if (displayName && displayName !== existingByClerk.displayName) data.displayName = displayName;
 
     if (Object.keys(data).length > 0) {
-      return prisma.userProfile.update({
-        where: { clerkUserId },
-        data,
-      });
+      try {
+        return await prisma.userProfile.update({
+          where: { clerkUserId },
+          data,
+        });
+      } catch (err: any) {
+        // If updating email collides with another existing profile, do NOT crash the app.
+        // Keep current email, still allow displayName update.
+        if (err?.code === "P2002" && data.email) {
+          const { email: _dropEmail, ...rest } = data;
+          if (Object.keys(rest).length > 0) {
+            return prisma.userProfile.update({
+              where: { clerkUserId },
+              data: rest,
+            });
+          }
+          return existingByClerk;
+        }
+        throw err;
+      }
     }
 
-    return existing;
+    return existingByClerk;
   }
 
-  // 3) Create with whatever we have (may still be null, but we tried)
+  // 2) No profile for this clerkUserId yet.
+  // If we have an email, see if an existing profile already owns it.
+  if (emailNorm) {
+    const existingByEmail = await prisma.userProfile.findUnique({
+      where: { email: emailNorm },
+    });
+
+    if (existingByEmail) {
+      // Attach this existing profile to the new clerk user id
+      // (this is what fixes your crash)
+      return prisma.userProfile.update({
+        where: { id: existingByEmail.id },
+        data: {
+          clerkUserId,
+          ...(displayName ? { displayName } : {}),
+        },
+      });
+    }
+  }
+
+  // 3) Create new profile (email may be null)
   return prisma.userProfile.create({
     data: {
       clerkUserId,
-      email,
+      email: emailNorm,
       displayName,
     },
   });
