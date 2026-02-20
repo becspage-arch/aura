@@ -441,16 +441,17 @@ export class CorePlus315Engine {
    * Detect new 3m FVG and invalidation (mirrors your indicator defaults: onlyWhen50=false etc).
    */
   private onClosed3m(c3: Candle3m) {
-    this.last3m.push(c3);
-
     console.log(`[coreplus315] CLOSED_3M`, {
       time: c3.time,
+      iso: new Date(c3.time * 1000).toISOString(),
+      bucketMod: c3.time % 180,
       o: c3.open,
       h: c3.high,
       l: c3.low,
       c: c3.close,
-      last3mLen: this.last3m.length,
     });
+
+    this.last3m.push(c3);
 
     if (this.last3m.length > 50) this.last3m.shift();
 

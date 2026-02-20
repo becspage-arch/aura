@@ -161,7 +161,7 @@ export async function executeBracket(params: {
       try {
         const pos = await getPosFn.call(broker, {
           contractId: input.contractId,
-          symbol: input.symbol ?? null,
+          symbol: (input.symbol ?? input.contractId ?? null),
         });
 
         const rawSize =
