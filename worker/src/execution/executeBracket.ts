@@ -121,11 +121,72 @@ async function ocoWatchAndCancel(params: {
   console.warn("[executeBracket] OCO_WATCH_TIMEOUT", { execKey, tag });
 }
 
+function normalizeStopTicks(params: {
+  side: "buy" | "sell";
+  ticks: number;
+  requiresSigned: boolean;
+}): number {
+  const t = Number(params.ticks);
+  if (!Number.isFinite(t) || t <= 0) {
+    throw new Error(`executeBracket: invalid stopLossTicks ${String(params.ticks)}`);
+  }
+
+  if (!params.requiresSigned) return Math.abs(t);
+
+  // ProjectX expects signed ticks relative to side
+  return params.side === "buy" ? Math.abs(t) : -Math.abs(t);
+}
+
+function normalizeTakeProfitTicks(params: {
+  side: "buy" | "sell";
+  ticks: number;
+  requiresSigned: boolean;
+}): number {
+  const t = Number(params.ticks);
+  if (!Number.isFinite(t) || t <= 0) {
+    throw new Error(`executeBracket: invalid takeProfitTicks ${String(params.ticks)}`);
+  }
+
+  if (!params.requiresSigned) return Math.abs(t);
+
+  // ProjectX expects signed ticks relative to side
+  return params.side === "buy" ? Math.abs(t) : -Math.abs(t);
+}
+
 export async function executeBracket(params: {
   prisma: PrismaClient;
   broker: IBrokerAdapter;
   input: ExecuteBracketInput;
 }) {
+  const caps = (params.broker as any)?.capabilities as
+    | {
+        supportsBracketInSingleCall: boolean;
+        supportsAttachBracketsAfterEntry: boolean;
+        requiresSignedBracketTicks: boolean;
+      }
+    | undefined;
+
+  if (!caps) {
+    throw new Error(
+      `executeBracket: broker missing capabilities (broker=${(params.broker as any)?.name ?? "unknown"})`
+    );
+  }
+
+  const canFlowA =
+    caps.supportsBracketInSingleCall &&
+    typeof (params.broker as any).placeOrderWithBrackets === "function";
+
+  const canFlowB =
+    caps.supportsAttachBracketsAfterEntry &&
+    typeof (params.broker as any).placeOrder === "function" &&
+    typeof (params.broker as any).placeBracketsAfterEntry === "function";
+
+  if (!canFlowA && !canFlowB) {
+    throw new Error(
+      `executeBracket: broker does not support bracket execution flow A or B (broker=${(params.broker as any)?.name ?? "unknown"})`
+    );
+  }
+
   const { prisma, broker, input } = params;
   const resolvedSymbol = (input.symbol ?? input.contractId ?? null);
 
@@ -391,7 +452,116 @@ export async function executeBracket(params: {
       },
     });
 
-    // 3) Place ENTRY (always entry-only for ProjectX)
+    // -------------------------
+    // Place entry + brackets using capabilities
+    // -------------------------
+    try {
+      if (canFlowA) {
+      // Flow A: broker supports single call (entry + brackets)
+      const placeWithBracketsFn = (broker as any).placeOrderWithBrackets;
+
+      const slRaw = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
+      const tpRaw = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+
+      const sl =
+        slRaw != null && Number.isFinite(slRaw) && slRaw > 0
+          ? normalizeStopTicks({
+              side: input.side,
+              ticks: slRaw,
+              requiresSigned: caps.requiresSignedBracketTicks,
+            })
+          : null;
+
+      const tp =
+        tpRaw != null && Number.isFinite(tpRaw) && tpRaw > 0
+          ? normalizeTakeProfitTicks({
+              side: input.side,
+              ticks: tpRaw,
+              requiresSigned: caps.requiresSignedBracketTicks,
+            })
+          : null;
+
+      const wantsBrackets = sl != null || tp != null;
+
+      const req = {
+        contractId: input.contractId,
+        symbol: resolvedSymbol,
+        side: input.side,
+        size: qtyClamped,
+        type: input.entryType,
+        limitPrice: null,
+        stopPrice: null,
+        stopLossTicks: wantsBrackets ? sl : null,
+        takeProfitTicks: wantsBrackets ? tp : null,
+        customTag: brokerTag,
+
+        // NEW: absolute prices (optional, broker may ignore)
+        stopPriceAbs: input.stopPrice ?? null,
+        takeProfitPriceAbs: input.takeProfitPrice ?? null,
+      };
+
+      console.log("[executeBracket] BROKER_CALL_BEGIN", {
+        execKey: input.execKey,
+        broker: (broker as any)?.name ?? null,
+        mode: "FLOW_A_SINGLE_CALL",
+        req,
+      });
+
+      if (typeof placeWithBracketsFn !== "function") {
+        const msg = "Broker does not support placeOrderWithBrackets (Flow A)";
+        await prisma.execution.update({
+          where: { id: exec.id },
+          data: { status: "FAILED", error: msg },
+        });
+        throw new Error(msg);
+      }
+
+      const res = await placeWithBracketsFn.call(broker, req);
+
+      console.log("[executeBracket] BROKER_CALL_OK", {
+        execKey: input.execKey,
+        res,
+      });
+
+      const entryOrderId = res?.orderId != null ? String(res.orderId) : null;
+
+      const updated = await prisma.execution.update({
+        where: { id: exec.id },
+        data: {
+          entryOrderId,
+          status: "BRACKET_SUBMITTED",
+          stopOrderId: res?.stopOrderId != null ? String(res.stopOrderId) : null,
+          tpOrderId: res?.takeProfitOrderId != null ? String(res.takeProfitOrderId) : null,
+          meta: { brokerResponse: jsonSafe(res), note: "flow_a_single_call" },
+        },
+      });
+
+      logTag("[projectx-worker] BRACKET_SUBMITTED", {
+        execKey: input.execKey,
+        executionId: updated.id,
+        broker: (broker as any)?.name ?? null,
+        contractId: input.contractId,
+        side: input.side,
+        qty: qtyClamped,
+        stopLossTicks: input.stopLossTicks ?? null,
+        takeProfitTicks: input.takeProfitTicks ?? null,
+        entryOrderId,
+        customTag: brokerTag,
+      });
+
+      // Optional OCO watcher if broker doesn't guarantee OCO
+      void ocoWatchAndCancel({
+        broker,
+        execKey: input.execKey,
+        stopOrderId: updated.stopOrderId ?? null,
+        tpOrderId: updated.tpOrderId ?? null,
+        tag: brokerTag,
+      });
+
+      return updated;
+    }
+
+    // Flow B: entry first, then attach brackets
     const placeEntryFn = (broker as any).placeOrder;
 
     const entryReq = {
@@ -406,141 +576,157 @@ export async function executeBracket(params: {
     console.log("[executeBracket] BROKER_CALL_BEGIN", {
       execKey: input.execKey,
       broker: (broker as any)?.name ?? null,
-      mode: "ENTRY_ONLY_THEN_BRACKETS",
+      mode: "FLOW_B_ENTRY_THEN_BRACKETS",
       req: entryReq,
     });
 
-    try {
-      if (typeof placeEntryFn !== "function") {
-        const msg = "Broker does not support placeOrder (entry)";
-        await prisma.execution.update({
-          where: { id: exec.id },
-          data: { status: "FAILED", error: msg },
+    if (typeof placeEntryFn !== "function") {
+      const msg = "Broker does not support placeOrder (entry)";
+      await prisma.execution.update({
+        where: { id: exec.id },
+        data: { status: "FAILED", error: msg },
+      });
+      throw new Error(msg);
+    }
+
+    const entryRes = await placeEntryFn.call(broker, entryReq);
+
+    console.log("[executeBracket] BROKER_CALL_OK", {
+      execKey: input.execKey,
+      entryRes,
+    });
+
+    const entryOrderId = entryRes?.orderId != null ? String(entryRes.orderId) : null;
+
+    const updatedAfterEntry = await prisma.execution.update({
+      where: { id: exec.id },
+      data: {
+        entryOrderId,
+        status: "ORDER_SUBMITTED",
+        meta: { brokerResponse: jsonSafe(entryRes), note: "entry_submitted" },
+      },
+    });
+
+    logTag("[projectx-worker] ORDER_SUBMITTED", {
+      execKey: input.execKey,
+      executionId: updatedAfterEntry.id,
+      broker: (broker as any)?.name ?? null,
+      contractId: input.contractId,
+      symbol: resolvedSymbol,
+      side: input.side,
+      qty: qtyClamped,
+      entryType: input.entryType,
+      stopLossTicks: input.stopLossTicks ?? null,
+      takeProfitTicks: input.takeProfitTicks ?? null,
+      entryOrderId,
+      customTag: brokerTag,
+    });
+
+    const slRaw = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
+    const tpRaw = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+
+    const sl =
+      slRaw != null && Number.isFinite(slRaw) && slRaw > 0
+        ? normalizeStopTicks({
+            side: input.side,
+            ticks: slRaw,
+            requiresSigned: caps.requiresSignedBracketTicks,
+          })
+        : null;
+
+    const tp =
+      tpRaw != null && Number.isFinite(tpRaw) && tpRaw > 0
+        ? normalizeTakeProfitTicks({
+            side: input.side,
+            ticks: tpRaw,
+            requiresSigned: caps.requiresSignedBracketTicks,
+          })
+        : null;
+
+    const wantsBrackets = sl != null || tp != null;
+
+    const placeBracketsAfterEntryFn = (broker as any).placeBracketsAfterEntry;
+
+    if (wantsBrackets) {
+      if (typeof placeBracketsAfterEntryFn !== "function") {
+        console.log("[executeBracket] BRACKETS_SKIPPED", {
+          execKey: input.execKey,
+          reason: "broker has no placeBracketsAfterEntry()",
+          entryOrderId,
+          sl,
+          tp,
         });
-        throw new Error(msg);
+        return updatedAfterEntry;
       }
 
-      const entryRes = await placeEntryFn.call(broker, entryReq);
-
-      console.log("[executeBracket] BROKER_CALL_OK", {
+      console.log("[executeBracket] BRACKETS_BEGIN", {
         execKey: input.execKey,
-        entryRes,
+        entryOrderId,
+        sl,
+        tp,
       });
 
-      const entryOrderId = entryRes?.orderId != null ? String(entryRes.orderId) : null;
+      const bracketRes = await placeBracketsAfterEntryFn.call(broker, {
+        entryOrderId,
+        contractId: input.contractId,
+        side: input.side,
+        size: qtyClamped,
 
-      const updatedAfterEntry = await prisma.execution.update({
+        stopLossTicks: sl,
+        takeProfitTicks: tp,
+
+        // absolute prices (optional)
+        stopPrice: input.stopPrice ?? null,
+        takeProfitPrice: input.takeProfitPrice ?? null,
+
+        customTag: brokerTag,
+      });
+
+      console.log("[executeBracket] BRACKETS_OK", {
+        execKey: input.execKey,
+        bracketRes,
+      });
+
+      const updatedAfterBrackets = await prisma.execution.update({
         where: { id: exec.id },
         data: {
-          entryOrderId,
-          status: "ORDER_SUBMITTED",
-          meta: { brokerResponse: jsonSafe(entryRes), note: "entry_submitted" },
+          status: "BRACKET_SUBMITTED",
+          stopOrderId: bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null,
+          tpOrderId:
+            bracketRes?.takeProfitOrderId != null ? String(bracketRes.takeProfitOrderId) : null,
+          meta: {
+            ...(updatedAfterEntry.meta as any),
+            brackets: jsonSafe(bracketRes),
+            note2: "brackets_submitted_after_entry",
+          },
         },
       });
 
-      logTag("[projectx-worker] ORDER_SUBMITTED", {
+      logTag("[projectx-worker] BRACKET_SUBMITTED", {
         execKey: input.execKey,
-        executionId: updatedAfterEntry.id,
+        executionId: updatedAfterBrackets.id,
         broker: (broker as any)?.name ?? null,
         contractId: input.contractId,
-        symbol: resolvedSymbol,
         side: input.side,
         qty: qtyClamped,
-        entryType: input.entryType,
         stopLossTicks: input.stopLossTicks ?? null,
         takeProfitTicks: input.takeProfitTicks ?? null,
         entryOrderId,
         customTag: brokerTag,
       });
 
-      // 4) Place SL/TP as a separate immediate step (ProjectX requirement)
-      const sl = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
-      const tp = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
+      void ocoWatchAndCancel({
+        broker,
+        execKey: input.execKey,
+        stopOrderId: updatedAfterBrackets.stopOrderId ?? null,
+        tpOrderId: updatedAfterBrackets.tpOrderId ?? null,
+        tag: brokerTag,
+      });
 
-      const wantsBrackets =
-        (sl != null && Number.isFinite(sl) && sl > 0) || (tp != null && Number.isFinite(tp) && tp > 0);
+      return updatedAfterBrackets;
+    }
 
-      const placeBracketsAfterEntryFn = (broker as any).placeBracketsAfterEntry;
-
-      if (wantsBrackets) {
-        if (typeof placeBracketsAfterEntryFn !== "function") {
-          console.log("[executeBracket] BRACKETS_SKIPPED", {
-            execKey: input.execKey,
-            reason: "broker has no placeBracketsAfterEntry()",
-            entryOrderId,
-            sl,
-            tp,
-          });
-          return updatedAfterEntry;
-        }
-
-        console.log("[executeBracket] BRACKETS_BEGIN", {
-          execKey: input.execKey,
-          entryOrderId,
-          sl,
-          tp,
-        });
-
-        const bracketRes = await placeBracketsAfterEntryFn.call(broker, {
-          entryOrderId,
-          contractId: input.contractId,
-          side: input.side,
-          size: qtyClamped,
-
-          stopLossTicks: sl,
-          takeProfitTicks: tp,
-
-          // NEW: pass absolute prices if provided
-          stopPrice: input.stopPrice ?? null,
-          takeProfitPrice: input.takeProfitPrice ?? null,
-
-          customTag: brokerTag,
-        });
-
-        console.log("[executeBracket] BRACKETS_OK", {
-          execKey: input.execKey,
-          bracketRes,
-        });
-
-        const updatedAfterBrackets = await prisma.execution.update({
-          where: { id: exec.id },
-          data: {
-            status: "BRACKET_SUBMITTED",
-            stopOrderId: bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null,
-            tpOrderId: bracketRes?.takeProfitOrderId != null ? String(bracketRes.takeProfitOrderId) : null,
-            meta: {
-              ...(updatedAfterEntry.meta as any),
-              brackets: jsonSafe(bracketRes),
-              note2: "brackets_submitted_after_entry",
-            },
-          },
-        });
-
-        logTag("[projectx-worker] BRACKET_SUBMITTED", {
-          execKey: input.execKey,
-          executionId: updatedAfterBrackets.id,
-          broker: (broker as any)?.name ?? null,
-          contractId: input.contractId,
-          side: input.side,
-          qty: qtyClamped,
-          stopLossTicks: sl,
-          takeProfitTicks: tp,
-          entryOrderId,
-          customTag: brokerTag,
-        });
-
-        void ocoWatchAndCancel({
-          broker,
-          execKey: input.execKey,
-          stopOrderId: updatedAfterBrackets.stopOrderId ?? null,
-          tpOrderId: updatedAfterBrackets.tpOrderId ?? null,
-          tag: brokerTag,
-        });
-
-        return updatedAfterBrackets;
-      }
-
-      return updatedAfterEntry;
+    return updatedAfterEntry;
     } catch (e: any) {
       const errMsg = e?.message ? String(e.message) : String(e);
 

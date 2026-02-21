@@ -171,7 +171,12 @@ export async function startProjectXUserFeed(params: {
       try {
         const acctExternalId = toStr(payload?.accountId ?? params.accountId);
         const orderExternalId = toStr(payload?.id ?? payload?.orderId);
+
         if (acctExternalId && orderExternalId) {
+          const now = new Date();
+
+          const now = new Date();
+
           const brokerAccount = await db.brokerAccount.upsert({
             where: {
               brokerName_externalId: {
@@ -184,8 +189,12 @@ export async function startProjectXUserFeed(params: {
               brokerName: "projectx",
               externalId: acctExternalId,
               accountLabel: null,
+              lastHeartbeatAt: now,
             },
-            update: { userId: ident.userId },
+            update: {
+              userId: ident.userId,
+              lastHeartbeatAt: now,
+            },
             select: { id: true },
           });
 
@@ -199,15 +208,16 @@ export async function startProjectXUserFeed(params: {
           const sideNorm = normalizeSide(payload?.side);
           if (!sideNorm) return;
 
-          const side: "BUY" | "SELL" =
-            sideNorm === "buy" ? "BUY" : "SELL";
+          const side: "BUY" | "SELL" = sideNorm === "buy" ? "BUY" : "SELL";
 
-          const qty = toNum(payload?.size ?? payload?.qty ?? payload?.quantity) ?? 0;
+          const qty =
+            toNum(payload?.size ?? payload?.qty ?? payload?.quantity) ?? 0;
 
           const stopPrice = toNum(payload?.stopPrice);
           const limitPrice = toNum(payload?.limitPrice);
 
-          const type = stopPrice != null ? "STOP" : limitPrice != null ? "LIMIT" : "MARKET";
+          const type =
+            stopPrice != null ? "STOP" : limitPrice != null ? "LIMIT" : "MARKET";
 
           // Best-effort status mapping (keep conservative)
           const status = "NEW";
@@ -297,6 +307,14 @@ export async function startProjectXUserFeed(params: {
           return;
         }
 
+        // touch heartbeat (throttled) + ensure account row has lastHeartbeatAt
+        await touchBrokerHeartbeat({
+          db,
+          userId: ident.userId,
+          brokerName: "projectx",
+          acctExternalId,
+        });
+
         const brokerAccount = await db.brokerAccount.upsert({
           where: {
             brokerName_externalId: {
@@ -309,9 +327,11 @@ export async function startProjectXUserFeed(params: {
             brokerName: "projectx",
             externalId: acctExternalId,
             accountLabel: null,
+            lastHeartbeatAt: new Date(),
           },
           update: {
             userId: ident.userId,
+            lastHeartbeatAt: new Date(),
           },
           select: { id: true },
         });
@@ -540,6 +560,14 @@ export async function startProjectXUserFeed(params: {
           const orderExternalId = toStr(payload?.id);
 
           if (acctExternalId && orderExternalId) {
+            // touch heartbeat (throttled) + ensure account row has lastHeartbeatAt
+            await touchBrokerHeartbeat({
+              db,
+              userId: ident.userId,
+              brokerName: "projectx",
+              acctExternalId,
+            });
+
             const brokerAccount = await db.brokerAccount.upsert({
               where: {
                 brokerName_externalId: { brokerName: "projectx", externalId: acctExternalId },
@@ -549,8 +577,12 @@ export async function startProjectXUserFeed(params: {
                 brokerName: "projectx",
                 externalId: acctExternalId,
                 accountLabel: null,
+                lastHeartbeatAt: new Date(),
               },
-              update: { userId: ident.userId },
+              update: {
+                userId: ident.userId,
+                lastHeartbeatAt: new Date(),
+              },
               select: { id: true },
             });
 

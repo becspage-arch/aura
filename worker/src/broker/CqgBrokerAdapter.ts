@@ -1,7 +1,15 @@
 import type { IBrokerAdapter } from "./IBrokerAdapter.js";
+import type { BrokerCapabilities } from "./BrokerCapabilities.js";
+
+const caps: BrokerCapabilities = {
+  supportsBracketInSingleCall: false,
+  supportsAttachBracketsAfterEntry: false,
+  requiresSignedBracketTicks: false,
+};
 
 export class CqgBrokerAdapter implements IBrokerAdapter {
   readonly name = "cqg" as const;
+  readonly capabilities = caps;
 
   async connect(): Promise<void> {
     console.log("[cqg-adapter] connect");

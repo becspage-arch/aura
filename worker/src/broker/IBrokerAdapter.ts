@@ -22,3 +22,26 @@ export interface IBrokerAdapter {
   getStatus?(): Record<string, unknown>;
   getAuthToken?(): string | null;
 }
+
+import type { BrokerCapabilities } from "./BrokerCapabilities.js";
+
+export interface IBrokerAdapter {
+  readonly name: string;
+
+  readonly capabilities: BrokerCapabilities;
+
+  // existing lifecycle
+  connect(): Promise<void>;
+  authorize(): Promise<void>;
+  startKeepAlive(): void;
+  stopKeepAlive(): void;
+  disconnect(): Promise<void>;
+
+  // Execution methods (already exist on ProjectX adapter)
+  // Flow A:
+  placeOrderWithBrackets?: (input: any) => Promise<any>;
+
+  // Flow B:
+  placeOrder?: (input: any) => Promise<any>;
+  placeBracketsAfterEntry?: (input: any) => Promise<any>;
+}

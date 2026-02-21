@@ -3,8 +3,17 @@ import { getRithmicConfig } from "./rithmicConfig.js";
 import { createRithmicWs } from "./rithmicWs.js";
 import type WebSocket from "ws";
 
+import type { BrokerCapabilities } from "./BrokerCapabilities.js";
+
+const caps: BrokerCapabilities = {
+  supportsBracketInSingleCall: false,
+  supportsAttachBracketsAfterEntry: false,
+  requiresSignedBracketTicks: false,
+};
+
 export class RithmicBrokerAdapter implements IBrokerAdapter {
   readonly name = "rithmic" as const;
+  readonly capabilities = caps;
 
   private ws: WebSocket | null = null;
 

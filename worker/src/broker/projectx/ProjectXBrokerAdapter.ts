@@ -2,6 +2,13 @@
 
 import type { IBrokerAdapter } from "../IBrokerAdapter.js";
 import { logTag } from "../../lib/logTags";
+import type { BrokerCapabilities } from "../BrokerCapabilities.js";
+
+const caps: BrokerCapabilities = {
+  supportsBracketInSingleCall: false,
+  supportsAttachBracketsAfterEntry: true,
+  requiresSignedBracketTicks: true,
+};
 
 type ValidateResponse = {
   success?: boolean;
@@ -101,6 +108,7 @@ function truncate(text: string, max = 4000): string {
 
 export class ProjectXBrokerAdapter implements IBrokerAdapter {
   readonly name = "projectx" as const;
+  readonly capabilities = caps;
 
   private token: string | null = null;
 
