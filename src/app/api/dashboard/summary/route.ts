@@ -189,6 +189,7 @@ export async function GET(req: Request) {
     orderBy: { closedAt: "desc" },
     take: 10,
     select: {
+      id: true,
       closedAt: true,
       symbol: true,
       contractId: true,
@@ -246,18 +247,22 @@ export async function GET(req: Request) {
     },
 
     recentTrades: recentTrades.map((t) => ({
-      closedAt: t.closedAt.toISOString(),
-      symbol: t.symbol,
-      contractId: t.contractId,
-      side: t.side,
-      qty: t.qty.toString(),
-      entryPriceAvg: t.entryPriceAvg.toString(),
-      exitPriceAvg: t.exitPriceAvg.toString(),
-      realizedPnlUsd: t.realizedPnlUsd.toString(),
-      rrAchieved: t.rrAchieved?.toString() ?? null,
-      outcome: t.outcome,
-      exitReason: t.exitReason,
+      tradeId: t.id,
       execKey: t.execKey,
+      timeIso: t.closedAt.toISOString(),
+
+      pair: t.symbol, // keep simple now; later can show "MGC" + contractId tooltip etc
+      type: t.side === "BUY" ? "Long" : "Short",
+
+      entryPrice: t.entryPriceAvg.toString(),
+      exitPrice: t.exitPriceAvg.toString(),
+      pnlUsd: t.realizedPnlUsd.toString(),
+      rr: t.rrAchieved?.toString() ?? null,
+
+      qty: t.qty.toString(),
+      status:
+        t.outcome === "WIN" ? "Won" : t.outcome === "LOSS" ? "Lost" : t.outcome === "BREAKEVEN" ? "Breakeven" : "—",
+      exitReason: t.exitReason,
     })),
   });
 }

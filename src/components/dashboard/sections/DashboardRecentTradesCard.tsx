@@ -4,35 +4,64 @@
 import Link from "next/link";
 import { fmtMoneyUsd, fmtTimeLondon } from "@/components/dashboard/dashboardFormat";
 
+function fmtPrice(v: any) {
+  if (v == null) return "—";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(2);
+}
+
 export default function DashboardRecentTradesCard({ trades }: { trades: any[] | null | undefined }) {
   return (
     <section className="aura-card">
       <div className="aura-row-between">
-        <div className="aura-card-title">Recent Trades</div>
-        <div className="aura-muted aura-text-xs">Last 10</div>
+        <div>
+          <div className="aura-card-title">Recent Trades</div>
+          <div className="aura-muted aura-text-xs">Last 10</div>
+        </div>
+
+        <Link href="/app/reports" className="aura-link aura-text-xs">
+          View All →
+        </Link>
       </div>
 
       <div className="aura-mt-12 aura-table" role="table" aria-label="Recent trades table">
         <div className="aura-table-header" role="row">
-          <div role="columnheader">Time</div>
-          <div role="columnheader">Symbol</div>
-          <div role="columnheader">Side</div>
+          <div role="columnheader">Trade ID</div>
+          <div role="columnheader">Pair</div>
+          <div role="columnheader">Type</div>
+          <div role="columnheader" className="aura-hide-sm">
+            Entry
+          </div>
           <div role="columnheader" className="aura-hide-sm">
             Exit
           </div>
           <div role="columnheader" className="aura-right">
-            Result
+            P&amp;L
+          </div>
+          <div role="columnheader" className="aura-hide-sm aura-right">
+            R:R
+          </div>
+          <div role="columnheader" className="aura-right">
+            Time
+          </div>
+          <div role="columnheader" className="aura-hide-sm">
+            Status
           </div>
         </div>
 
         {trades?.length ? (
           trades.map((t: any) => (
-            <div className="aura-table-row" role="row" key={t.execKey ?? `${t.closedAt}-${t.symbol}-${t.side}`}>
-              <div>{fmtTimeLondon(t.closedAt)}</div>
-              <div>{t.symbol}</div>
-              <div>{t.side}</div>
-              <div className="aura-hide-sm">{t.exitReason}</div>
-              <div className="aura-right">{fmtMoneyUsd(t.realizedPnlUsd)}</div>
+            <div className="aura-table-row" role="row" key={t.tradeId ?? t.execKey ?? t.timeIso}>
+              <div>{String(t.tradeId ?? "—").slice(0, 8)}</div>
+              <div>{t.pair ?? "—"}</div>
+              <div>{t.type ?? "—"}</div>
+              <div className="aura-hide-sm">{fmtPrice(t.entryPrice)}</div>
+              <div className="aura-hide-sm">{fmtPrice(t.exitPrice)}</div>
+              <div className="aura-right">{fmtMoneyUsd(t.pnlUsd)}</div>
+              <div className="aura-hide-sm aura-right">{t.rr != null ? `${Number(t.rr).toFixed(2)}R` : "—"}</div>
+              <div className="aura-right">{t.timeIso ? fmtTimeLondon(t.timeIso) : "—"}</div>
+              <div className="aura-hide-sm">{t.status ?? "—"}</div>
             </div>
           ))
         ) : (
@@ -41,7 +70,11 @@ export default function DashboardRecentTradesCard({ trades }: { trades: any[] | 
             <div className="aura-muted">—</div>
             <div className="aura-muted">—</div>
             <div className="aura-muted aura-hide-sm">—</div>
+            <div className="aura-muted aura-hide-sm">—</div>
             <div className="aura-muted aura-right">—</div>
+            <div className="aura-muted aura-hide-sm aura-right">—</div>
+            <div className="aura-muted aura-right">—</div>
+            <div className="aura-muted aura-hide-sm">—</div>
           </div>
         )}
       </div>
