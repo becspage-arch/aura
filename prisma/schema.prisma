@@ -32,10 +32,35 @@ model BrokerAccount {
   fills        Fill[]
   orders       Order[]
 
+  snapshots    AccountSnapshot[]
+
   @@unique([brokerName, externalId])
   @@index([userId])
   @@index([brokerName])
   lastHeartbeatAt DateTime?
+}
+
+model AccountSnapshot {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  brokerAccountId String
+  brokerAccount   BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+
+  // “Equity” = net liq / account value. Store what broker provides.
+  equityUsd       Decimal?
+  balanceUsd      Decimal?
+  availableUsd    Decimal?
+  unrealizedPnlUsd Decimal?
+  marginUsedUsd   Decimal?
+
+  // When the broker said this snapshot is “as of” (if provided). Fallback to now().
+  ts              DateTime @default(now())
+
+  raw             Json?
+
+  @@index([brokerAccountId, ts])
+  @@index([ts])
 }
 
 model Order {
