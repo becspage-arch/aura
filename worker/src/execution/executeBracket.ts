@@ -173,34 +173,58 @@ export async function executeBracket(params: {
     );
   }
 
-    const { prisma, broker, input } = params;
+  const { prisma, broker, input } = params;
 
-  await emitExecEvent({
-    prisma,
-    userId: input.userId,
-    type: "exec.requested",
-    message: "executeBracket requested",
-    data: {
-      execKey: input.execKey,
-      broker: (broker as any)?.name ?? null,
-      brokerName: input.brokerName,
-      contractId: input.contractId,
-      symbol: input.symbol ?? null,
-      side: input.side,
-      qty: input.qty,
-      entryType: input.entryType,
-    },
+  // -------------------------
+  // 8M.3 Run-state source of truth (DB) - PER ACCOUNT
+  // -------------------------
+  const state = await prisma.userTradingState.findUnique({
+    where: { userId: input.userId }, // input.userId is INTERNAL userProfile id ✅
+    select: { selectedBrokerAccountId: true },
   });
 
-  // -------------------------
-  // 8M.3 Run-state source of truth (DB)
-  // -------------------------
-  const runState = await prisma.userTradingState.findUnique({
-    where: { userId: input.userId },
+  const brokerAccountId = state?.selectedBrokerAccountId ?? null;
+  if (!brokerAccountId) {
+    await emitExecEvent({
+      prisma,
+      userId: input.userId,
+      type: "exec.broker_blocked",
+      message: "Blocked: no broker account selected",
+      data: {
+        execKey: input.execKey,
+        brokerName: input.brokerName,
+        contractId: input.contractId,
+        symbol: input.symbol ?? null,
+      },
+      level: "warn",
+    });
+
+    throw new Error("Blocked: no broker account selected");
+  }
+
+  const runState = await prisma.brokerAccount.findFirst({
+    where: { id: brokerAccountId, userId: input.userId },
     select: { isPaused: true, isKillSwitched: true, killSwitchedAt: true },
   });
 
-  if (runState?.isKillSwitched) {
+  if (!runState) {
+    await emitExecEvent({
+      prisma,
+      userId: input.userId,
+      type: "exec.broker_blocked",
+      message: "Blocked: broker account not found for user",
+      data: {
+        execKey: input.execKey,
+        brokerAccountId,
+        brokerName: input.brokerName,
+      },
+      level: "warn",
+    });
+
+    throw new Error("Blocked: broker account not found");
+  }
+
+  if (runState.isKillSwitched) {
     await emitExecEvent({
       prisma,
       userId: input.userId,
@@ -208,6 +232,7 @@ export async function executeBracket(params: {
       message: "Blocked: kill switch active",
       data: {
         execKey: input.execKey,
+        brokerAccountId,
         brokerName: input.brokerName,
         contractId: input.contractId,
         symbol: input.symbol ?? null,
@@ -215,10 +240,11 @@ export async function executeBracket(params: {
       },
       level: "warn",
     });
+
     throw new Error("Blocked: kill switch active");
   }
 
-  if (runState?.isPaused) {
+  if (runState.isPaused) {
     await emitExecEvent({
       prisma,
       userId: input.userId,
@@ -226,15 +252,18 @@ export async function executeBracket(params: {
       message: "Blocked: trading paused",
       data: {
         execKey: input.execKey,
+        brokerAccountId,
         brokerName: input.brokerName,
         contractId: input.contractId,
         symbol: input.symbol ?? null,
       },
       level: "warn",
     });
+
     throw new Error("Blocked: trading paused");
   }
 
+  // Emit ONCE (after passing run-state checks)
   await emitExecEvent({
     prisma,
     userId: input.userId,
@@ -242,6 +271,7 @@ export async function executeBracket(params: {
     message: "executeBracket requested",
     data: {
       execKey: input.execKey,
+      brokerAccountId,
       broker: (broker as any)?.name ?? null,
       brokerName: input.brokerName,
       contractId: input.contractId,

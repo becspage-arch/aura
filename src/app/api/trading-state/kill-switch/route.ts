@@ -52,7 +52,6 @@ export async function POST(req: Request) {
   });
 
   await publishToUser(clerkUserId, "status_update", {
-    brokerAccountId,
     isKillSwitched: nextAcc.isKillSwitched,
   });
 
