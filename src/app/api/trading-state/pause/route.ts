@@ -105,8 +105,7 @@ async function handleSetPause(req: Request) {
     userId: user.id,
   });
 
-  await publishToUser(clerkUserId, "status_update" as any, {
-    brokerAccountId,
+  await publishToUser(clerkUserId, "status_update", {
     isPaused: nextAcc.isPaused,
   });
 
