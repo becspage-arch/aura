@@ -1734,3 +1734,16 @@ html.light .aura-cum-day {
 .aura-cum-bar--h18 { height: 76%; }
 .aura-cum-bar--h19 { height: 88%; }
 .aura-cum-bar--h20 { height: 100%; }
+
+.aura-dashboard-charts-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 1024px) {
+  .aura-dashboard-charts-row {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
