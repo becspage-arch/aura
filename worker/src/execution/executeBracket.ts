@@ -173,7 +173,68 @@ export async function executeBracket(params: {
     );
   }
 
-  const { prisma, broker, input } = params;
+    const { prisma, broker, input } = params;
+
+  await emitExecEvent({
+    prisma,
+    userId: input.userId,
+    type: "exec.requested",
+    message: "executeBracket requested",
+    data: {
+      execKey: input.execKey,
+      broker: (broker as any)?.name ?? null,
+      brokerName: input.brokerName,
+      contractId: input.contractId,
+      symbol: input.symbol ?? null,
+      side: input.side,
+      qty: input.qty,
+      entryType: input.entryType,
+    },
+  });
+
+  // -------------------------
+  // 8M.3 Run-state source of truth (DB)
+  // -------------------------
+  const runState = await prisma.userTradingState.findUnique({
+    where: { userId: input.userId },
+    select: { isPaused: true, isKillSwitched: true, killSwitchedAt: true },
+  });
+
+  if (runState?.isKillSwitched) {
+    await emitExecEvent({
+      prisma,
+      userId: input.userId,
+      type: "exec.broker_blocked",
+      message: "Blocked: kill switch active",
+      data: {
+        execKey: input.execKey,
+        brokerName: input.brokerName,
+        contractId: input.contractId,
+        symbol: input.symbol ?? null,
+        killSwitchedAt: runState.killSwitchedAt?.toISOString?.() ?? null,
+      },
+      level: "warn",
+    });
+    throw new Error("Blocked: kill switch active");
+  }
+
+  if (runState?.isPaused) {
+    await emitExecEvent({
+      prisma,
+      userId: input.userId,
+      type: "exec.broker_blocked",
+      message: "Blocked: trading paused",
+      data: {
+        execKey: input.execKey,
+        brokerName: input.brokerName,
+        contractId: input.contractId,
+        symbol: input.symbol ?? null,
+      },
+      level: "warn",
+    });
+    throw new Error("Blocked: trading paused");
+  }
+
   await emitExecEvent({
     prisma,
     userId: input.userId,

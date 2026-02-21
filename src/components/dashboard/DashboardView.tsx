@@ -8,10 +8,9 @@ import type { DashboardSummary, RangeKey } from "@/lib/dashboard/types";
 
 import DashboardKpiRow from "@/components/dashboard/sections/DashboardKpiRow";
 import DashboardStatusStrip from "@/components/dashboard/sections/DashboardStatusStrip";
-import DashboardCumulativePnlCard from "@/components/dashboard/sections/DashboardCumulativePnlCard";
-import DashboardMonthlyPnlCard from "@/components/dashboard/sections/DashboardMonthlyPnlCard";
 import DashboardPerformanceRow from "@/components/dashboard/sections/DashboardPerformanceRow";
 import DashboardRecentTradesCard from "@/components/dashboard/sections/DashboardRecentTradesCard";
+import DashboardChartsRow from "@/app/app/dashboard/_components/DashboardChartsRow";
 
 export default function DashboardView({ clerkUserId }: { clerkUserId?: string }) {
   const { state, dispatch } = useDashboard();
@@ -102,9 +101,10 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
         lastTrade={lastTrade}
       />
 
-      {/* Charts (designer will later place these side-by-side) */}
-      <DashboardCumulativePnlCard points={cumulativePoints} cumRange={cumRange} setCumRange={setCumRange} />
-      <DashboardMonthlyPnlCard monthCalendar={monthCalendar} />
+      <DashboardChartsRow
+        cumulative={data.charts.cumulativePnl}
+        monthCalendar={data.charts.monthCalendar}
+      />
 
       <DashboardPerformanceRow perf={perf} />
 
