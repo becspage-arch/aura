@@ -11,10 +11,22 @@ import DashboardStatusStrip from "@/components/dashboard/sections/DashboardStatu
 import DashboardPerformanceRow from "@/components/dashboard/sections/DashboardPerformanceRow";
 import DashboardRecentTradesCard from "@/components/dashboard/sections/DashboardRecentTradesCard";
 import DashboardChartsRow from "@/app/app/dashboard/_components/DashboardChartsRow";
+import DashboardAuraNetworkCard from "@/components/dashboard/sections/DashboardAuraNetworkCard";
+
+type NetworkResponse = {
+  ok: true;
+  network: {
+    activeTraders30d: number;
+    uptimePct24h: number | null;
+    signalsToday: number;
+    totalProfitAllTradersUsd: string;
+  };
+};
 
 export default function DashboardView({ clerkUserId }: { clerkUserId?: string }) {
   const { state, dispatch } = useDashboard();
   const [cumRange, setCumRange] = useState<RangeKey>("1Y");
+  const [network, setNetwork] = useState<NetworkResponse["network"] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +52,29 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       cancelled = true;
     };
   }, [dispatch, cumRange]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/dashboard/network`, { method: "GET" });
+        const json = (await res.json().catch(() => null)) as NetworkResponse | any;
+
+        if (cancelled) return;
+
+        if (res.ok && json?.ok === true && json?.network) {
+          setNetwork(json.network);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const channelName = useMemo(() => (clerkUserId ? `user:${clerkUserId}` : null), [clerkUserId]);
 
@@ -71,12 +106,10 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
   const lastTrade = state.summary?.status?.lastTradeAt ? fmtTimeLondon(state.summary.status.lastTradeAt) : "—";
 
   const perf = state.summary?.performance30d ?? null;
-
   const recentTrades = state.summary?.recentTrades ?? null;
 
   return (
     <div className="aura-page">
-
       <DashboardKpiRow
         totalProfit={totalProfit}
         todayPnl={todayPnl}
@@ -106,6 +139,13 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
       <DashboardPerformanceRow perf={perf} />
 
       <DashboardRecentTradesCard trades={recentTrades} />
+
+      <DashboardAuraNetworkCard
+        activeTraders30d={network?.activeTraders30d ?? null}
+        uptimePct24h={network?.uptimePct24h ?? null}
+        signalsToday={network?.signalsToday ?? null}
+        totalProfitAllTradersUsd={network?.totalProfitAllTradersUsd ?? null}
+      />
     </div>
   );
 }
