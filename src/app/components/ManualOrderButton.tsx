@@ -1,19 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
-type ApiResp =
-  | {
-      ok: true;
-      order: {
-        contractId: string;
-        side: "buy" | "sell";
-        size: number;
-        stopLossTicks: number;
-        takeProfitTicks: number;
-      };
-    }
-  | { ok: false; error: string };
+import { publishManualOrder } from "@/lib/ably/exec";
 
 export function ManualOrderButton() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
@@ -24,29 +12,20 @@ export function ManualOrderButton() {
       setStatus("sending");
       setMsg("");
 
-      const res = await fetch("/api/dev/manual-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
+      // Keep deterministic defaults (same as the dev route used)
+      const order = {
+        contractId: "CON.F.US.MGC.J26",
+        side: "buy" as const,
+        size: 1,
+        stopLossTicks: 45,
+        takeProfitTicks: 45,
+      };
 
-      const data = (await res.json().catch(() => null)) as ApiResp | null;
-
-      if (!res.ok || !data) {
-        setStatus("error");
-        setMsg(`HTTP ${res.status}`);
-        return;
-      }
-
-      if (!data.ok) {
-        setStatus("error");
-        setMsg(data.error || "Unknown error");
-        return;
-      }
+      await publishManualOrder(order);
 
       setStatus("sent");
       setMsg(
-        `Sent: ${data.order.side.toUpperCase()} ${data.order.size} ${data.order.contractId} | SL ${data.order.stopLossTicks}t | TP ${data.order.takeProfitTicks}t`
+        `Sent: ${order.side.toUpperCase()} ${order.size} ${order.contractId} | SL ${order.stopLossTicks}t | TP ${order.takeProfitTicks}t`
       );
     } catch (e) {
       setStatus("error");
@@ -60,11 +39,15 @@ export function ManualOrderButton() {
         <div>
           <div className="aura-card-title">Manual Test Order</div>
           <div className="aura-muted aura-text-xs">
-            Places a market order using the current default SL/TP settings.
+            Publishes a manual order to your per-user exec channel (token-scoped).
           </div>
         </div>
 
-        <button className="aura-cta aura-cta-primary" onClick={onClick} disabled={status === "sending"}>
+        <button
+          className="aura-cta aura-cta-primary"
+          onClick={onClick}
+          disabled={status === "sending"}
+        >
           {status === "sending" ? "Sending…" : "Place test order"}
         </button>
       </div>
