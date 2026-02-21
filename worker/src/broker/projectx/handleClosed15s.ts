@@ -7,6 +7,7 @@ import type { CorePlus315Engine } from "../../strategy/coreplus315Engine.js";
 import { buildBracketFromIntent } from "../../trading/buildBracket.js";
 import { executeBracket } from "../../execution/executeBracket.js";
 import { logTag } from "../../lib/logTags";
+import { onClosed15sUpdate3m } from "../../candles/deriveCandle3m.js";
 
 export type HandleClosed15sDeps = {
   env: { WORKER_NAME: string };
@@ -65,7 +66,6 @@ async function backfillMissing15sCandles(params: {
 }) {
   const { db, symbol, currentTime, emitSafe, brokerNameForEvent } = params;
 
-  // Find the most recent candle strictly before the current one
   const prev = await db.candle15s.findFirst({
     where: { symbol, time: { lt: currentTime } },
     orderBy: { time: "desc" },
@@ -77,7 +77,6 @@ async function backfillMissing15sCandles(params: {
   const gap = currentTime - prev.time;
   if (gap <= 15) return;
 
-  // Use last known close as a flat filler (O=H=L=C)
   const fillPrice = Number(prev.close);
 
   for (let t = prev.time + 15; t < currentTime; t += 15) {
@@ -99,8 +98,28 @@ async function backfillMissing15sCandles(params: {
       },
     });
 
-    // Emit a close event for downstream (3m builder / UI / Ably later)
-    // Marked clearly as backfill so nothing trades on it.
+    // ✅ feed the derived 3m builder with the *backfilled* candle
+    await onClosed15sUpdate3m({
+      db,
+      candle: {
+        symbol,
+        time: t,
+        open: fillPrice,
+        high: fillPrice,
+        low: fillPrice,
+        close: fillPrice,
+      },
+      emit3mClosed: async (c3) => {
+        await emitSafe({
+          name: "candle.3m.closed",
+          ts: new Date().toISOString(),
+          broker: brokerNameForEvent,
+          data: c3,
+        });
+      },
+    });
+
+    // emit backfill 15s close event for downstream observers (marked backfill)
     await emitSafe({
       name: "candle.15s.closed",
       ts: new Date().toISOString(),
@@ -202,6 +221,27 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           high: closed.data.h,
           low: closed.data.l,
           close: closed.data.c,
+        },
+      });
+
+      // ✅ feed the derived 3m builder with the *real* closed candle
+      await onClosed15sUpdate3m({
+        db,
+        candle: {
+          symbol,
+          time,
+          open: Number(closed.data.o),
+          high: Number(closed.data.h),
+          low: Number(closed.data.l),
+          close: Number(closed.data.c),
+        },
+        emit3mClosed: async (c3) => {
+          await deps.emitSafe({
+            name: "candle.3m.closed",
+            ts: new Date().toISOString(),
+            broker: "projectx",
+            data: c3,
+          });
         },
       });
 
