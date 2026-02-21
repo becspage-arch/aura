@@ -56,13 +56,18 @@ async function main() {
   process.once("SIGINT", () => void cleanupLock().finally(() => process.exit(0)));
   process.once("SIGTERM", () => void cleanupLock().finally(() => process.exit(0)));
 
-  // 3) Expected user id for this worker (Clerk)
+  // 3) Required environment
   const expectedClerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
   if (!expectedClerkUserId) {
     throw new Error(`[${env.WORKER_NAME}] Missing AURA_CLERK_USER_ID`);
   }
 
-  // 4) Connect to Ably (lifecycle + broker + exec)
+  const brokerAccountId = (process.env.AURA_BROKER_ACCOUNT_ID || "").trim();
+  if (!brokerAccountId) {
+    throw new Error(`[${env.WORKER_NAME}] Missing AURA_BROKER_ACCOUNT_ID`);
+  }
+
+  // 4) Connect to Ably
   const ably = createAblyRealtime();
   await new Promise<void>((resolve, reject) => {
     ably.connection.on("connected", () => resolve());
@@ -73,7 +78,7 @@ async function main() {
   const uiChannel = ably.channels.get(`aura:ui:${expectedClerkUserId}`);
   const brokerChannel = ably.channels.get(`aura:broker:${expectedClerkUserId}`);
 
-  // 4b) Start daily summary scheduler (Phase 1 completion)
+  // 4b) Daily summary scheduler
   startDailyScheduler({
     tz: "Europe/London",
     onRun: async () => {
@@ -85,7 +90,7 @@ async function main() {
     },
   });
 
-  // 5) Resolve internal userProfile id (DB expects this, NOT the Clerk id)
+  // 5) Resolve internal userProfile id
   const user = await db.userProfile.findUnique({
     where: { clerkUserId: expectedClerkUserId },
     select: { id: true },
@@ -99,7 +104,43 @@ async function main() {
 
   const userId = user.id;
 
-  // 6) Wire Ably exec listener → executeBracket()
+  // 5b) Verify broker account ownership
+  const acct = await db.brokerAccount.findFirst({
+    where: { id: brokerAccountId, userId },
+    select: { id: true, brokerName: true, externalId: true },
+  });
+
+  if (!acct) {
+    throw new Error(
+      `[${env.WORKER_NAME}] BrokerAccount not found or not owned by user. brokerAccountId=${brokerAccountId}`
+    );
+  }
+
+  console.log(`[${env.WORKER_NAME}] broker account scope`, acct);
+
+  // 5c) Heartbeat loop
+  const heartbeatEveryMs = 15_000;
+
+  const heartbeatInterval = setInterval(() => {
+    void db.brokerAccount
+      .update({
+        where: { id: brokerAccountId },
+        data: { lastHeartbeatAt: new Date() },
+        select: { id: true },
+      })
+      .catch((e) => {
+        console.warn(`[${env.WORKER_NAME}] heartbeat failed`, {
+          brokerAccountId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      });
+  }, heartbeatEveryMs);
+
+  const cleanupHeartbeat = () => clearInterval(heartbeatInterval);
+  process.once("SIGINT", cleanupHeartbeat);
+  process.once("SIGTERM", cleanupHeartbeat);
+
+  // 6) Exec listener
   const ablyKey = (process.env.ABLY_API_KEY || "").trim();
   if (!ablyKey) {
     throw new Error(`[${env.WORKER_NAME}] Missing ABLY_API_KEY`);
@@ -116,14 +157,14 @@ async function main() {
         throw new Error("Broker not ready yet (brokerRef is null)");
       }
 
-      const execKey = `manual:${expectedClerkUserId}:${Date.now()}:${p.contractId}:${p.side}:${p.size}:${p.stopLossTicks}:${p.takeProfitTicks}`;
+      const execKey = `manual:${expectedClerkUserId}:${Date.now()}`;
 
       await executeBracket({
         prisma: db,
         broker: brokerRef,
         input: {
           execKey,
-          userId, // ✅ internal userProfile id
+          userId,
           brokerName: (brokerRef as any)?.name ?? "projectx",
           contractId: p.contractId,
           side: p.side,
@@ -137,7 +178,7 @@ async function main() {
     },
   });
 
-  // 7) Start broker feed (and capture broker instance when ready)
+  // 7) Start broker feed
   try {
     await startBrokerFeed({
       onBrokerReady: async (b) => {
@@ -160,24 +201,6 @@ async function main() {
       emitSafe: async (event) => {
         await brokerChannel.publish(event.name, event);
 
-        if (event.name === "candle.15s.closed" && event.data) {
-          const d: any = event.data;
-
-          await uiChannel.publish("aura", {
-            type: "candle_closed",
-            ts: event.ts,
-            data: {
-              symbol: String(d.contractId),
-              timeframe: "15s",
-              time: Math.floor(Number(d.t0) / 1000),
-              open: Number(d.o),
-              high: Number(d.h),
-              low: Number(d.l),
-              close: Number(d.c),
-            },
-          });
-        }
-
         console.log(`[${env.WORKER_NAME}] published broker event`, {
           name: event.name,
           broker: event.broker,
@@ -198,3 +221,4 @@ main()
   .finally(async () => {
     await db.$disconnect();
   });
+  

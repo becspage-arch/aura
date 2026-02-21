@@ -24,26 +24,39 @@ model BrokerAccount {
   id           String      @id @default(cuid())
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+
   userId       String
   brokerName   String
   accountLabel String?
   externalId   String?
+
   user         UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Trading artifacts tied to this account
   fills        Fill[]
   orders       Order[]
-
   snapshots    AccountSnapshot[]
 
-  isEnabled      Boolean   @default(true)
+  // Desired run state (user intention)
+  // - true  = Aura should run for this account (subject to pause/kill safety gates)
+  // - false = Aura should not run for this account
+  isEnabled    Boolean   @default(true)
+
+  // Safety gates (temporary controls)
   isPaused       Boolean   @default(false)
   pausedAt       DateTime?
   isKillSwitched Boolean   @default(false)
   killSwitchedAt DateTime?
 
+  // Per-account overrides (risk, symbols, strategy params etc)
+  config         Json?
+
+  // Worker health / orchestrator signals
+  lastHeartbeatAt DateTime?
+
   @@unique([brokerName, externalId])
   @@index([userId])
   @@index([brokerName])
-  lastHeartbeatAt DateTime?
 }
 
 model AccountSnapshot {
