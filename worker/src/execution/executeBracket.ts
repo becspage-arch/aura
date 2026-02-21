@@ -172,21 +172,6 @@ export async function executeBracket(params: {
     );
   }
 
-  const canFlowA =
-    caps.supportsBracketInSingleCall &&
-    typeof (params.broker as any).placeOrderWithBrackets === "function";
-
-  const canFlowB =
-    caps.supportsAttachBracketsAfterEntry &&
-    typeof (params.broker as any).placeOrder === "function" &&
-    typeof (params.broker as any).placeBracketsAfterEntry === "function";
-
-  if (!canFlowA && !canFlowB) {
-    throw new Error(
-      `executeBracket: broker does not support bracket execution flow A or B (broker=${(params.broker as any)?.name ?? "unknown"})`
-    );
-  }
-
   const { prisma, broker, input } = params;
   const resolvedSymbol = (input.symbol ?? input.contractId ?? null);
 
@@ -453,102 +438,43 @@ export async function executeBracket(params: {
     });
 
     // -------------------------
-    // Place entry + brackets using capabilities
+    // Place entry + brackets using normalized broker interface
     // -------------------------
     try {
-      if (canFlowA) {
-        // Flow A: broker supports single call (entry + brackets)
-        const placeWithBracketsFn = (broker as any).placeOrderWithBrackets;
-
-      const slRaw = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
-      const tpRaw = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
-
-      const sl =
-        slRaw != null && Number.isFinite(slRaw) && slRaw > 0
-          ? normalizeStopTicks({
-              side: input.side,
-              ticks: slRaw,
-              requiresSigned: caps.requiresSignedBracketTicks,
-            })
-          : null;
-
-      const tp =
-        tpRaw != null && Number.isFinite(tpRaw) && tpRaw > 0
-          ? normalizeTakeProfitTicks({
-              side: input.side,
-              ticks: tpRaw,
-              requiresSigned: caps.requiresSignedBracketTicks,
-            })
-          : null;
-
-      const wantsBrackets = sl != null || tp != null;
-
-      const req = {
+      const result = await (broker as any).placeBracketOrder({
         contractId: input.contractId,
         symbol: resolvedSymbol,
         side: input.side,
         size: qtyClamped,
-        type: input.entryType,
-        limitPrice: null,
-        stopLossTicks: wantsBrackets ? sl : null,
-        takeProfitTicks: wantsBrackets ? tp : null,
-        customTag: brokerTag,
-
-        // NEW: absolute prices (optional, broker may ignore)
+        entryType: input.entryType,
+        stopLossTicks: input.stopLossTicks ?? null,
+        takeProfitTicks: input.takeProfitTicks ?? null,
         stopPrice: input.stopPrice ?? null,
         takeProfitPrice: input.takeProfitPrice ?? null,
-      };
-
-      console.log("[executeBracket] BROKER_CALL_BEGIN", {
-        execKey: input.execKey,
-        broker: (broker as any)?.name ?? null,
-        mode: "FLOW_A_SINGLE_CALL",
-        req,
+        customTag: brokerTag,
       });
-
-      if (typeof placeWithBracketsFn !== "function") {
-        const msg = "Broker does not support placeOrderWithBrackets (Flow A)";
-        await prisma.execution.update({
-          where: { id: exec.id },
-          data: { status: "FAILED", error: msg },
-        });
-        throw new Error(msg);
-      }
-
-      const res = await placeWithBracketsFn.call(broker, req);
-
-      console.log("[executeBracket] BROKER_CALL_OK", {
-        execKey: input.execKey,
-        res,
-      });
-
-      const entryOrderId = res?.orderId != null ? String(res.orderId) : null;
 
       const updated = await prisma.execution.update({
         where: { id: exec.id },
         data: {
-          entryOrderId,
+          entryOrderId: result?.entryOrderId ?? null,
+          stopOrderId: result?.stopOrderId ?? null,
+          tpOrderId: result?.takeProfitOrderId ?? null,
           status: "BRACKET_SUBMITTED",
-          stopOrderId: res?.stopOrderId != null ? String(res.stopOrderId) : null,
-          tpOrderId: res?.takeProfitOrderId != null ? String(res.takeProfitOrderId) : null,
-          meta: { brokerResponse: jsonSafe(res), note: "flow_a_single_call" },
+          meta: { brokerResponse: jsonSafe(result?.raw) },
         },
       });
 
-      logTag("[projectx-worker] BRACKET_SUBMITTED", {
+      logTag("[execution] BRACKET_SUBMITTED", {
         execKey: input.execKey,
         executionId: updated.id,
-        broker: (broker as any)?.name ?? null,
+        broker: (broker as any).name,
         contractId: input.contractId,
         side: input.side,
         qty: qtyClamped,
-        stopLossTicks: input.stopLossTicks ?? null,
-        takeProfitTicks: input.takeProfitTicks ?? null,
-        entryOrderId,
-        customTag: brokerTag,
+        entryOrderId: updated.entryOrderId ?? null,
       });
 
-      // Optional OCO watcher if broker doesn't guarantee OCO
       void ocoWatchAndCancel({
         broker,
         execKey: input.execKey,
@@ -558,175 +484,8 @@ export async function executeBracket(params: {
       });
 
       return updated;
-    }
-
-    // Flow B: entry first, then attach brackets
-    const placeEntryFn = (broker as any).placeOrder;
-
-    const entryReq = {
-      contractId: input.contractId,
-      symbol: resolvedSymbol,
-      side: input.side,
-      size: qtyClamped,
-      type: input.entryType,
-      customTag: brokerTag,
-    };
-
-    console.log("[executeBracket] BROKER_CALL_BEGIN", {
-      execKey: input.execKey,
-      broker: (broker as any)?.name ?? null,
-      mode: "FLOW_B_ENTRY_THEN_BRACKETS",
-      req: entryReq,
-    });
-
-    if (typeof placeEntryFn !== "function") {
-      const msg = "Broker does not support placeOrder (entry)";
-      await prisma.execution.update({
-        where: { id: exec.id },
-        data: { status: "FAILED", error: msg },
-      });
-      throw new Error(msg);
-    }
-
-    const entryRes = await placeEntryFn.call(broker, entryReq);
-
-    console.log("[executeBracket] BROKER_CALL_OK", {
-      execKey: input.execKey,
-      entryRes,
-    });
-
-    const entryOrderId = entryRes?.orderId != null ? String(entryRes.orderId) : null;
-
-    const updatedAfterEntry = await prisma.execution.update({
-      where: { id: exec.id },
-      data: {
-        entryOrderId,
-        status: "ORDER_SUBMITTED",
-        meta: { brokerResponse: jsonSafe(entryRes), note: "entry_submitted" },
-      },
-    });
-
-    logTag("[projectx-worker] ORDER_SUBMITTED", {
-      execKey: input.execKey,
-      executionId: updatedAfterEntry.id,
-      broker: (broker as any)?.name ?? null,
-      contractId: input.contractId,
-      symbol: resolvedSymbol,
-      side: input.side,
-      qty: qtyClamped,
-      entryType: input.entryType,
-      stopLossTicks: input.stopLossTicks ?? null,
-      takeProfitTicks: input.takeProfitTicks ?? null,
-      entryOrderId,
-      customTag: brokerTag,
-    });
-
-    const slRaw = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
-    const tpRaw = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
-
-    const sl =
-      slRaw != null && Number.isFinite(slRaw) && slRaw > 0
-        ? normalizeStopTicks({
-            side: input.side,
-            ticks: slRaw,
-            requiresSigned: caps.requiresSignedBracketTicks,
-          })
-        : null;
-
-    const tp =
-      tpRaw != null && Number.isFinite(tpRaw) && tpRaw > 0
-        ? normalizeTakeProfitTicks({
-            side: input.side,
-            ticks: tpRaw,
-            requiresSigned: caps.requiresSignedBracketTicks,
-          })
-        : null;
-
-    const wantsBrackets = sl != null || tp != null;
-
-    const placeBracketsAfterEntryFn = (broker as any).placeBracketsAfterEntry;
-
-    if (wantsBrackets) {
-      if (typeof placeBracketsAfterEntryFn !== "function") {
-        console.log("[executeBracket] BRACKETS_SKIPPED", {
-          execKey: input.execKey,
-          reason: "broker has no placeBracketsAfterEntry()",
-          entryOrderId,
-          sl,
-          tp,
-        });
-        return updatedAfterEntry;
-      }
-
-      console.log("[executeBracket] BRACKETS_BEGIN", {
-        execKey: input.execKey,
-        entryOrderId,
-        sl,
-        tp,
-      });
-
-      const bracketRes = await placeBracketsAfterEntryFn.call(broker, {
-        entryOrderId,
-        contractId: input.contractId,
-        side: input.side,
-        size: qtyClamped,
-
-        stopLossTicks: sl,
-        takeProfitTicks: tp,
-
-        // absolute prices (optional)
-        stopPrice: input.stopPrice ?? null,
-        takeProfitPrice: input.takeProfitPrice ?? null,
-
-        customTag: brokerTag,
-      });
-
-      console.log("[executeBracket] BRACKETS_OK", {
-        execKey: input.execKey,
-        bracketRes,
-      });
-
-      const updatedAfterBrackets = await prisma.execution.update({
-        where: { id: exec.id },
-        data: {
-          status: "BRACKET_SUBMITTED",
-          stopOrderId: bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null,
-          tpOrderId:
-            bracketRes?.takeProfitOrderId != null ? String(bracketRes.takeProfitOrderId) : null,
-          meta: {
-            ...(updatedAfterEntry.meta as any),
-            brackets: jsonSafe(bracketRes),
-            note2: "brackets_submitted_after_entry",
-          },
-        },
-      });
-
-      logTag("[projectx-worker] BRACKET_SUBMITTED", {
-        execKey: input.execKey,
-        executionId: updatedAfterBrackets.id,
-        broker: (broker as any)?.name ?? null,
-        contractId: input.contractId,
-        side: input.side,
-        qty: qtyClamped,
-        stopLossTicks: input.stopLossTicks ?? null,
-        takeProfitTicks: input.takeProfitTicks ?? null,
-        entryOrderId,
-        customTag: brokerTag,
-      });
-
-      void ocoWatchAndCancel({
-        broker,
-        execKey: input.execKey,
-        stopOrderId: updatedAfterBrackets.stopOrderId ?? null,
-        tpOrderId: updatedAfterBrackets.tpOrderId ?? null,
-        tag: brokerTag,
-      });
-
-      return updatedAfterBrackets;
-    }
-
-    return updatedAfterEntry;
     } catch (e: any) {
+
       const errMsg = e?.message ? String(e.message) : String(e);
 
       console.error("[executeBracket] FAIL", {
