@@ -98,7 +98,16 @@ export async function GET(req: Request) {
   const accountEquityUsdNum =
     latestSnapshot?.equityUsd != null ? Number(latestSnapshot.equityUsd) : null;
 
-  // ---- KPI deltas ----
+  // ---- KPI sums (Europe/London day/month boundaries)
+  const [todaySum] = await prisma.$queryRaw<SumRow[]>`
+    SELECT COALESCE(SUM("realizedPnlUsd"), 0)::text AS v
+    FROM "Trade"
+    WHERE "clerkUserId" = ${clerkUserId}
+      AND ("closedAt" AT TIME ZONE 'Europe/London')::date
+          = (NOW() AT TIME ZONE 'Europe/London')::date
+  `;
+
+    // ---- KPI deltas (Step 7) ----
 
   // Yesterday P&L (Europe/London)
   const [yesterdaySum] = await prisma.$queryRaw<SumRow[]>`
@@ -166,7 +175,7 @@ export async function GET(req: Request) {
 
   // Equity % vs yesterday close (requires snapshots)
   const [ydayEquityRow] = selectedAccount?.id
-    ? await prisma.$queryRaw<EquityRow[]>`
+    ? await prisma.$queryRaw<{ equity: string | null }[]>`
         SELECT "equityUsd"::text AS equity
         FROM "AccountSnapshot"
         WHERE "brokerAccountId" = ${selectedAccount.id}
@@ -191,15 +200,6 @@ export async function GET(req: Request) {
     equityYesterdayCloseNum > 0
       ? (equityVsYesterdayUsd / equityYesterdayCloseNum) * 100
       : null;
-
-  // ---- KPI sums (Europe/London day/month boundaries)
-  const [todaySum] = await prisma.$queryRaw<SumRow[]>`
-    SELECT COALESCE(SUM("realizedPnlUsd"), 0)::text AS v
-    FROM "Trade"
-    WHERE "clerkUserId" = ${clerkUserId}
-      AND ("closedAt" AT TIME ZONE 'Europe/London')::date
-          = (NOW() AT TIME ZONE 'Europe/London')::date
-  `;
 
   const [monthSum] = await prisma.$queryRaw<SumRow[]>`
     SELECT COALESCE(SUM("realizedPnlUsd"), 0)::text AS v
