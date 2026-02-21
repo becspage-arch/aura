@@ -140,10 +140,21 @@ async function main() {
   // 7) Start broker feed (and capture broker instance when ready)
   try {
     await startBrokerFeed({
-      onBrokerReady: (b) => {
+      onBrokerReady: async (b) => {
         brokerRef = b;
+
         console.log(`[${env.WORKER_NAME}] broker ready for exec`, {
           name: (b as any)?.name ?? null,
+        });
+
+        const { resumeOpenExecutions } = await import(
+          "./execution/resumeOpenExecutions.js"
+        );
+
+        await resumeOpenExecutions({
+          prisma: db,
+          broker: b,
+          userId,
         });
       },
       emitSafe: async (event) => {
