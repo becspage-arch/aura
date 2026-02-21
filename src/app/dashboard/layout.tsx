@@ -1,23 +1,7 @@
 // src/app/dashboard/layout.tsx
-"use client";
+import { redirect } from "next/navigation";
 
-import { DashboardProvider } from "@/components/dashboard/DashboardStore";
-
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const initial = {
-    accounts: [],
-    orders: [],
-    fills: [],
-    events: [],
-    tradingState: {
-      isPaused: false,
-      isKillSwitched: false,
-      killSwitchedAt: null,
-      selectedBrokerAccountId: null,
-      selectedSymbol: null,
-    },
-    summary: null,
-  };
-
-  return <DashboardProvider initial={initial}>{children}</DashboardProvider>;
+export default function DashboardLayout() {
+  // Canonical dashboard lives at /app
+  redirect("/app");
 }

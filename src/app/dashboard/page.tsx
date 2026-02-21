@@ -1,7 +1,7 @@
-"use client";
-
-import DashboardView from "@/components/dashboard/DashboardView";
+// src/app/dashboard/page.tsx
+import { redirect } from "next/navigation";
 
 export default function DashboardPage() {
-  return <DashboardView clerkUserId="dev" />;
+  // Canonical dashboard lives at /app
+  redirect("/app");
 }
