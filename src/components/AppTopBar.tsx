@@ -121,7 +121,7 @@ export function AppTopBar() {
     const clerkUserId = user?.id;
     if (!clerkUserId) return;
 
-    const statusChannelName = `user:${clerkUserId}`;
+    const statusChannelName = `aura:ui:${clerkUserId}`;
 
     const unsubscribeStatus = subscribeUserChannel(statusChannelName, (item) => {
       if (item.name !== "status_update") return;
