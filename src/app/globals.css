@@ -1758,3 +1758,69 @@ html.light .aura-cum-day {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.aura-sidebar__brand {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  align-items: center;
+}
+
+.aura-sidebar__logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.aura-sidebar__brandName {
+  font-weight: 700;
+}
+
+.aura-sidebar__brandTag {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.aura-sidebar__section {
+  padding: 10px 16px;
+}
+
+.aura-sidebar__sectionTitle {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+
+.aura-sidebar__bottom {
+  margin-top: auto;
+  padding: 12px 16px;
+}
+
+.aura-sidebar__profile {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.aura-sidebar__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.aura-sidebar__profileName {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.aura-sidebar__profileSub {
+  font-size: 12px;
+  opacity: 0.7;
+}

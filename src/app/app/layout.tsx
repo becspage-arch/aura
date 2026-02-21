@@ -4,24 +4,40 @@ import { AppTopBar } from "@/components/AppTopBar";
 import { NotificationsListener } from "@/components/NotificationsListener";
 import AppProviders from "./providers";
 
-const nav = [
+const navMain = [
   { href: "/app", label: "Dashboard" },
-
-  // CORE
   { href: "/app/live-trading", label: "Live Trading" },
   { href: "/app/charts", label: "Charts" },
+];
 
-  // CONFIG
+const navTools = [
   { href: "/app/strategy-setup", label: "Strategy Setup" },
-
-  // DATA
   { href: "/app/reports", label: "Reports" },
   { href: "/app/activity", label: "Activity" },
+];
 
-  // ACCOUNT
+const navAccount = [
   { href: "/app/account", label: "Account" },
   { href: "/app/profile", label: "Profile" },
 ];
+
+function NavSection(props: {
+  title: string;
+  items: Array<{ href: string; label: string }>;
+}) {
+  return (
+    <div className="aura-sidebar__section">
+      <div className="aura-sidebar__sectionTitle">{props.title}</div>
+      <nav className="aura-sidebar__nav">
+        {props.items.map((item) => (
+          <Link key={item.href} href={item.href} className="aura-sidebar__link">
+            {item.label}
+          </Link>
+        ))}
+      </nav>
+    </div>
+  );
+}
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -29,15 +45,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="aura-app-layout">
         {/* Sidebar */}
         <aside className="aura-sidebar">
-          <div className="aura-sidebar__brand">Aura</div>
+          <div className="aura-sidebar__brand">
+            <div className="aura-sidebar__logo" aria-hidden="true" />
+            <div className="aura-sidebar__brandText">
+              <div className="aura-sidebar__brandName">TradeAura</div>
+              <div className="aura-sidebar__brandTag">Trading Intelligence</div>
+            </div>
+          </div>
 
-          <nav className="aura-sidebar__nav">
-            {nav.map((item) => (
-              <Link key={item.href} href={item.href} className="aura-sidebar__link">
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <NavSection title="Main" items={navMain} />
+          <NavSection title="Tools" items={navTools} />
+          <NavSection title="Account" items={navAccount} />
+
+          <div className="aura-sidebar__bottom">
+            <div className="aura-sidebar__profile">
+              <div className="aura-sidebar__avatar" aria-hidden="true" />
+              <div className="aura-sidebar__profileText">
+                <div className="aura-sidebar__profileName">Profile</div>
+                <div className="aura-sidebar__profileSub">Signed in</div>
+              </div>
+            </div>
+          </div>
         </aside>
 
         {/* Main column */}
