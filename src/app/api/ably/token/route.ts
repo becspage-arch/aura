@@ -15,10 +15,14 @@ export async function GET() {
   const broker = `aura:broker:${userId}`;
   const exec = `aura:exec:${userId}`;
 
+  // ✅ Legacy notifications channel (existing UI still uses this)
+  const legacyNotifications = `user:${userId}:notifications`;
+
   const capability = {
     [ui]: ["subscribe"],
     [broker]: ["subscribe"],
     [exec]: ["publish"],
+    [legacyNotifications]: ["subscribe"],
   };
 
   const tokenRequest = await ably.auth.createTokenRequest({
