@@ -72,8 +72,6 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
 
   const perf = state.summary?.performance30d ?? null;
 
-  const cumulativePoints = state.summary?.charts?.cumulativePnl?.points ?? null;
-  const monthCalendar = state.summary?.charts?.monthCalendar ?? null;
   const recentTrades = state.summary?.recentTrades ?? null;
 
   return (
@@ -101,10 +99,12 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
         lastTrade={lastTrade}
       />
 
-      <DashboardChartsRow
-        cumulative={data.charts.cumulativePnl}
-        monthCalendar={data.charts.monthCalendar}
-      />
+      {state.summary?.charts ? (
+        <DashboardChartsRow
+          cumulative={state.summary.charts.cumulativePnl}
+          monthCalendar={state.summary.charts.monthCalendar}
+        />
+      ) : null}
 
       <DashboardPerformanceRow perf={perf} />
 
