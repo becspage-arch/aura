@@ -7,8 +7,9 @@ function getAblyRest() {
   return new Ably.Rest({ key });
 }
 
-export function userChannelName(clerkUserId: string) {
-  return `user:${clerkUserId}`;
+// UI stream channel for this user (matches /api/ably/token capability)
+export function uiChannelName(clerkUserId: string) {
+  return `aura:ui:${clerkUserId}`;
 }
 
 export async function publishToUser(
@@ -17,7 +18,7 @@ export async function publishToUser(
   data: AuraRealtimeEvent["data"]
 ) {
   const ably = getAblyRest();
-  const channel = ably.channels.get(userChannelName(clerkUserId));
+  const channel = ably.channels.get(uiChannelName(clerkUserId));
 
   const event = {
     type,
