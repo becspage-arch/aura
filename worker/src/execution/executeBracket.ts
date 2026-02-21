@@ -457,8 +457,8 @@ export async function executeBracket(params: {
     // -------------------------
     try {
       if (canFlowA) {
-      // Flow A: broker supports single call (entry + brackets)
-      const placeWithBracketsFn = (broker as any).placeOrderWithBrackets;
+        // Flow A: broker supports single call (entry + brackets)
+        const placeWithBracketsFn = (broker as any).placeOrderWithBrackets;
 
       const slRaw = input.stopLossTicks != null ? Number(input.stopLossTicks) : null;
       const tpRaw = input.takeProfitTicks != null ? Number(input.takeProfitTicks) : null;
@@ -496,8 +496,8 @@ export async function executeBracket(params: {
         customTag: brokerTag,
 
         // NEW: absolute prices (optional, broker may ignore)
-        stopPriceAbs: input.stopPrice ?? null,
-        takeProfitPriceAbs: input.takeProfitPrice ?? null,
+        stopPrice: input.stopPrice ?? null,
+        takeProfitPrice: input.takeProfitPrice ?? null,
       };
 
       console.log("[executeBracket] BROKER_CALL_BEGIN", {
