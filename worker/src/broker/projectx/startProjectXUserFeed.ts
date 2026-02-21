@@ -150,7 +150,12 @@ export async function startProjectXUserFeed(params: {
             toStr(payload?.symbolId) ??
             "UNKNOWN";
 
-          const side = normalizeSide(payload?.side);
+          const sideNorm = normalizeSide(payload?.side);
+          if (!sideNorm) return;
+
+          const side: "BUY" | "SELL" =
+            sideNorm === "buy" ? "BUY" : "SELL";
+
           const qty = toNum(payload?.size ?? payload?.qty ?? payload?.quantity) ?? 0;
 
           const stopPrice = toNum(payload?.stopPrice);
@@ -510,11 +515,6 @@ export async function startProjectXUserFeed(params: {
               "UNKNOWN";
 
             const sideNorm = normalizeSide(payload?.side);
-            if (!sideNorm) return;
-
-            const side: "BUY" | "SELL" =
-              sideNorm === "buy" ? "BUY" : "SELL";
-
             if (!sideNorm) return;
 
             const side: "BUY" | "SELL" =
