@@ -74,6 +74,96 @@ export async function startProjectXUserFeed(params: {
     });
   }
 
+  const equityLastWriteMs = new Map<string, number>();
+  const EQUITY_WRITE_THROTTLE_MS = 30_000;
+
+  async function writeAccountSnapshot(params: {
+    db: any;
+    userId: string;
+    brokerName: string;
+    acctExternalId: string;
+    payload: any;
+  }) {
+    const key = `${params.brokerName}:${params.acctExternalId}`;
+    const nowMs = Date.now();
+    const last = equityLastWriteMs.get(key) ?? 0;
+    if (nowMs - last < EQUITY_WRITE_THROTTLE_MS) return;
+    equityLastWriteMs.set(key, nowMs);
+
+    // Best-effort parsing (ProjectX payloads vary)
+    const equityUsd =
+      toNum(params.payload?.equity) ??
+      toNum(params.payload?.accountEquity) ??
+      toNum(params.payload?.netLiquidation) ??
+      toNum(params.payload?.netLiq) ??
+      null;
+
+    const balanceUsd =
+      toNum(params.payload?.balance) ??
+      toNum(params.payload?.cashBalance) ??
+      null;
+
+    const availableUsd =
+      toNum(params.payload?.available) ??
+      toNum(params.payload?.availableBalance) ??
+      toNum(params.payload?.buyingPower) ??
+      null;
+
+    try {
+      // Touch broker heartbeat (throttled) so "Broker Connected" stays truthful
+      await touchBrokerHeartbeat({
+        db: params.db,
+        userId: params.userId,
+        brokerName: params.brokerName,
+        acctExternalId: params.acctExternalId,
+      });
+
+      const brokerAccount = await params.db.brokerAccount.upsert({
+        where: {
+          brokerName_externalId: {
+            brokerName: params.brokerName,
+            externalId: params.acctExternalId,
+          },
+        },
+        create: {
+          userId: params.userId,
+          brokerName: params.brokerName,
+          externalId: params.acctExternalId,
+          accountLabel: null,
+          lastHeartbeatAt: new Date(),
+        },
+        update: {
+          userId: params.userId,
+          lastHeartbeatAt: new Date(),
+        },
+        select: { id: true },
+      });
+
+      await params.db.accountSnapshot.create({
+        data: {
+          brokerAccountId: brokerAccount.id,
+          equityUsd: equityUsd == null ? null : equityUsd,
+          balanceUsd: balanceUsd == null ? null : balanceUsd,
+          availableUsd: availableUsd == null ? null : availableUsd,
+          payload: params.payload ?? null,
+        },
+      });
+
+      console.log("[projectx-user] ACCOUNT_SNAPSHOT_OK", {
+        brokerAccountId: brokerAccount.id,
+        acctExternalId: params.acctExternalId,
+        equityUsd,
+        balanceUsd,
+        availableUsd,
+      });
+    } catch (e) {
+      console.warn("[projectx-user] ACCOUNT_SNAPSHOT_FAILED (non-fatal)", {
+        acctExternalId: params.acctExternalId,
+        err: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   const heartbeatLastWriteMs = new Map<string, number>();
   const HEARTBEAT_WRITE_THROTTLE_MS = 30_000;
 
@@ -173,7 +263,12 @@ export async function startProjectXUserFeed(params: {
         const orderExternalId = toStr(payload?.id ?? payload?.orderId);
 
         if (acctExternalId && orderExternalId) {
-          const now = new Date();
+          const nowawait touchBrokerHeartbeat({
+            db,
+            userId: ident.userId,
+            brokerName: "projectx",
+            acctExternalId,
+          }); = new Date();
 
           const brokerAccount = await db.brokerAccount.upsert({
             where: {
@@ -526,6 +621,17 @@ export async function startProjectXUserFeed(params: {
     onPosition: async (payload) => {
       const db = params.getPrisma();
       const ident = await params.getUserIdentityForWorker();
+
+      const acctExternalId = toStr(payload?.accountId ?? params.accountId);
+      if (acctExternalId) {
+        await writeAccountSnapshot({
+          db,
+          userId: ident.userId,
+          brokerName: "projectx",
+          acctExternalId,
+          payload,
+        });
+      }
 
       await db.eventLog.create({
         data: {
