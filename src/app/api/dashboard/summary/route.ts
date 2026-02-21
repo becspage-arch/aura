@@ -71,11 +71,11 @@ export async function GET(req: Request) {
   });
 
   const selectedAccount = userState?.selectedBrokerAccountId
-  ? await prisma.brokerAccount.findUnique({
-      where: { id: userState.selectedBrokerAccountId },
-      select: { brokerName: true, lastHeartbeatAt: true },
-    })
-  : null;
+    ? await prisma.brokerAccount.findUnique({
+        where: { id: userState.selectedBrokerAccountId },
+        select: { id: true, brokerName: true, lastHeartbeatAt: true },
+      })
+    : null;
 
   const HEARTBEAT_OK_MS = 120_000; // 2 minutes
   const nowMs = Date.now();
@@ -84,6 +84,18 @@ export async function GET(req: Request) {
     : null;
 
   const brokerConnected = hbMs != null && nowMs - hbMs <= HEARTBEAT_OK_MS;
+
+  // Latest broker-sourced equity snapshot (Step 6)
+  const latestSnapshot = selectedAccount?.id
+    ? await prisma.accountSnapshot.findFirst({
+        where: { brokerAccountId: selectedAccount.id },
+        orderBy: { createdAt: "desc" },
+        select: { equityUsd: true },
+      })
+    : null;
+
+  const accountEquityUsdNum =
+    latestSnapshot?.equityUsd != null ? Number(latestSnapshot.equityUsd) : null;
 
   // ---- KPI sums (Europe/London day/month boundaries)
   const [todaySum] = await prisma.$queryRaw<SumRow[]>`
@@ -231,13 +243,13 @@ export async function GET(req: Request) {
       todayPnlUsd: Number(todaySum?.v ?? 0).toFixed(2),
       monthPnlUsd: Number(monthSum?.v ?? 0).toFixed(2),
       totalProfitUsd: Number(totalSum?.v ?? 0).toFixed(2),
-      accountEquityUsd: null,
+      accountEquityUsd: accountEquityUsdNum === null ? null : accountEquityUsdNum.toFixed(2),
     },
 
     status: {
       strategy: userState?.isPaused ? "PAUSED" : "ACTIVE",
       trading: userState?.isKillSwitched ? "STOPPED" : "LIVE",
-      broker: "UNKNOWN",
+      broker: selectedAccount?.brokerName ?? "UNKNOWN",
       riskMode: "NORMAL",
       symbol: userState?.selectedSymbol ?? "MGC",
       selectedBrokerAccountId: userState?.selectedBrokerAccountId ?? null,

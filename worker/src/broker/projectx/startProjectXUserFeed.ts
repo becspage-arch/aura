@@ -262,34 +262,35 @@ export async function startProjectXUserFeed(params: {
         const acctExternalId = toStr(payload?.accountId ?? params.accountId);
         const orderExternalId = toStr(payload?.id ?? payload?.orderId);
 
-        if (acctExternalId && orderExternalId) {
-          const nowawait touchBrokerHeartbeat({
-            db,
-            userId: ident.userId,
-            brokerName: "projectx",
-            acctExternalId,
-          }); = new Date();
+      if (acctExternalId && orderExternalId) {
+        // touch heartbeat (throttled) so Broker Connected works off any live event
+        await touchBrokerHeartbeat({
+          db,
+          userId: ident.userId,
+          brokerName: "projectx",
+          acctExternalId,
+        });
 
-          const brokerAccount = await db.brokerAccount.upsert({
-            where: {
-              brokerName_externalId: {
-                brokerName: "projectx",
-                externalId: acctExternalId,
-              },
-            },
-            create: {
-              userId: ident.userId,
+        const brokerAccount = await db.brokerAccount.upsert({
+          where: {
+            brokerName_externalId: {
               brokerName: "projectx",
               externalId: acctExternalId,
-              accountLabel: null,
-              lastHeartbeatAt: now,
             },
-            update: {
-              userId: ident.userId,
-              lastHeartbeatAt: now,
-            },
-            select: { id: true },
-          });
+          },
+          create: {
+            userId: ident.userId,
+            brokerName: "projectx",
+            externalId: acctExternalId,
+            accountLabel: null,
+            lastHeartbeatAt: new Date(),
+          },
+          update: {
+            userId: ident.userId,
+            lastHeartbeatAt: new Date(),
+          },
+          select: { id: true },
+        });
 
           const symbol =
             toStr(payload?.symbol) ??
