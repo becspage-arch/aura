@@ -1747,3 +1747,14 @@ html.light .aura-cum-day {
     align-items: start;
   }
 }
+
+/* minimal so Share Snapshot is visibly a button until designer swaps CSS */
+.aura-topbar__action {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.aura-topbar__action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

@@ -13,9 +13,17 @@ type PauseGetResponse = {
   killSwitchedAt?: string | null;
 };
 
+type StatusGetResponse = {
+  ok: true;
+  brokerAccountId: string | null;
+  isPaused: boolean;
+  isKillSwitched: boolean;
+  brokerConnected: boolean;
+  lastHeartbeatAt: string | null;
+};
+
 function titleFromPath(pathname: string) {
-  const p =
-    pathname.endsWith("/") && pathname !== "/" ? pathname.slice(0, -1) : pathname;
+  const p = pathname.endsWith("/") && pathname !== "/" ? pathname.slice(0, -1) : pathname;
 
   if (p === "/app") return "Dashboard";
   if (p.startsWith("/app/live-trading")) return "Live Trading";
@@ -54,9 +62,13 @@ export function AppTopBar() {
 
   const { user, isLoaded } = useUser();
 
-  const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [isKillSwitched, setIsKillSwitched] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isKillSwitched, setIsKillSwitched] = useState(false);
+  const [brokerConnected, setBrokerConnected] = useState(false);
 
+  const [shareBusy, setShareBusy] = useState(false);
+
+  // initial pause/kill (existing endpoint)
   useEffect(() => {
     let cancelled = false;
 
@@ -67,7 +79,7 @@ export function AppTopBar() {
         setIsPaused(!!res.isPaused);
         setIsKillSwitched(!!res.isKillSwitched);
       } catch {
-        // don't break UI if endpoint unavailable
+        // ignore
       }
     })();
 
@@ -76,6 +88,34 @@ export function AppTopBar() {
     };
   }, []);
 
+  // status poll (brokerConnected + also keeps pause/kill consistent)
+  useEffect(() => {
+    let cancelled = false;
+    let t: any = null;
+
+    async function tick() {
+      try {
+        const res = await fetchJSON<StatusGetResponse>("/api/trading-state/status");
+        if (cancelled) return;
+        setIsPaused(!!res.isPaused);
+        setIsKillSwitched(!!res.isKillSwitched);
+        setBrokerConnected(!!res.brokerConnected);
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) t = setTimeout(tick, 30_000);
+      }
+    }
+
+    tick();
+
+    return () => {
+      cancelled = true;
+      if (t) clearTimeout(t);
+    };
+  }, []);
+
+  // realtime updates for pause/kill
   useEffect(() => {
     if (!isLoaded) return;
     const clerkUserId = user?.id;
@@ -85,7 +125,6 @@ export function AppTopBar() {
 
     const unsubscribeStatus = subscribeUserChannel(statusChannelName, (item) => {
       if (item.name !== "status_update") return;
-
       const data = (item.event as any)?.data ?? {};
       if (typeof data.isPaused === "boolean") setIsPaused(data.isPaused);
       if (typeof data.isKillSwitched === "boolean") setIsKillSwitched(data.isKillSwitched);
@@ -96,14 +135,43 @@ export function AppTopBar() {
     };
   }, [isLoaded, user?.id]);
 
-  const statusLabel = isKillSwitched ? "EMERGENCY STOP" : isPaused ? "PAUSED" : "RUNNING";
-  const statusIcon = isKillSwitched ? "⛔" : isPaused ? "❚❚" : "▶";
+  const systemRunning = !isPaused && !isKillSwitched && brokerConnected;
 
-  const statusClass = isKillSwitched
-    ? "aura-topbar__state aura-topbar__state--danger"
-    : isPaused
-    ? "aura-topbar__state aura-topbar__state--muted"
-    : "aura-topbar__state aura-topbar__state--gold";
+  const systemLabel = systemRunning ? "System Running" : "System Not Running";
+  const systemClass = systemRunning
+    ? "aura-topbar__state aura-topbar__state--gold"
+    : "aura-topbar__state aura-topbar__state--muted";
+
+  async function onShareSnapshot() {
+    if (shareBusy) return;
+    setShareBusy(true);
+    try {
+      // minimal payload for now (fast + stable)
+      const payload = {
+        sharedFromPath: pathname,
+        at: new Date().toISOString(),
+        status: { isPaused, isKillSwitched, brokerConnected, systemRunning },
+      };
+
+      const res = await fetchJSON<{ ok: true; id: string }>("/api/share/snapshot", {
+        method: "POST",
+        body: JSON.stringify({ payload }),
+      });
+
+      const url = `${window.location.origin}/share/${res.id}`;
+
+      try {
+        await navigator.clipboard.writeText(url);
+        window.alert("✅ Snapshot link copied to clipboard");
+      } catch {
+        window.prompt("Copy this snapshot link:", url);
+      }
+    } catch (e) {
+      window.alert(`❌ Failed to create snapshot${e instanceof Error ? `: ${e.message}` : ""}`);
+    } finally {
+      setShareBusy(false);
+    }
+  }
 
   return (
     <header className="aura-topbar">
@@ -114,19 +182,24 @@ export function AppTopBar() {
       <div className="aura-topbar__right">
         <button
           type="button"
-          className={statusClass}
-          onClick={() => {
-            const ok = window.confirm(
-              "Run/Pause controls are on the Live Trading page.\n\nGo there now?"
-            );
-            if (ok) router.push("/app/live-trading");
-          }}
+          className="aura-topbar__action"
+          onClick={onShareSnapshot}
+          disabled={shareBusy}
+          title="Create a shareable snapshot link"
+        >
+          {shareBusy ? "Sharing…" : "Share Snapshot"}
+        </button>
+
+        <button
+          type="button"
+          className={systemClass}
+          onClick={() => router.push("/app/live-trading")}
           title="Open Live Trading"
         >
           <span className="aura-topbar__stateIcon" aria-hidden="true">
-            {statusIcon}
+            {systemRunning ? "●" : "○"}
           </span>
-          <span>{statusLabel}</span>
+          <span>{systemLabel}</span>
         </button>
 
         <div className="aura-topbar__user">
