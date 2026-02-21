@@ -103,6 +103,8 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
         <DashboardChartsRow
           cumulative={state.summary.charts.cumulativePnl}
           monthCalendar={state.summary.charts.monthCalendar}
+          cumRange={cumRange}
+          onCumRangeChange={setCumRange}
         />
       ) : null}
 

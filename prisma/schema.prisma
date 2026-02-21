@@ -34,6 +34,12 @@ model BrokerAccount {
 
   snapshots    AccountSnapshot[]
 
+  isEnabled      Boolean   @default(true)
+  isPaused       Boolean   @default(false)
+  pausedAt       DateTime?
+  isKillSwitched Boolean   @default(false)
+  killSwitchedAt DateTime?
+
   @@unique([brokerName, externalId])
   @@index([userId])
   @@index([brokerName])

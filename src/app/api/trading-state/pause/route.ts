@@ -20,14 +20,36 @@ export async function GET() {
   const state = await db.userTradingState.upsert({
     where: { userId: user.id },
     update: {},
-    create: { userId: user.id, isPaused: false },
+    create: { userId: user.id },
+  });
+
+  const brokerAccountId = state.selectedBrokerAccountId;
+  if (!brokerAccountId) {
+    return Response.json({
+      ok: true,
+      brokerAccountId: null,
+      isPaused: false,
+      isKillSwitched: false,
+      killSwitchedAt: null,
+    });
+  }
+
+  const acct = await db.brokerAccount.findFirst({
+    where: { id: brokerAccountId, userId: user.id },
+    select: {
+      id: true,
+      isPaused: true,
+      isKillSwitched: true,
+      killSwitchedAt: true,
+    },
   });
 
   return Response.json({
     ok: true,
-    isPaused: state.isPaused,
-    isKillSwitched: state.isKillSwitched,
-    killSwitchedAt: state.killSwitchedAt,
+    brokerAccountId,
+    isPaused: acct?.isPaused ?? false,
+    isKillSwitched: acct?.isKillSwitched ?? false,
+    killSwitchedAt: acct?.killSwitchedAt?.toISOString?.() ?? null,
   });
 }
 
@@ -36,7 +58,7 @@ async function handleSetPause(req: Request) {
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const isPaused = Boolean(body?.isPaused);
+  const isPaused = Boolean((body as any)?.isPaused);
 
   const user = await ensureUserProfile({
     clerkUserId,
@@ -44,31 +66,49 @@ async function handleSetPause(req: Request) {
     displayName: null,
   });
 
-  // Read current state so we only notify on real changes
-  const current = await db.userTradingState.findUnique({
+  const state = await db.userTradingState.upsert({
     where: { userId: user.id },
+    update: {},
+    create: { userId: user.id },
+  });
+
+  const brokerAccountId = state.selectedBrokerAccountId;
+  if (!brokerAccountId) {
+    return new Response("No broker account selected", { status: 400 });
+  }
+
+  const currentAcc = await db.brokerAccount.findFirst({
+    where: { id: brokerAccountId, userId: user.id },
     select: { isPaused: true },
   });
-  const prevPaused = current?.isPaused ?? false;
+  const prevPaused = currentAcc?.isPaused ?? false;
 
-  const next = await db.userTradingState.upsert({
-    where: { userId: user.id },
-    update: { isPaused },
-    create: { userId: user.id, isPaused },
+  const nextAcc = await db.brokerAccount.update({
+    where: { id: brokerAccountId },
+    data: {
+      isPaused,
+      pausedAt: isPaused ? new Date() : null,
+    },
+    select: { id: true, isPaused: true },
   });
 
-  await writeAuditLog(user.id, "TRADING_PAUSE_TOGGLED", { isPaused });
+  await writeAuditLog(user.id, "TRADING_PAUSE_TOGGLED", {
+    brokerAccountId,
+    isPaused,
+  });
 
   await writeEventLog({
     type: "control_changed",
     level: "info",
     message: `Pause set to ${isPaused}`,
-    data: { isPaused },
+    data: { brokerAccountId, isPaused },
     userId: user.id,
   });
 
-  // realtime status for UI topbar etc.
-  await publishToUser(clerkUserId, "status_update" as any, { isPaused });
+  await publishToUser(clerkUserId, "status_update" as any, {
+    brokerAccountId,
+    isPaused: nextAcc.isPaused,
+  });
 
   // 🔔 Only notify if it changed (best-effort: NEVER break pause/run UX)
   if (prevPaused !== isPaused) {
@@ -78,7 +118,7 @@ async function handleSetPause(req: Request) {
           type: "strategy_status_changed",
           userId: clerkUserId,
           ts: new Date().toISOString(),
-          isPaused: next.isPaused,
+          isPaused: nextAcc.isPaused,
         } as any,
         { prisma }
       );
@@ -89,11 +129,11 @@ async function handleSetPause(req: Request) {
 
   return Response.json({
     ok: true,
-    isPaused: next.isPaused,
+    brokerAccountId,
+    isPaused: nextAcc.isPaused,
   });
 }
 
-// UI may be calling POST or PUT (we accept both to avoid 405)
 export async function POST(req: Request) {
   return handleSetPause(req);
 }
@@ -102,7 +142,6 @@ export async function PUT(req: Request) {
   return handleSetPause(req);
 }
 
-// Defensive: if anything triggers an OPTIONS preflight, don’t 405 it.
 export async function OPTIONS() {
   return new Response(null, {
     status: 204,
