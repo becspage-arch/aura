@@ -18,15 +18,23 @@ export async function POST(req: Request) {
     displayName: null,
   });
 
-  const state = await db.userTradingState.upsert({
+  const state = await db.userTradingState.findUnique({
     where: { userId: user.id },
-    update: {},
-    create: { userId: user.id },
+    select: { selectedBrokerAccountId: true },
   });
 
-  const brokerAccountId = state.selectedBrokerAccountId;
+  const brokerAccountId = state?.selectedBrokerAccountId ?? null;
   if (!brokerAccountId) {
     return new Response("No broker account selected", { status: 400 });
+  }
+
+  const currentAcc = await db.brokerAccount.findFirst({
+    where: { id: brokerAccountId, userId: user.id },
+    select: { id: true },
+  });
+
+  if (!currentAcc) {
+    return new Response("Broker account not found", { status: 404 });
   }
 
   const nextAcc = await db.brokerAccount.update({
@@ -49,6 +57,7 @@ export async function POST(req: Request) {
     message: `Kill switch set to ${isKillSwitched}`,
     data: { brokerAccountId, isKillSwitched },
     userId: user.id,
+    brokerAccountId,
   });
 
   await publishToUser(clerkUserId, "status_update", {

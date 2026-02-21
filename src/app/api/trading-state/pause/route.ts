@@ -1,7 +1,6 @@
 // src/app/api/trading-state/pause/route.ts
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { prisma } from "@/lib/prisma";
 import { ensureUserProfile } from "@/lib/user-profile";
 import { publishToUser } from "@/lib/ably/server";
 import { writeAuditLog, writeEventLog } from "@/lib/logging/server";
@@ -17,13 +16,12 @@ export async function GET() {
     displayName: null,
   });
 
-  const state = await db.userTradingState.upsert({
+  const state = await db.userTradingState.findUnique({
     where: { userId: user.id },
-    update: {},
-    create: { userId: user.id },
+    select: { selectedBrokerAccountId: true },
   });
 
-  const brokerAccountId = state.selectedBrokerAccountId;
+  const brokerAccountId = state?.selectedBrokerAccountId ?? null;
   if (!brokerAccountId) {
     return Response.json({
       ok: true,
@@ -44,12 +42,22 @@ export async function GET() {
     },
   });
 
+  if (!acct) {
+    return Response.json({
+      ok: true,
+      brokerAccountId,
+      isPaused: false,
+      isKillSwitched: false,
+      killSwitchedAt: null,
+    });
+  }
+
   return Response.json({
     ok: true,
     brokerAccountId,
-    isPaused: acct?.isPaused ?? false,
-    isKillSwitched: acct?.isKillSwitched ?? false,
-    killSwitchedAt: acct?.killSwitchedAt?.toISOString?.() ?? null,
+    isPaused: acct.isPaused,
+    isKillSwitched: acct.isKillSwitched,
+    killSwitchedAt: acct.killSwitchedAt?.toISOString?.() ?? null,
   });
 }
 
@@ -66,30 +74,34 @@ async function handleSetPause(req: Request) {
     displayName: null,
   });
 
-  const state = await db.userTradingState.upsert({
+  const state = await db.userTradingState.findUnique({
     where: { userId: user.id },
-    update: {},
-    create: { userId: user.id },
+    select: { selectedBrokerAccountId: true },
   });
 
-  const brokerAccountId = state.selectedBrokerAccountId;
+  const brokerAccountId = state?.selectedBrokerAccountId ?? null;
   if (!brokerAccountId) {
     return new Response("No broker account selected", { status: 400 });
   }
 
   const currentAcc = await db.brokerAccount.findFirst({
     where: { id: brokerAccountId, userId: user.id },
-    select: { isPaused: true },
+    select: { id: true, isPaused: true },
   });
-  const prevPaused = currentAcc?.isPaused ?? false;
 
-  const nextAcc = await db.brokerAccount.update({
+  if (!currentAcc) {
+    return new Response("Broker account not found", { status: 404 });
+  }
+
+  const prevPaused = currentAcc.isPaused;
+
+  await db.brokerAccount.update({
     where: { id: brokerAccountId },
     data: {
       isPaused,
       pausedAt: isPaused ? new Date() : null,
     },
-    select: { id: true, isPaused: true },
+    select: { id: true },
   });
 
   await writeAuditLog(user.id, "TRADING_PAUSE_TOGGLED", {
@@ -103,13 +115,12 @@ async function handleSetPause(req: Request) {
     message: `Pause set to ${isPaused}`,
     data: { brokerAccountId, isPaused },
     userId: user.id,
+    brokerAccountId,
   });
 
-  await publishToUser(clerkUserId, "status_update", {
-    isPaused: nextAcc.isPaused,
-  });
+  await publishToUser(clerkUserId, "status_update", { isPaused });
 
-  // 🔔 Only notify if it changed (best-effort: NEVER break pause/run UX)
+  // Only notify if changed (best-effort)
   if (prevPaused !== isPaused) {
     try {
       await notify(
@@ -117,20 +128,16 @@ async function handleSetPause(req: Request) {
           type: "strategy_status_changed",
           userId: clerkUserId,
           ts: new Date().toISOString(),
-          isPaused: nextAcc.isPaused,
+          isPaused,
         } as any,
-        { prisma }
+        { prisma: db as any }
       );
     } catch (err) {
       console.error("STRATEGY_STATUS_NOTIFY_FAILED", err);
     }
   }
 
-  return Response.json({
-    ok: true,
-    brokerAccountId,
-    isPaused: nextAcc.isPaused,
-  });
+  return Response.json({ ok: true, brokerAccountId, isPaused });
 }
 
 export async function POST(req: Request) {
@@ -144,8 +151,6 @@ export async function PUT(req: Request) {
 export async function OPTIONS() {
   return new Response(null, {
     status: 204,
-    headers: {
-      Allow: "GET,POST,PUT,OPTIONS",
-    },
+    headers: { Allow: "GET,POST,PUT,OPTIONS" },
   });
 }
