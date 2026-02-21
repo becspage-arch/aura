@@ -106,14 +106,6 @@ export class CorePlus315Engine {
 
   // rolling windows
   private last15s: Candle15s[] = []; // keep small window; we only need last 3 + scan for retest
-  private pending3m: {
-    bucketStart: number;
-    open: number;
-    high: number;
-    low: number;
-    close: number;
-    count: number; // number of 15s candles in the bucket
-  } | null = null;
 
   // 3m series for FVG detection (need last 3 closed 3m candles)
   private last3m: Candle3m[] = [];
@@ -203,12 +195,6 @@ export class CorePlus315Engine {
     // store 15s
     this.last15s.push(c);
     if (this.last15s.length > 600) this.last15s.shift();
-
-    // build/close 3m
-    const maybe3m = this.ingest15sInto3m(c);
-    if (maybe3m) {
-      this.onClosed3m(maybe3m);
-    }
 
     // Need last 3 closed 15s candles to detect expansion
     if (this.last15s.length < 3) {
@@ -385,56 +371,11 @@ export class CorePlus315Engine {
   }
 
   /**
-   * Build 3m candles from closed 15s candles.
-   * Robust: closes the 3m candle when the bucket changes (does not require exactly 12 candles).
+   * DB-backed / builder-backed 3m feed.
+   * Call this ONLY when a 3m candle is truly "closed" by the 3m builder.
    */
-  private ingest15sInto3m(c: Candle15s): Candle3m | null {
-    const bucketStart = floorTo3m(c.time);
-
-    // first candle ever
-    if (!this.pending3m) {
-      this.pending3m = {
-        bucketStart,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        count: 1,
-      };
-      return null;
-    }
-
-    // if we moved into a new 3m bucket, close the previous one (even if count < 12)
-    if (this.pending3m.bucketStart !== bucketStart) {
-      const out: Candle3m = {
-        symbol: c.symbol,
-        time: this.pending3m.bucketStart,
-        open: this.pending3m.open,
-        high: this.pending3m.high,
-        low: this.pending3m.low,
-        close: this.pending3m.close,
-      };
-
-      // start the new bucket with the current candle
-      this.pending3m = {
-        bucketStart,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        count: 1,
-      };
-
-      return out;
-    }
-
-    // still inside the same bucket - update
-    this.pending3m.high = Math.max(this.pending3m.high, c.high);
-    this.pending3m.low = Math.min(this.pending3m.low, c.low);
-    this.pending3m.close = c.close;
-    this.pending3m.count += 1;
-
-    return null;
+  ingestClosed3m(c3: Candle3m) {
+    this.onClosed3m(c3);
   }
 
   /**

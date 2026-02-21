@@ -99,7 +99,7 @@ async function backfillMissing15sCandles(params: {
       },
     });
 
-    // ✅ feed the derived 3m builder with the *backfilled* candle
+    // Feed the 3m builder with the *backfilled* 15s candle
     await onClosed15sUpdate3m({
       db,
       candle: {
@@ -120,7 +120,7 @@ async function backfillMissing15sCandles(params: {
       },
     });
 
-    // emit backfill 15s close event for downstream observers (marked backfill)
+    // Emit backfill 15s close event for downstream observers (marked backfill)
     await emitSafe({
       name: "candle.15s.closed",
       ts: new Date().toISOString(),
@@ -197,6 +197,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
               broker: "projectx",
               data: c3,
             });
+
+            // IMPORTANT: flush is not a true close, don't feed it into the engine
           },
         });
       } catch {
@@ -266,6 +268,22 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
             broker: "projectx",
             data: c3,
           });
+
+          // Feed engine ONLY for real, non-backfill closes
+          if (!c3?.isBackfill && !c3?.isFlush) {
+            try {
+              deps.strategy?.ingestClosed3m({
+                symbol: c3.symbol,
+                time: c3.time,
+                open: Number(c3.open),
+                high: Number(c3.high),
+                low: Number(c3.low),
+                close: Number(c3.close),
+              });
+            } catch {
+              // ignore
+            }
+          }
         },
       });
 
