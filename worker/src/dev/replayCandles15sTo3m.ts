@@ -1,5 +1,12 @@
 // worker/src/dev/replayCandles15sTo3m.ts
-import "dotenv/config";
+import dotenv from "dotenv";
+
+// Load env the same way Next does (local first)
+dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env" });
+
+import { PrismaClient } from "@prisma/client";
+import { onClosed15sUpdate3m, flush3mForSymbol } from "../candles/deriveCandle3m.js";
 import { PrismaClient } from "@prisma/client";
 import { onClosed15sUpdate3m, flush3mForSymbol } from "../candles/deriveCandle3m.js";
 
