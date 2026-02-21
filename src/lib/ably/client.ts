@@ -20,18 +20,16 @@ export type TimelineItem = {
   event: AuraRealtimeEvent;
 };
 
-// ✅ Deterministic per-user UI channel (no caller-provided channelName)
-export function subscribeMyUiChannel(
-  onMessage: (item: TimelineItem) => void
-) {
-  const client = getAblyRealtime();
-
-  // Clerk sets clientId on the token request (we set it to userId).
-  // Ably exposes it after auth.
+function getMeOrThrow(client: Ably.Realtime) {
   const me = String((client as any).auth?.clientId ?? "").trim();
-  if (!me) {
-    throw new Error("Ably clientId missing (not authenticated yet)");
-  }
+  if (!me) throw new Error("Ably clientId missing (not authenticated yet)");
+  return me;
+}
+
+// ✅ Preferred: deterministic per-user UI channel
+export function subscribeMyUiChannel(onMessage: (item: TimelineItem) => void) {
+  const client = getAblyRealtime();
+  const me = getMeOrThrow(client);
 
   const channelName = `aura:ui:${me}`;
   const channel = client.channels.get(channelName);
@@ -46,4 +44,23 @@ export function subscribeMyUiChannel(
   return () => {
     channel.unsubscribe(handler);
   };
+}
+
+/**
+ * ✅ Back-compat for existing imports (AppTopBar/useAuraStream/etc).
+ * SECURITY: caller may ONLY subscribe to their own aura:ui:<me> channel.
+ */
+export function subscribeUserChannel(
+  channelName: string,
+  onMessage: (item: TimelineItem) => void
+) {
+  const client = getAblyRealtime();
+  const me = getMeOrThrow(client);
+
+  const expected = `aura:ui:${me}`;
+  if (channelName !== expected) {
+    throw new Error(`Forbidden channel. Expected ${expected}`);
+  }
+
+  return subscribeMyUiChannel(onMessage);
 }
