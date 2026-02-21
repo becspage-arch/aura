@@ -2,6 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useMemo, useReducer } from "react";
+import type { DashboardSummary } from "@/lib/dashboard/types";
 
 const MAX_EVENTS = 200;
 const MAX_ORDERS = 500;
@@ -65,7 +66,7 @@ export type DashboardState = {
     selectedBrokerAccountId?: string | null;
     selectedSymbol?: string | null;
   };
-  summary: any | null;
+  summary: DashboardSummary | null;
 };
 
 type Action =
@@ -74,7 +75,7 @@ type Action =
   | { type: "UPSERT_ORDER"; payload: DashboardOrder }
   | { type: "UPSERT_FILL"; payload: DashboardFill }
   | { type: "SET_TRADING_STATE"; payload: Partial<DashboardState["tradingState"]> }
-  | { type: "SET_SUMMARY"; payload: any };
+  | { type: "SET_SUMMARY"; payload: DashboardSummary };
 
 /* -------------------------
    Helpers

@@ -1,6 +1,7 @@
 // worker/src/broker/projectx/startProjectXUserFeed.ts
 import { ProjectXUserHub } from "./projectxUserHub.js";
 import { emitNotifyEvent } from "../../notifications/emitNotifyEvent.js";
+import { normalizeSide } from "../../lib/normalizeSide.js";
 
 function toNum(v: any): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -274,14 +275,11 @@ export async function startProjectXUserFeed(params: {
           toStr(payload?.instrumentId) ??
           "UNKNOWN";
 
-        // Side is numeric in your real payload (side: 1)
-        function normalizeSide(v: any): "BUY" | "SELL" {
-          if (typeof v === "number") return v === 1 ? "SELL" : "BUY";
-          const s = (toStr(v) ?? "").toLowerCase();
-          if (s.includes("sell") || s === "s" || s === "short") return "SELL";
-          return "BUY";
-        }
-        const fillSide = normalizeSide(payload?.side);
+        const fillSideNorm = normalizeSide(payload?.side);
+        if (!fillSideNorm) return;
+
+        const fillSide: "BUY" | "SELL" =
+          fillSideNorm === "buy" ? "BUY" : "SELL";
 
         const fillQty = toNum(payload?.qty ?? payload?.quantity ?? payload?.size) ?? 0;
 
@@ -475,7 +473,7 @@ export async function startProjectXUserFeed(params: {
         JSON.stringify(payload)
       );
 
-            // If this "position" callback is receiving GatewayUserOrder payloads, persist them here.
+      // If this "position" callback is receiving GatewayUserOrder payloads, persist them here.
       const looksLikeOrder =
         payload &&
         (payload.limitPrice != null ||
@@ -511,7 +509,17 @@ export async function startProjectXUserFeed(params: {
               toStr(payload?.instrumentId) ??
               "UNKNOWN";
 
-            const side = normalizeSide(payload?.side);
+            const sideNorm = normalizeSide(payload?.side);
+            if (!sideNorm) return;
+
+            const side: "BUY" | "SELL" =
+              sideNorm === "buy" ? "BUY" : "SELL";
+
+            if (!sideNorm) return;
+
+            const side: "BUY" | "SELL" =
+              sideNorm === "buy" ? "BUY" : "SELL";
+
             const qty = toNum(payload?.size ?? payload?.qty ?? payload?.quantity) ?? 0;
 
             const stopPrice = toNum(payload?.stopPrice);

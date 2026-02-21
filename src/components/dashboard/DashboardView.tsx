@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDashboard } from "@/components/dashboard/DashboardStore";
 import { fmtMoneyUsd, fmtTimeLondon } from "@/components/dashboard/dashboardFormat";
+import type { DashboardSummary, RangeKey } from "@/lib/dashboard/types";
 
 import DashboardKpiRow from "@/components/dashboard/sections/DashboardKpiRow";
 import DashboardStatusStrip from "@/components/dashboard/sections/DashboardStatusStrip";
@@ -12,36 +13,33 @@ import DashboardMonthlyPnlCard from "@/components/dashboard/sections/DashboardMo
 import DashboardPerformanceRow from "@/components/dashboard/sections/DashboardPerformanceRow";
 import DashboardRecentTradesCard from "@/components/dashboard/sections/DashboardRecentTradesCard";
 
-function normalizeSummary(raw: any) {
-  if (!raw) return null;
-  if (raw?.ok && raw?.kpis) return raw;
-  if (raw?.ok && raw?.data && raw.data?.kpis) return raw.data;
-  if (raw?.kpis) return raw;
-  return null;
-}
-
 export default function DashboardView({ clerkUserId }: { clerkUserId?: string }) {
   const { state, dispatch } = useDashboard();
-  const [cumRange, setCumRange] = useState<"1M" | "3M" | "6M" | "1Y" | "ALL">("1Y");
+  const [cumRange, setCumRange] = useState<RangeKey>("1Y");
 
   useEffect(() => {
-    async function load() {
+    let cancelled = false;
+
+    (async () => {
       try {
         const res = await fetch(`/api/dashboard/summary?range=${cumRange}`, { method: "GET" });
-        const json = await res.json().catch(() => null);
-        if (res.ok) {
-          const normalized = normalizeSummary(json);
-          if (normalized) {
-            dispatch({ type: "SET_SUMMARY", payload: normalized });
-          } else if (json?.ok) {
-            console.error("DASHBOARD_SUMMARY_UNEXPECTED_SHAPE", json);
-          }
+        const json = (await res.json().catch(() => null)) as DashboardSummary | any;
+
+        if (cancelled) return;
+
+        if (res.ok && json?.ok === true) {
+          dispatch({ type: "SET_SUMMARY", payload: json as DashboardSummary });
+        } else if (res.ok) {
+          console.error("DASHBOARD_SUMMARY_UNEXPECTED_SHAPE", json);
         }
       } catch {
         // ignore
       }
-    }
-    load();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [dispatch, cumRange]);
 
   const channelName = useMemo(() => (clerkUserId ? `user:${clerkUserId}` : null), [clerkUserId]);
