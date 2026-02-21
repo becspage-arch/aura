@@ -118,7 +118,7 @@ async function main() {
 
   console.log(`[${env.WORKER_NAME}] broker account scope`, acct);
 
-  // 5c) Heartbeat loop
+  // 5c) Heartbeat loop (updates BrokerAccount.lastHeartbeatAt)
   const heartbeatEveryMs = 15_000;
 
   const heartbeatInterval = setInterval(() => {
@@ -139,6 +139,43 @@ async function main() {
   const cleanupHeartbeat = () => clearInterval(heartbeatInterval);
   process.once("SIGINT", cleanupHeartbeat);
   process.once("SIGTERM", cleanupHeartbeat);
+
+  // 5d) Worker uptime heartbeat (writes EventLog once per minute)
+  const workerHeartbeatEveryMs = 60_000;
+
+  const writeWorkerHeartbeat = async () => {
+    try {
+      await db.eventLog.create({
+        data: {
+          type: "worker_heartbeat",
+          level: "info",
+          message: "worker heartbeat",
+          data: {
+            workerName: env.WORKER_NAME,
+            workerEnv: env.WORKER_ENV,
+            dryRun: DRY_RUN,
+          },
+          userId: userId,
+          brokerAccountId: brokerAccountId,
+        },
+        select: { id: true },
+      });
+    } catch (e) {
+      console.warn(`[${env.WORKER_NAME}] worker_heartbeat write failed`, {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  };
+
+  // write immediately, then every minute
+  await writeWorkerHeartbeat();
+  const workerHeartbeatInterval = setInterval(() => {
+    void writeWorkerHeartbeat();
+  }, workerHeartbeatEveryMs);
+
+  const cleanupWorkerHeartbeat = () => clearInterval(workerHeartbeatInterval);
+  process.once("SIGINT", cleanupWorkerHeartbeat);
+  process.once("SIGTERM", cleanupWorkerHeartbeat);
 
   // 6) Exec listener
   const ablyKey = (process.env.ABLY_API_KEY || "").trim();
