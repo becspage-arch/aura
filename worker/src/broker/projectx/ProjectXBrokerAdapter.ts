@@ -1339,44 +1339,103 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   }
 
   async placeBracketOrder(plan: PlaceBracketOrderPlan): Promise<PlaceBracketOrderResult> {
-  const caps = this.capabilities;
+    const caps = this.capabilities;
 
-  const canFlowA =
-    caps.supportsBracketInSingleCall &&
-    typeof (this as any).placeOrderWithBrackets === "function";
+    const canFlowA =
+      caps.supportsBracketInSingleCall && typeof (this as any).placeOrderWithBrackets === "function";
 
-  const canFlowB =
-    caps.supportsAttachBracketsAfterEntry &&
-    typeof (this as any).placeOrder === "function" &&
-    typeof (this as any).placeBracketsAfterEntry === "function";
+    const canFlowB =
+      caps.supportsAttachBracketsAfterEntry &&
+      typeof (this as any).placeOrder === "function" &&
+      typeof (this as any).placeBracketsAfterEntry === "function";
 
-  if (!canFlowA && !canFlowB) {
-    throw new Error("Broker does not support bracket placement");
-  }
+    if (!canFlowA && !canFlowB) {
+      throw new Error("ProjectXBrokerAdapter: no supported bracket placement flow");
+    }
 
-  // -------- Flow A --------
-  if (canFlowA) {
-    const res = await (this as any).placeOrderWithBrackets({
+    // -------------------------
+    // Flow A (single call)
+    // NOTE: ProjectX caps currently set this false, but keep it correct anyway.
+    // -------------------------
+    if (canFlowA) {
+      const res = await this.placeOrderWithBrackets({
+        contractId: plan.contractId,
+        side: plan.side,
+        size: plan.size,
+        type: plan.entryType,
+        limitPrice: null,
+        stopPrice: null,
+        stopLossTicks: plan.stopLossTicks ?? null,
+        takeProfitTicks: plan.takeProfitTicks ?? null,
+        customTag: plan.customTag ?? null,
+      });
+
+      return {
+        entryOrderId: res?.orderId != null ? String(res.orderId) : null,
+        stopOrderId: null, // ProjectX single-call doesn't return these IDs here
+        takeProfitOrderId: null,
+        raw: res,
+      };
+    }
+
+    // -------------------------
+    // Flow B (entry first, then separate exits)
+    // -------------------------
+    const entryRes = await this.placeOrder({
       contractId: plan.contractId,
-      symbol: plan.symbol,
       side: plan.side,
       size: plan.size,
       type: plan.entryType,
-      stopLossTicks: plan.stopLossTicks ?? null,
-      takeProfitTicks: plan.takeProfitTicks ?? null,
-      stopPrice: plan.stopPrice ?? null,
-      takeProfitPrice: plan.takeProfitPrice ?? null,
+      limitPrice: null,
+      stopPrice: null,
       customTag: plan.customTag ?? null,
     });
 
+    const entryOrderId = entryRes?.orderId != null ? String(entryRes.orderId) : null;
+
+    const wantsSL =
+      plan.stopLossTicks != null ||
+      (plan.stopPrice != null && Number.isFinite(Number(plan.stopPrice)));
+
+    const wantsTP =
+      plan.takeProfitTicks != null ||
+      (plan.takeProfitPrice != null && Number.isFinite(Number(plan.takeProfitPrice)));
+
+    let stopOrderId: string | null = null;
+    let takeProfitOrderId: string | null = null;
+
+    if (wantsSL || wantsTP) {
+      const bracketRes = await this.placeBracketsAfterEntry({
+        entryOrderId,
+        contractId: plan.contractId,
+        side: plan.side,
+        size: plan.size,
+        stopLossTicks: plan.stopLossTicks ?? null,
+        takeProfitTicks: plan.takeProfitTicks ?? null,
+        stopPrice: plan.stopPrice ?? null,
+        takeProfitPrice: plan.takeProfitPrice ?? null,
+        customTag: plan.customTag ?? null,
+      });
+
+      stopOrderId =
+        bracketRes?.stopOrderId != null ? String(bracketRes.stopOrderId) : null;
+
+      takeProfitOrderId =
+        bracketRes?.takeProfitOrderId != null ? String(bracketRes.takeProfitOrderId) : null;
+
+      return {
+        entryOrderId,
+        stopOrderId,
+        takeProfitOrderId,
+        raw: { entry: entryRes, brackets: bracketRes },
+      };
+    }
+
     return {
-      entryOrderId: res?.orderId != null ? String(res.orderId) : null,
-      stopOrderId: res?.stopOrderId != null ? String(res.stopOrderId) : null,
-      takeProfitOrderId:
-        res?.takeProfitOrderId != null
-          ? String(res.takeProfitOrderId)
-          : null,
-      raw: res,
+      entryOrderId,
+      stopOrderId: null,
+      takeProfitOrderId: null,
+      raw: { entry: entryRes, brackets: null },
     };
   }
 
