@@ -16,6 +16,7 @@ type DdRow = { max_dd: string | null; peak: string | null };
 type DailyRow = { day: string; pnl: string };
 
 type RangeKey = "1M" | "3M" | "6M" | "1Y" | "ALL";
+type EquityRow = { equity: string | null };
 
 function normalizeRange(v: string | null): RangeKey {
   const s = (v || "").toUpperCase().trim();
@@ -96,6 +97,100 @@ export async function GET(req: Request) {
 
   const accountEquityUsdNum =
     latestSnapshot?.equityUsd != null ? Number(latestSnapshot.equityUsd) : null;
+
+  // ---- KPI deltas ----
+
+  // Yesterday P&L (Europe/London)
+  const [yesterdaySum] = await prisma.$queryRaw<SumRow[]>`
+    SELECT COALESCE(SUM("realizedPnlUsd"), 0)::text AS v
+    FROM "Trade"
+    WHERE "clerkUserId" = ${clerkUserId}
+      AND ("closedAt" AT TIME ZONE 'Europe/London')::date
+          = ((NOW() AT TIME ZONE 'Europe/London')::date - INTERVAL '1 day')::date
+  `;
+
+  const todayPnlUsdNum = Number(todaySum?.v ?? 0);
+  const yesterdayPnlUsdNum = Number(yesterdaySum?.v ?? 0);
+
+  const todayVsYesterdayUsd = todayPnlUsdNum - yesterdayPnlUsdNum;
+  const todayVsYesterdayPct =
+    Math.abs(yesterdayPnlUsdNum) > 0
+      ? (todayVsYesterdayUsd / Math.abs(yesterdayPnlUsdNum)) * 100
+      : null;
+
+  // Month-to-date vs previous month-to-date (same day-count, Europe/London)
+  const [mtdSum] = await prisma.$queryRaw<SumRow[]>`
+    WITH now_london AS (
+      SELECT (NOW() AT TIME ZONE 'Europe/London') AS n
+    ),
+    bounds AS (
+      SELECT
+        date_trunc('month', n)::timestamp AS cur_start,
+        date_trunc('month', n - INTERVAL '1 month')::timestamp AS prev_start,
+        EXTRACT(DAY FROM n)::int AS day_n
+      FROM now_london
+    )
+    SELECT COALESCE(SUM(t."realizedPnlUsd"), 0)::text AS v
+    FROM "Trade" t, bounds b
+    WHERE t."clerkUserId" = ${clerkUserId}
+      AND (t."closedAt" AT TIME ZONE 'Europe/London') >= b.cur_start
+      AND (t."closedAt" AT TIME ZONE 'Europe/London') < (b.cur_start + (b.day_n || ' days')::interval)
+  `;
+
+  const [prevMtdSum] = await prisma.$queryRaw<SumRow[]>`
+    WITH now_london AS (
+      SELECT (NOW() AT TIME ZONE 'Europe/London') AS n
+    ),
+    bounds AS (
+      SELECT
+        date_trunc('month', n)::timestamp AS cur_start,
+        date_trunc('month', n - INTERVAL '1 month')::timestamp AS prev_start,
+        EXTRACT(DAY FROM n)::int AS day_n
+      FROM now_london
+    )
+    SELECT COALESCE(SUM(t."realizedPnlUsd"), 0)::text AS v
+    FROM "Trade" t, bounds b
+    WHERE t."clerkUserId" = ${clerkUserId}
+      AND (t."closedAt" AT TIME ZONE 'Europe/London') >= b.prev_start
+      AND (t."closedAt" AT TIME ZONE 'Europe/London') < (b.prev_start + (b.day_n || ' days')::interval)
+  `;
+
+  const mtdPnlUsdNum = Number(mtdSum?.v ?? 0);
+  const prevMtdPnlUsdNum = Number(prevMtdSum?.v ?? 0);
+
+  const mtdVsPrevMtdUsd = mtdPnlUsdNum - prevMtdPnlUsdNum;
+  const mtdVsPrevMtdPct =
+    Math.abs(prevMtdPnlUsdNum) > 0
+      ? (mtdVsPrevMtdUsd / Math.abs(prevMtdPnlUsdNum)) * 100
+      : null;
+
+  // Equity % vs yesterday close (requires snapshots)
+  const [ydayEquityRow] = selectedAccount?.id
+    ? await prisma.$queryRaw<EquityRow[]>`
+        SELECT "equityUsd"::text AS equity
+        FROM "AccountSnapshot"
+        WHERE "brokerAccountId" = ${selectedAccount.id}
+          AND ("createdAt" AT TIME ZONE 'Europe/London')::date
+              < (NOW() AT TIME ZONE 'Europe/London')::date
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+      `
+    : ([{ equity: null }] as any);
+
+  const equityYesterdayCloseNum =
+    ydayEquityRow?.equity != null ? Number(ydayEquityRow.equity) : null;
+
+  const equityVsYesterdayUsd =
+    accountEquityUsdNum != null && equityYesterdayCloseNum != null
+      ? accountEquityUsdNum - equityYesterdayCloseNum
+      : null;
+
+  const equityVsYesterdayPct =
+    equityVsYesterdayUsd != null &&
+    equityYesterdayCloseNum != null &&
+    equityYesterdayCloseNum > 0
+      ? (equityVsYesterdayUsd / equityYesterdayCloseNum) * 100
+      : null;
 
   // ---- KPI sums (Europe/London day/month boundaries)
   const [todaySum] = await prisma.$queryRaw<SumRow[]>`
@@ -246,6 +341,21 @@ export async function GET(req: Request) {
       accountEquityUsd: accountEquityUsdNum === null ? null : accountEquityUsdNum.toFixed(2),
     },
 
+    deltas: {
+      todayVsYesterday: {
+        usd: todayVsYesterdayUsd.toFixed(2),
+        pct: todayVsYesterdayPct === null ? null : Number(todayVsYesterdayPct.toFixed(2)),
+      },
+      monthToDateVsPrevMonthToDate: {
+        usd: mtdVsPrevMtdUsd.toFixed(2),
+        pct: mtdVsPrevMtdPct === null ? null : Number(mtdVsPrevMtdPct.toFixed(2)),
+      },
+      equityVsYesterdayClose: {
+        usd: equityVsYesterdayUsd === null ? null : Number(equityVsYesterdayUsd.toFixed(2)),
+        pct: equityVsYesterdayPct === null ? null : Number(equityVsYesterdayPct.toFixed(2)),
+      },
+    },
+
     status: {
       strategy: userState?.isPaused ? "PAUSED" : "ACTIVE",
       trading: userState?.isKillSwitched ? "STOPPED" : "LIVE",
@@ -254,6 +364,7 @@ export async function GET(req: Request) {
       symbol: userState?.selectedSymbol ?? "MGC",
       selectedBrokerAccountId: userState?.selectedBrokerAccountId ?? null,
       lastTradeAt,
+      brokerConnected,
     },
 
     performance30d: {
@@ -278,7 +389,7 @@ export async function GET(req: Request) {
       execKey: t.execKey,
       timeIso: t.closedAt.toISOString(),
 
-      pair: t.symbol, // keep simple now; later can show "MGC" + contractId tooltip etc
+      pair: t.symbol,
       type: t.side === "BUY" ? "Long" : "Short",
 
       entryPrice: t.entryPriceAvg.toString(),
@@ -288,7 +399,13 @@ export async function GET(req: Request) {
 
       qty: t.qty.toString(),
       status:
-        t.outcome === "WIN" ? "Won" : t.outcome === "LOSS" ? "Lost" : t.outcome === "BREAKEVEN" ? "Breakeven" : "—",
+        t.outcome === "WIN"
+          ? "Won"
+          : t.outcome === "LOSS"
+            ? "Lost"
+            : t.outcome === "BREAKEVEN"
+              ? "Breakeven"
+              : "—",
       exitReason: t.exitReason,
     })),
   });

@@ -4,6 +4,7 @@ import { PrismaClient, OrderSide } from "@prisma/client";
 import type { IBrokerAdapter } from "../broker/IBrokerAdapter.js";
 import { logTag } from "../lib/logTags";
 import { createHash } from "crypto";
+import { emitExecEvent } from "./execEvents.js";
 
 export type ExecuteBracketInput = {
   execKey: string; // deterministic idempotency key
@@ -173,6 +174,23 @@ export async function executeBracket(params: {
   }
 
   const { prisma, broker, input } = params;
+  await emitExecEvent({
+    prisma,
+    userId: input.userId,
+    type: "exec.requested",
+    message: "executeBracket requested",
+    data: {
+      execKey: input.execKey,
+      broker: (broker as any)?.name ?? null,
+      brokerName: input.brokerName,
+      contractId: input.contractId,
+      symbol: input.symbol ?? null,
+      side: input.side,
+      qty: input.qty,
+      entryType: input.entryType,
+    },
+  });
+
   const resolvedSymbol = (input.symbol ?? input.contractId ?? null);
 
   // --- MAX OPEN TRADES (DB guard) + anti-double-click lock ---
@@ -416,6 +434,21 @@ export async function executeBracket(params: {
         status: existing.status,
         entryOrderId: existing.entryOrderId ?? null,
       });
+      await emitExecEvent({
+        prisma,
+        userId: input.userId,
+        executionId: existing.id,
+        type: "exec.duplicate_ignored",
+        message: "Idempotent hit - existing execution returned",
+        data: {
+          execKey: input.execKey,
+          status: existing.status,
+          entryOrderId: existing.entryOrderId ?? null,
+          stopOrderId: existing.stopOrderId ?? null,
+          tpOrderId: existing.tpOrderId ?? null,
+        },
+        level: "warn",
+      });
       return existing;
     }
 
@@ -435,6 +468,15 @@ export async function executeBracket(params: {
         customTag: brokerTag,
         status: "INTENT_CREATED",
       },
+    });
+
+    await emitExecEvent({
+      prisma,
+      userId: input.userId,
+      executionId: exec.id,
+      type: "exec.intent_created",
+      message: "Execution intent created",
+      data: { execKey: input.execKey },
     });
 
     // -------------------------
@@ -465,6 +507,20 @@ export async function executeBracket(params: {
         },
       });
 
+      await emitExecEvent({
+        prisma,
+        userId: input.userId,
+        executionId: updated.id,
+        type: "exec.brackets_submitted",
+        message: "Entry and exits submitted to broker",
+        data: {
+          execKey: input.execKey,
+          entryOrderId: updated.entryOrderId ?? null,
+          stopOrderId: updated.stopOrderId ?? null,
+          tpOrderId: updated.tpOrderId ?? null,
+        },
+      });
+
       logTag("[execution] BRACKET_SUBMITTED", {
         execKey: input.execKey,
         executionId: updated.id,
@@ -481,6 +537,15 @@ export async function executeBracket(params: {
         stopOrderId: updated.stopOrderId ?? null,
         tpOrderId: updated.tpOrderId ?? null,
         tag: brokerTag,
+      });
+
+      await emitExecEvent({
+        prisma,
+        userId: input.userId,
+        executionId: updated.id,
+        type: "exec.oco_watch_started",
+        message: "OCO watcher started",
+        data: { execKey: input.execKey },
       });
 
       return updated;
@@ -506,6 +571,16 @@ export async function executeBracket(params: {
             },
           },
         },
+      });
+
+      await emitExecEvent({
+        prisma,
+        userId: input.userId,
+        executionId: exec.id,
+        type: "exec.failed",
+        message: "Execution failed",
+        data: { execKey: input.execKey, error: errMsg },
+        level: "error",
       });
 
       throw e;
