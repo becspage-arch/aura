@@ -74,6 +74,52 @@ export async function startProjectXUserFeed(params: {
     });
   }
 
+  const heartbeatLastWriteMs = new Map<string, number>();
+  const HEARTBEAT_WRITE_THROTTLE_MS = 30_000;
+
+  async function touchBrokerHeartbeat(params: {
+    db: any;
+    userId: string;
+    brokerName: string;
+    acctExternalId: string;
+  }) {
+    const key = `${params.brokerName}:${params.acctExternalId}`;
+    const now = Date.now();
+    const last = heartbeatLastWriteMs.get(key) ?? 0;
+
+    if (now - last < HEARTBEAT_WRITE_THROTTLE_MS) return;
+    heartbeatLastWriteMs.set(key, now);
+
+    try {
+      await params.db.brokerAccount.upsert({
+        where: {
+          brokerName_externalId: {
+            brokerName: params.brokerName,
+            externalId: params.acctExternalId,
+          },
+        },
+        create: {
+          userId: params.userId,
+          brokerName: params.brokerName,
+          externalId: params.acctExternalId,
+          accountLabel: null,
+          lastHeartbeatAt: new Date(),
+        },
+        update: {
+          userId: params.userId,
+          lastHeartbeatAt: new Date(),
+        },
+        select: { id: true },
+      });
+    } catch (e) {
+      console.warn("[broker-heartbeat] touch failed (non-fatal)", {
+        brokerName: params.brokerName,
+        acctExternalId: params.acctExternalId,
+        err: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   function getCachedExitPnlForPosition(positionPayload: any): number | null {
     const key = cacheKey(positionPayload);
     if (!key) return null;

@@ -35,6 +35,7 @@ model BrokerAccount {
   @@unique([brokerName, externalId])
   @@index([userId])
   @@index([brokerName])
+  lastHeartbeatAt DateTime?
 }
 
 model Order {

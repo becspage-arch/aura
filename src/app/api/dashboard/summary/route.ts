@@ -70,6 +70,21 @@ export async function GET(req: Request) {
     },
   });
 
+  const selectedAccount = userState?.selectedBrokerAccountId
+  ? await prisma.brokerAccount.findUnique({
+      where: { id: userState.selectedBrokerAccountId },
+      select: { brokerName: true, lastHeartbeatAt: true },
+    })
+  : null;
+
+  const HEARTBEAT_OK_MS = 120_000; // 2 minutes
+  const nowMs = Date.now();
+  const hbMs = selectedAccount?.lastHeartbeatAt
+    ? selectedAccount.lastHeartbeatAt.getTime()
+    : null;
+
+  const brokerConnected = hbMs != null && nowMs - hbMs <= HEARTBEAT_OK_MS;
+
   // ---- KPI sums (Europe/London day/month boundaries)
   const [todaySum] = await prisma.$queryRaw<SumRow[]>`
     SELECT COALESCE(SUM("realizedPnlUsd"), 0)::text AS v
