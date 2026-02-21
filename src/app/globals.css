@@ -1824,3 +1824,9 @@ html.light .aura-cum-day {
   font-size: 12px;
   opacity: 0.7;
 }
+
+.aura-sidebar__profile {
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+}

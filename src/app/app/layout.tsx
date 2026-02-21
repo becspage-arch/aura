@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AppTopBar } from "@/components/AppTopBar";
 import { NotificationsListener } from "@/components/NotificationsListener";
 import AppProviders from "./providers";
+import SidebarProfile from "@/components/sidebar/SidebarProfile";
 
 const navMain = [
   { href: "/app", label: "Dashboard" },
@@ -58,13 +59,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <NavSection title="Account" items={navAccount} />
 
           <div className="aura-sidebar__bottom">
-            <div className="aura-sidebar__profile">
-              <div className="aura-sidebar__avatar" aria-hidden="true" />
-              <div className="aura-sidebar__profileText">
-                <div className="aura-sidebar__profileName">Profile</div>
-                <div className="aura-sidebar__profileSub">Signed in</div>
-              </div>
-            </div>
+            <SidebarProfile />
           </div>
         </aside>
 
