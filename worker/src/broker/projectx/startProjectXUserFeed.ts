@@ -175,8 +175,6 @@ export async function startProjectXUserFeed(params: {
         if (acctExternalId && orderExternalId) {
           const now = new Date();
 
-          const now = new Date();
-
           const brokerAccount = await db.brokerAccount.upsert({
             where: {
               brokerName_externalId: {
