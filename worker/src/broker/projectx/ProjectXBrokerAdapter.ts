@@ -4,6 +4,11 @@ import type { IBrokerAdapter } from "../IBrokerAdapter.js";
 import { logTag } from "../../lib/logTags";
 import type { BrokerCapabilities } from "../BrokerCapabilities.js";
 
+import type {
+  PlaceBracketOrderPlan,
+  PlaceBracketOrderResult,
+} from "../IBrokerAdapter.js";
+
 const caps: BrokerCapabilities = {
   supportsBracketInSingleCall: false,
   supportsAttachBracketsAfterEntry: true,
@@ -1332,4 +1337,97 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     this.contractTickValue = null;
     console.log("[projectx-adapter] disconnected");
   }
+
+  async placeBracketOrder(plan: PlaceBracketOrderPlan): Promise<PlaceBracketOrderResult> {
+  const caps = this.capabilities;
+
+  const canFlowA =
+    caps.supportsBracketInSingleCall &&
+    typeof (this as any).placeOrderWithBrackets === "function";
+
+  const canFlowB =
+    caps.supportsAttachBracketsAfterEntry &&
+    typeof (this as any).placeOrder === "function" &&
+    typeof (this as any).placeBracketsAfterEntry === "function";
+
+  if (!canFlowA && !canFlowB) {
+    throw new Error("Broker does not support bracket placement");
+  }
+
+  // -------- Flow A --------
+  if (canFlowA) {
+    const res = await (this as any).placeOrderWithBrackets({
+      contractId: plan.contractId,
+      symbol: plan.symbol,
+      side: plan.side,
+      size: plan.size,
+      type: plan.entryType,
+      stopLossTicks: plan.stopLossTicks ?? null,
+      takeProfitTicks: plan.takeProfitTicks ?? null,
+      stopPrice: plan.stopPrice ?? null,
+      takeProfitPrice: plan.takeProfitPrice ?? null,
+      customTag: plan.customTag ?? null,
+    });
+
+    return {
+      entryOrderId: res?.orderId != null ? String(res.orderId) : null,
+      stopOrderId: res?.stopOrderId != null ? String(res.stopOrderId) : null,
+      takeProfitOrderId:
+        res?.takeProfitOrderId != null
+          ? String(res.takeProfitOrderId)
+          : null,
+      raw: res,
+    };
+  }
+
+  // -------- Flow B --------
+  const entryRes = await (this as any).placeOrder({
+    contractId: plan.contractId,
+    symbol: plan.symbol,
+    side: plan.side,
+    size: plan.size,
+    type: plan.entryType,
+    customTag: plan.customTag ?? null,
+  });
+
+  const entryOrderId =
+    entryRes?.orderId != null ? String(entryRes.orderId) : null;
+
+  let stopOrderId: string | null = null;
+  let takeProfitOrderId: string | null = null;
+  let raw: any = { entry: entryRes };
+
+  if (plan.stopLossTicks || plan.takeProfitTicks) {
+    const bracketRes = await (this as any).placeBracketsAfterEntry({
+      entryOrderId,
+      contractId: plan.contractId,
+      side: plan.side,
+      size: plan.size,
+      stopLossTicks: plan.stopLossTicks ?? null,
+      takeProfitTicks: plan.takeProfitTicks ?? null,
+      stopPrice: plan.stopPrice ?? null,
+      takeProfitPrice: plan.takeProfitPrice ?? null,
+      customTag: plan.customTag ?? null,
+    });
+
+    stopOrderId =
+      bracketRes?.stopOrderId != null
+        ? String(bracketRes.stopOrderId)
+        : null;
+
+    takeProfitOrderId =
+      bracketRes?.takeProfitOrderId != null
+        ? String(bracketRes.takeProfitOrderId)
+        : null;
+
+    raw = { entry: entryRes, brackets: bracketRes };
+  }
+
+  return {
+    entryOrderId,
+    stopOrderId,
+    takeProfitOrderId,
+    raw,
+  };
+}
 }

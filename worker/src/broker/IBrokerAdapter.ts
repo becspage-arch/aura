@@ -1,3 +1,5 @@
+import type { BrokerCapabilities } from "./BrokerCapabilities.js";
+
 export type BrokerName = "cqg" | "rithmic" | "projectx" | "mock";
 
 export interface BrokerContext {
@@ -5,43 +7,55 @@ export interface BrokerContext {
   env: "demo" | "live";
 }
 
+export type PlaceBracketOrderPlan = {
+  contractId: string;
+  symbol?: string | null;
+
+  side: "buy" | "sell";
+  size: number;
+  entryType: "market" | "limit" | "stop";
+
+  stopLossTicks?: number | null;
+  takeProfitTicks?: number | null;
+
+  stopPrice?: number | null;
+  takeProfitPrice?: number | null;
+
+  customTag?: string | null;
+};
+
+export type PlaceBracketOrderResult = {
+  entryOrderId: string | null;
+  stopOrderId: string | null;
+  takeProfitOrderId: string | null;
+  raw: any;
+};
+
 export interface IBrokerAdapter {
   readonly name: BrokerName;
+
+  readonly capabilities: BrokerCapabilities;
 
   // lifecycle
   connect(): Promise<void>;
   authorize(): Promise<void>;
   disconnect(): Promise<void>;
 
-  // keepalive hooks (no-op if not needed)
   startKeepAlive(): void;
   stopKeepAlive(): void;
 
-  // optional helpers (safe for adapters that don't implement them)
+  // optional helpers
   warmup?(): Promise<void>;
   getStatus?(): Record<string, unknown>;
   getAuthToken?(): string | null;
-}
 
-import type { BrokerCapabilities } from "./BrokerCapabilities.js";
-
-export interface IBrokerAdapter {
-  readonly name: string;
-
-  readonly capabilities: BrokerCapabilities;
-
-  // existing lifecycle
-  connect(): Promise<void>;
-  authorize(): Promise<void>;
-  startKeepAlive(): void;
-  stopKeepAlive(): void;
-  disconnect(): Promise<void>;
-
-  // Execution methods (already exist on ProjectX adapter)
-  // Flow A:
+  // Legacy execution methods (still used internally by adapters)
   placeOrderWithBrackets?: (input: any) => Promise<any>;
-
-  // Flow B:
   placeOrder?: (input: any) => Promise<any>;
   placeBracketsAfterEntry?: (input: any) => Promise<any>;
+
+  // NEW unified execution method (8E.7)
+  placeBracketOrder(
+    plan: PlaceBracketOrderPlan
+  ): Promise<PlaceBracketOrderResult>;
 }
