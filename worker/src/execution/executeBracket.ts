@@ -490,7 +490,6 @@ export async function executeBracket(params: {
         size: qtyClamped,
         type: input.entryType,
         limitPrice: null,
-        stopPrice: null,
         stopLossTicks: wantsBrackets ? sl : null,
         takeProfitTicks: wantsBrackets ? tp : null,
         customTag: brokerTag,
