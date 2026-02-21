@@ -129,10 +129,11 @@ async function main() {
         select: { id: true },
       })
       .catch((e) => {
-        console.warn(`[${env.WORKER_NAME}] heartbeat failed`, {
-          brokerAccountId,
-          error: e instanceof Error ? e.message : String(e),
-        });
+        console.warn(
+          `[${env.WORKER_NAME}] heartbeat failed brokerAccountId=${brokerAccountId} error=${
+            e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+          }`
+        );
       });
   }, heartbeatEveryMs);
 
@@ -258,4 +259,3 @@ main()
   .finally(async () => {
     await db.$disconnect();
   });
-  
