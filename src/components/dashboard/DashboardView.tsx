@@ -76,11 +76,6 @@ export default function DashboardView({ clerkUserId }: { clerkUserId?: string })
 
   return (
     <div className="aura-page">
-      <div className="aura-row-between">
-        <div>
-          <p className="aura-page-subtitle">Profit-first overview. Calm, clear, in control.</p>
-        </div>
-      </div>
 
       <DashboardKpiRow
         totalProfit={totalProfit}
