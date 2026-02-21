@@ -213,3 +213,48 @@ async function upsertCandle3m(params: {
     },
   });
 }
+
+export async function flush3mForSymbol(params: {
+  db: PrismaClient;
+  symbol: string;
+  emit3mClosed: (data: {
+    symbol: string;
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    count15s: number;
+    first15sTime: number;
+    last15sTime: number;
+    isFlush?: boolean;
+  }) => Promise<void>;
+}) {
+  const { db, symbol, emit3mClosed } = params;
+
+  const cur = perSymbol.get(symbol);
+  if (!cur) return;
+
+  await upsertCandle3m({
+    db,
+    symbol,
+    time: cur.bucketTime,
+    open: cur.open,
+    high: cur.high,
+    low: cur.low,
+    close: cur.close,
+  });
+
+  await emit3mClosed({
+    symbol,
+    time: cur.bucketTime,
+    open: cur.open,
+    high: cur.high,
+    low: cur.low,
+    close: cur.close,
+    count15s: cur.count,
+    first15sTime: cur.firstTime,
+    last15sTime: cur.lastTime,
+    isFlush: true,
+  });
+}

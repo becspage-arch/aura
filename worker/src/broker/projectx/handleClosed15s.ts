@@ -8,6 +8,7 @@ import { buildBracketFromIntent } from "../../trading/buildBracket.js";
 import { executeBracket } from "../../execution/executeBracket.js";
 import { logTag } from "../../lib/logTags";
 import { onClosed15sUpdate3m } from "../../candles/deriveCandle3m.js";
+import { flush3mForSymbol } from "../../candles/deriveCandle3m.js";
 
 export type HandleClosed15sDeps = {
   env: { WORKER_NAME: string };
@@ -181,12 +182,35 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
 
     // Always emit close events for forceClose / tiny bars, but don’t trade
     if (params.source === "forceClose" || ticks <= 1) {
+      // ✅ flush any in-progress 3m bucket before we exit
+      try {
+        const db = deps.getPrisma();
+        const symbol = (process.env.PROJECTX_SYMBOL || "").trim() || closed.data.contractId;
+
+        await flush3mForSymbol({
+          db,
+          symbol,
+          emit3mClosed: async (c3) => {
+            await deps.emitSafe({
+              name: "candle.3m.closed",
+              ts: new Date().toISOString(),
+              broker: "projectx",
+              data: c3,
+            });
+          },
+        });
+      } catch {
+        // ignore flush errors
+      }
+
+      // ✅ still emit the 15s close event (but never trade on it)
       await deps.emitSafe({
         name: "candle.15s.closed",
         ts: new Date().toISOString(),
         broker: "projectx",
         data: closed.data,
       });
+
       return;
     }
 
