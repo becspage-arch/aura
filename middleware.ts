@@ -27,6 +27,11 @@ export default clerkMiddleware((auth, req) => {
     return res;
   }
 
+  // ✅ ALWAYS ALLOW TRADING CONTROL APIs (they still require Clerk auth inside handlers)
+  if (pathname.startsWith("/api/trading-state/")) {
+    return NextResponse.next();
+  }
+
   /* =====================================================
      ALWAYS ALLOW SERVICE WORKERS + PWA ASSETS
      ===================================================== */
