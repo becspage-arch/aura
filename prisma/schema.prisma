@@ -7,40 +7,40 @@ datasource db {
 }
 
 model UserProfile {
-  id             String            @id @default(cuid())
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  email          String?           @unique
-  displayName    String?
-  clerkUserId    String?           @unique
-  auditLogs      AuditLog[]
-  brokerAccounts BrokerAccount[]
-  userState      UserTradingState?
-  onboardingNotificationsDone Boolean @default(false)
-  notificationPrefs NotificationPreferences?
+  id                          String                   @id @default(cuid())
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
+  email                       String?                  @unique
+  displayName                 String?
+  clerkUserId                 String?                  @unique
+  auditLogs                   AuditLog[]
+  brokerAccounts              BrokerAccount[]
+  userState                   UserTradingState?
+  onboardingNotificationsDone Boolean                  @default(false)
+  notificationPrefs           NotificationPreferences?
 }
 
 model BrokerAccount {
-  id           String      @id @default(cuid())
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   userId       String
   brokerName   String
   accountLabel String?
   externalId   String?
 
-  user         UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Trading artifacts tied to this account
-  fills        Fill[]
-  orders       Order[]
-  snapshots    AccountSnapshot[]
+  fills     Fill[]
+  orders    Order[]
+  snapshots AccountSnapshot[]
 
   // Desired run state (user intention)
   // - true  = Aura should run for this account (subject to pause/kill safety gates)
   // - false = Aura should not run for this account
-  isEnabled    Boolean   @default(true)
+  isEnabled Boolean @default(true)
 
   // Safety gates (temporary controls)
   isPaused       Boolean   @default(false)
@@ -49,34 +49,67 @@ model BrokerAccount {
   killSwitchedAt DateTime?
 
   // Per-account overrides (risk, symbols, strategy params etc)
-  config         Json?
+  config Json?
 
   // Worker health / orchestrator signals
   lastHeartbeatAt DateTime?
+
+  workerLease WorkerLease?
 
   @@unique([brokerName, externalId])
   @@index([userId])
   @@index([brokerName])
 }
 
+enum WorkerLeaseStatus {
+  RUNNING
+  STOPPED
+  ERROR
+}
+
+model WorkerLease {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One lease row per broker account (we overwrite/renew it)
+  brokerAccountId String        @unique
+  brokerAccount   BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+
+  // Who currently "owns" the worker
+  instanceId String
+  startedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  status WorkerLeaseStatus @default(RUNNING)
+
+  // Optional helpful metadata (debugging / orchestration)
+  workerName String?
+  workerEnv  String?
+  meta       Json?
+
+  @@index([status, lastSeenAt])
+  @@index([instanceId])
+}
+
 model AccountSnapshot {
-  id              String   @id @default(cuid())
-  createdAt       DateTime @default(now())
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
 
   brokerAccountId String
   brokerAccount   BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
 
   // “Equity” = net liq / account value. Store what broker provides.
-  equityUsd       Decimal?
-  balanceUsd      Decimal?
-  availableUsd    Decimal?
+  equityUsd        Decimal?
+  balanceUsd       Decimal?
+  availableUsd     Decimal?
   unrealizedPnlUsd Decimal?
-  marginUsedUsd   Decimal?
+  marginUsedUsd    Decimal?
 
   // When the broker said this snapshot is “as of” (if provided). Fallback to now().
-  ts              DateTime @default(now())
+  ts DateTime @default(now())
 
-  raw             Json?
+  raw Json?
 
   @@index([brokerAccountId, ts])
   @@index([ts])
@@ -106,8 +139,8 @@ model Order {
 }
 
 model Fill {
-  id              String        @id @default(cuid())
-  createdAt       DateTime      @default(now())
+  id              String    @id @default(cuid())
+  createdAt       DateTime  @default(now())
   brokerAccountId String
   orderId         String?
   externalId      String?
@@ -115,10 +148,10 @@ model Fill {
   side            OrderSide
   qty             Decimal
   price           Decimal
-  filledAt        DateTime?     // ✅ add this
+  filledAt        DateTime? // ✅ add this
 
-  brokerAccount   BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
-  order           Order?        @relation(fields: [orderId], references: [id])
+  brokerAccount BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+  order         Order?        @relation(fields: [orderId], references: [id])
 
   @@unique([brokerAccountId, externalId])
   @@index([brokerAccountId, createdAt])
@@ -126,35 +159,35 @@ model Fill {
 }
 
 model Execution {
-  id             String   @id @default(cuid())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Who / where
-  userId         String
-  brokerName     String
-  contractId     String
-  symbol         String?
+  userId     String
+  brokerName String
+  contractId String
+  symbol     String?
 
   // Deterministic idempotency key (unique)
-  execKey        String   @unique
+  execKey String @unique
 
   // Intent
-  side           OrderSide
-  qty            Decimal
-  entryType      String   // "market" | "limit" | "stop" (string so brokers can extend)
-  stopLossTicks  Int?
+  side            OrderSide
+  qty             Decimal
+  entryType       String // "market" | "limit" | "stop" (string so brokers can extend)
+  stopLossTicks   Int?
   takeProfitTicks Int?
-  customTag      String?
+  customTag       String?
 
   // Broker linkage (for now ProjectX returns one orderId; future brokers may have separate ids)
-  entryOrderId   String?
-  stopOrderId    String?
-  tpOrderId      String?
+  entryOrderId String?
+  stopOrderId  String?
+  tpOrderId    String?
 
-  status         ExecutionStatus @default(INTENT_CREATED)
-  error          String?
-  meta           Json?
+  status ExecutionStatus @default(INTENT_CREATED)
+  error  String?
+  meta   Json?
 
   @@index([userId, createdAt])
   @@index([brokerName, createdAt])
@@ -200,15 +233,15 @@ model Candle15s {
 }
 
 model Candle3m {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  symbol    String
-  time      Int      // 3-minute candle open time (epoch seconds)
+  symbol String
+  time   Int // 3-minute candle open time (epoch seconds)
 
-  open      Decimal
-  high      Decimal
-  low       Decimal
-  close     Decimal
+  open  Decimal
+  high  Decimal
+  low   Decimal
+  close Decimal
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -229,15 +262,15 @@ model Candle3m {
  * - receivedAt: when OUR worker received/processed the quote
  */
 model MarketQuote {
-  id         String   @id @default(cuid())
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
 
   broker       String
   instrumentId String
   symbol       String?
 
   ts         DateTime?
-  receivedAt DateTime @default(now())
+  receivedAt DateTime  @default(now())
 
   last Decimal?
   bid  Decimal?
@@ -325,7 +358,7 @@ model UserTradingState {
   selectedBrokerAccountId String?
   selectedSymbol          String?
   riskSettings            Json?
-  strategySettings Json?
+  strategySettings        Json?
 
   isPaused       Boolean   @default(false)
   isKillSwitched Boolean   @default(false)
@@ -335,27 +368,27 @@ model UserTradingState {
 }
 
 model Trade {
-  id            String   @id @default(cuid())
-  createdAt     DateTime @default(now())
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
 
   // Ownership
-  clerkUserId   String
+  clerkUserId String
 
   // Idempotency (prevents duplicate rows on reconnects)
-  execKey       String   @unique
+  execKey String @unique
 
   // Instrument
-  symbol        String
-  contractId    String?
+  symbol     String
+  contractId String?
 
   // Direction & size
-  side          OrderSide
-  qty           Decimal
+  side OrderSide
+  qty  Decimal
 
   // Timing
-  openedAt      DateTime
-  closedAt      DateTime
-  durationSec   Int?
+  openedAt    DateTime
+  closedAt    DateTime
+  durationSec Int?
 
   // Planned (from Execution intent)
   plannedStopTicks       Int?
@@ -364,15 +397,15 @@ model Trade {
   plannedRR              Decimal?
 
   // Actual fills
-  entryPriceAvg  Decimal
-  exitPriceAvg   Decimal
+  entryPriceAvg    Decimal
+  exitPriceAvg     Decimal
   realizedPnlTicks Int
   realizedPnlUsd   Decimal
   rrAchieved       Decimal?
 
   // Outcome / reason
-  exitReason    String // "TP" | "SL" | "MANUAL" | "KILL_SWITCH" | "SESSION_END" | "FLATTEN" | "UNKNOWN"
-  outcome       String // "WIN" | "LOSS" | "BREAKEVEN"
+  exitReason String // "TP" | "SL" | "MANUAL" | "KILL_SWITCH" | "SESSION_END" | "FLATTEN" | "UNKNOWN"
+  outcome    String // "WIN" | "LOSS" | "BREAKEVEN"
 
   @@index([clerkUserId, closedAt])
   @@index([clerkUserId, openedAt])
@@ -410,28 +443,28 @@ model StrategySignal {
   updatedAt DateTime @updatedAt
 
   // Who / what
-  userId    String
-  strategy  String   // e.g. "coreplus315"
+  userId     String
+  strategy   String // e.g. "coreplus315"
   brokerName String? // optional, but useful for later
-  symbol    String
+  symbol     String
   contractId String?
 
-  side      OrderSide
+  side OrderSide
 
   // Times (epoch seconds)
   entryTime Int
   fvgTime   Int
 
   // Planned prices (optional but handy for chart overlays)
-  entryPrice       Decimal?
-  stopPrice        Decimal?
-  takeProfitPrice  Decimal?
+  entryPrice      Decimal?
+  stopPrice       Decimal?
+  takeProfitPrice Decimal?
 
   // Risk math
-  stopTicks   Decimal?
-  tpTicks     Decimal?
-  rr          Decimal?
-  contracts   Int?
+  stopTicks      Decimal?
+  tpTicks        Decimal?
+  rr             Decimal?
+  contracts      Int?
   riskUsdPlanned Decimal?
 
   // Outcome
@@ -443,10 +476,10 @@ model StrategySignal {
   executionId String?
 
   // extra context (FVG top/bottom, retested, debug, bracket etc)
-  meta        Json?
+  meta Json?
 
   // Deterministic idempotency key for “same signal”
-  signalKey   String   @unique
+  signalKey String @unique
 
   @@index([userId, createdAt])
   @@index([userId, strategy, createdAt])
@@ -485,7 +518,7 @@ model NotificationPreferences {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  userId String @unique
+  userId String      @unique
   user   UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // WHAT (event-level preferences)
@@ -505,7 +538,7 @@ model ApnsPushDevice {
   id          String   @id @default(cuid())
   userId      String
   deviceToken String   @unique
-  environment String   // "sandbox" | "production"
+  environment String // "sandbox" | "production"
   createdAt   DateTime @default(now())
   lastSeenAt  DateTime @updatedAt
   deviceName  String?

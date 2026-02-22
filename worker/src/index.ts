@@ -67,6 +67,11 @@ async function main() {
     throw new Error(`[${env.WORKER_NAME}] Missing AURA_BROKER_ACCOUNT_ID`);
   }
 
+  const instanceId =
+    (process.env.WORKER_INSTANCE_ID || "").trim() || `${env.WORKER_NAME}:${randomUUID()}`;
+
+  const leaseTtlMs = 60_000; // consider dead if not seen in 60s
+
   // 4) Connect to Ably
   const ably = createAblyRealtime();
   await new Promise<void>((resolve, reject) => {
@@ -118,19 +123,74 @@ async function main() {
 
   console.log(`[${env.WORKER_NAME}] broker account scope`, acct);
 
+  // 5c) Claim/renew WorkerLease (single-worker per broker account)
+  const now = new Date();
+  const lease = await db.workerLease.findUnique({
+    where: { brokerAccountId },
+    select: { instanceId: true, lastSeenAt: true },
+  });
+
+  if (lease && lease.instanceId !== instanceId) {
+    const ageMs = now.getTime() - new Date(lease.lastSeenAt).getTime();
+    if (ageMs < leaseTtlMs) {
+      console.log(`[${env.WORKER_NAME}] lease held by another instance - exiting`, {
+        brokerAccountId,
+        currentInstanceId: lease.instanceId,
+        thisInstanceId: instanceId,
+        lastSeenAt: lease.lastSeenAt,
+        ageMs,
+      });
+      process.exit(0);
+    }
+  }
+
+  await db.workerLease.upsert({
+    where: { brokerAccountId },
+    create: {
+      brokerAccountId,
+      instanceId,
+      startedAt: now,
+      lastSeenAt: now,
+      status: "RUNNING",
+      workerName: env.WORKER_NAME,
+      workerEnv: env.WORKER_ENV,
+      meta: { dryRun: DRY_RUN },
+    },
+    update: {
+      instanceId,
+      startedAt: now,
+      lastSeenAt: now,
+      status: "RUNNING",
+      workerName: env.WORKER_NAME,
+      workerEnv: env.WORKER_ENV,
+      meta: { dryRun: DRY_RUN },
+    },
+    select: { id: true },
+  });
+
+  console.log(`[${env.WORKER_NAME}] lease claimed`, { brokerAccountId, instanceId });
+
   // 5c) Heartbeat loop (updates BrokerAccount.lastHeartbeatAt)
   const heartbeatEveryMs = 15_000;
 
   const heartbeatInterval = setInterval(() => {
-    void db.brokerAccount
-      .update({
+    const ts = new Date();
+
+    void db.$transaction([
+      db.brokerAccount.update({
         where: { id: brokerAccountId },
-        data: { lastHeartbeatAt: new Date() },
+        data: { lastHeartbeatAt: ts },
         select: { id: true },
-      })
-    .catch((e) => {
+      }),
+      db.workerLease.update({
+        where: { brokerAccountId },
+        data: { lastSeenAt: ts, status: "RUNNING" },
+        select: { id: true },
+      }),
+    ]).catch((e) => {
       console.warn(`[${env.WORKER_NAME}] heartbeat failed`, {
         brokerAccountId,
+        instanceId,
         name: e?.name ?? null,
         message: e?.message ?? String(e),
         stack: e?.stack ?? null,
@@ -141,7 +201,7 @@ async function main() {
   const cleanupHeartbeat = () => clearInterval(heartbeatInterval);
   process.once("SIGINT", cleanupHeartbeat);
   process.once("SIGTERM", cleanupHeartbeat);
-
+  
   // 5d) Worker uptime heartbeat (writes EventLog once per minute)
   const workerHeartbeatEveryMs = 60_000;
 
@@ -178,6 +238,19 @@ async function main() {
   const cleanupWorkerHeartbeat = () => clearInterval(workerHeartbeatInterval);
   process.once("SIGINT", cleanupWorkerHeartbeat);
   process.once("SIGTERM", cleanupWorkerHeartbeat);
+
+  async function markLeaseStopped() {
+    try {
+      await db.workerLease.update({
+        where: { brokerAccountId },
+        data: { status: "STOPPED", lastSeenAt: new Date() },
+        select: { id: true },
+      });
+    } catch {}
+  }
+
+  process.once("SIGINT", () => void markLeaseStopped());
+  process.once("SIGTERM", () => void markLeaseStopped());
 
   // 6) Exec listener
   const ablyKey = (process.env.ABLY_API_KEY || "").trim();
