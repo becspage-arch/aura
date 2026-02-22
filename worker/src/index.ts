@@ -128,13 +128,14 @@ async function main() {
         data: { lastHeartbeatAt: new Date() },
         select: { id: true },
       })
-      .catch((e) => {
-        console.warn(
-          `[${env.WORKER_NAME}] heartbeat failed brokerAccountId=${brokerAccountId} error=${
-            e instanceof Error ? `${e.name}: ${e.message}` : String(e)
-          }`
-        );
+    .catch((e) => {
+      console.warn(`[${env.WORKER_NAME}] heartbeat failed`, {
+        brokerAccountId,
+        name: e?.name ?? null,
+        message: e?.message ?? String(e),
+        stack: e?.stack ?? null,
       });
+    });
   }, heartbeatEveryMs);
 
   const cleanupHeartbeat = () => clearInterval(heartbeatInterval);
