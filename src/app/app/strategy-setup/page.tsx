@@ -7,8 +7,7 @@ import type { StrategyGetResponse, StrategyPostResponse, StrategySettings } from
 import { fetchJSON } from "./_lib/api";
 
 import { StrategySummaryStrip } from "./_components/StrategySummaryStrip";
-import { StrategyPresetCard } from "./_components/StrategyPresetCard";
-import { TradableSymbolsCard } from "./_components/TradableSymbolsCard";
+import { StrategyTopCardsRow } from "./_components/StrategyTopCardsRow";
 import { TradingSessionsCard } from "./_components/TradingSessionsCard";
 import { RiskConfigurationCard } from "./_components/RiskConfigurationCard";
 import { PositionSizingCard } from "./_components/PositionSizingCard";
@@ -110,9 +109,7 @@ export default function StrategyPage() {
 
         {/* Core */}
         <div className="aura-section-stack">
-          <StrategyPresetCard current={current} />
-
-          <TradableSymbolsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
+          <StrategyTopCardsRow current={current} />
 
           <TradingSessionsCard
             current={current}
