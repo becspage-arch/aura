@@ -1,0 +1,62 @@
+{
+  "family": "aura-orchestrator",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::074184607195:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::074184607195:role/aura-orchestrator-task-role",
+  "containerDefinitions": [
+    {
+      "name": "aura-orchestrator",
+      "image": "074184607195.dkr.ecr.eu-west-2.amazonaws.com/aura-orchestrator:latest",
+      "essential": true,
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "eu-west-2"
+        },
+        {
+          "name": "ECS_CLUSTER",
+          "value": "aura"
+        },
+        {
+          "name": "ECS_SUBNETS",
+          "value": "subnet-04721116ce07807e4,subnet-0c098e9241004e440"
+        },
+        {
+          "name": "ECS_SECURITY_GROUPS",
+          "value": "sg-08f51c26a10fa23ea"
+        },
+        {
+          "name": "ECS_ASSIGN_PUBLIC_IP",
+          "value": "ENABLED"
+        },
+        {
+          "name": "WORKER_TASK_DEFINITION",
+          "value": "aura-worker:37"
+        },
+        {
+          "name": "WORKER_CONTAINER_NAME",
+          "value": "aura-worker"
+        },
+        {
+          "name": "POLL_MS",
+          "value": "20000"
+        },
+        {
+          "name": "DIRECT_URL",
+          "value": "postgresql://neondb_owner:npg_9WvkzQ5YZpbj@ep-billowing-butterfly-abv4rzo7.eu-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aura/orchestrator",
+          "awslogs-region": "eu-west-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
