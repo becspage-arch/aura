@@ -53,8 +53,18 @@ async function main() {
     }
   };
 
-  process.once("SIGINT", () => void cleanupLock().finally(() => process.exit(0)));
-  process.once("SIGTERM", () => void cleanupLock().finally(() => process.exit(0)));
+  async function shutdown(code: number) {
+    try {
+      await markLeaseStoppedSafe();
+    } catch {}
+    try {
+      await cleanupLock();
+    } catch {}
+    process.exit(code);
+  }
+
+  process.once("SIGINT", () => void shutdown(0));
+  process.once("SIGTERM", () => void shutdown(0));
 
   // 3) Required environment
   const expectedClerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
@@ -69,6 +79,18 @@ async function main() {
 
   const instanceId =
     (process.env.WORKER_INSTANCE_ID || "").trim() || `${env.WORKER_NAME}:${randomUUID()}`;
+
+  const markLeaseStoppedSafe = async () => {
+    try {
+      await db.workerLease.update({
+        where: { brokerAccountId },
+        data: { status: "STOPPED", lastSeenAt: new Date() },
+        select: { id: true },
+      });
+    } catch {
+      // ignore
+    }
+  };
 
   const leaseTtlMs = 60_000; // consider dead if not seen in 60s
 
@@ -238,19 +260,6 @@ async function main() {
   const cleanupWorkerHeartbeat = () => clearInterval(workerHeartbeatInterval);
   process.once("SIGINT", cleanupWorkerHeartbeat);
   process.once("SIGTERM", cleanupWorkerHeartbeat);
-
-  async function markLeaseStopped() {
-    try {
-      await db.workerLease.update({
-        where: { brokerAccountId },
-        data: { status: "STOPPED", lastSeenAt: new Date() },
-        select: { id: true },
-      });
-    } catch {}
-  }
-
-  process.once("SIGINT", () => void markLeaseStopped());
-  process.once("SIGTERM", () => void markLeaseStopped());
 
   // 6) Exec listener
   const ablyKey = (process.env.ABLY_API_KEY || "").trim();

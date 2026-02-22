@@ -108,16 +108,10 @@ export default function StrategyPage() {
   const lockLabel = isTrading ? "Read-only" : "Editable";
 
   return (
-    <div className="mx-auto max-w-5xl aura-page">
+    <div className="aura-page">
       {/* Header */}
       <div>
         <div className="aura-row-between">
-          <div>
-            <div className="aura-page-title">Strategy Setup</div>
-            <div className="aura-page-subtitle">
-              Configure how Aura trades on your account.
-            </div>
-          </div>
 
           <div
             className={`aura-lock-badge ${
