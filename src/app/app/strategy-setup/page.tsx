@@ -91,50 +91,62 @@ export default function StrategyPage() {
   const lockLabel = isTrading ? "Read-only" : "Editable";
 
   return (
-    <div className="min-h-screen">
-      {/* Match Dashboard wrapper exactly */}
-      <div className="mx-auto max-w-6xl px-6 pb-10">
-        <div className="aura-page">
-          {/* Summary strip only (top bar already provides title + system status) */}
-          <div className="aura-summary-strip" aria-label="Strategy summary">
-            <div className="aura-row-between">
-              <div>
-                <div className="aura-summary-title">Summary</div>
-                <div className="aura-muted aura-text-xs aura-mt-6">Key settings snapshot.</div>
-              </div>
-              <div className="aura-muted aura-text-xs">{loading ? "Loading…" : " "}</div>
+    <div className="mx-auto max-w-6xl px-6 pb-10">
+      <div className="aura-page">
+        {/* Summary strip only (top bar already provides title + system status) */}
+        <div className="aura-summary-strip" aria-label="Strategy summary">
+          <div className="aura-row-between">
+            <div>
+              <div className="aura-summary-title">Summary</div>
             </div>
 
-            <div className="aura-mt-12 aura-health-strip">
-              <div className="aura-health-pill aura-health-pill--static">
-                <span className="aura-health-key">Symbol(s)</span>
-                <span className="aura-health-val">
-                  {current?.symbols?.length ? current.symbols.join(", ") : "—"}
-                </span>
-              </div>
-
-              <div className="aura-health-pill aura-health-pill--static">
-                <span className="aura-health-key">Sessions</span>
-                <span className="aura-health-val">
-                  {current
-                    ? [current.sessions.asia ? "Asia" : null, current.sessions.london ? "London" : null, current.sessions.ny ? "NY" : null]
-                        .filter(Boolean)
-                        .join(", ") || "—"
-                    : "—"}
-                </span>
-              </div>
-
-              <div className="aura-health-pill aura-health-pill--static">
-                <span className="aura-health-key">Risk</span>
-                <span className="aura-health-val">{current ? `$${current.riskUsd} • RR ${current.rr}` : "—"}</span>
-              </div>
-
-              <div className="aura-health-pill aura-health-pill--static">
-                <span className="aura-health-key">State</span>
-                <span className="aura-health-val">{lockLabel}</span>
-              </div>
+            <div className="aura-muted aura-text-xs">
+              {loading
+                ? "Loading…"
+                : saving
+                  ? "Saving…"
+                  : isTrading
+                    ? "Read-only (Aura running)"
+                    : "Saved"}
             </div>
           </div>
+
+          <div className="aura-mt-12 aura-health-strip">
+            <div className="aura-health-pill aura-health-pill--static">
+              <span className="aura-health-key">Symbol(s)</span>
+              <span className="aura-health-val">
+                {current?.symbols?.length ? current.symbols.join(", ") : "None"}
+              </span>
+            </div>
+
+            <div className="aura-health-pill aura-health-pill--static">
+              <span className="aura-health-key">Sessions</span>
+              <span className="aura-health-val">
+                {current
+                  ? [
+                      current.sessions.asia ? "Asia" : null,
+                      current.sessions.london ? "London" : null,
+                      current.sessions.ny ? "New York" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "None"
+                  : "None"}
+              </span>
+            </div>
+
+            <div className="aura-health-pill aura-health-pill--static">
+              <span className="aura-health-key">Risk</span>
+              <span className="aura-health-val">
+                {current ? `$${current.riskUsd} risk • ${current.rr}RR` : "None"}
+              </span>
+            </div>
+
+            <div className="aura-health-pill aura-health-pill--static">
+              <span className="aura-health-key">State</span>
+              <span className="aura-health-val">{isTrading ? "Read-only" : "Editable"}</span>
+            </div>
+          </div>
+        </div>
 
           {err ? (
             <section className="aura-card">
