@@ -1,6 +1,8 @@
-import { PrismaClient } from "@prisma/client";
+import pkg from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { env } from "./env.js";
+
+const { PrismaClient } = pkg as any;
 
 const adapter = new PrismaPg({ connectionString: env.DIRECT_URL });
 
