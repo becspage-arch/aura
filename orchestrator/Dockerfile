@@ -5,9 +5,8 @@ WORKDIR /app
 COPY orchestrator/package*.json ./
 COPY orchestrator/tsconfig.json ./
 
-# Prisma schema/config from repo root (single source of truth)
+# Prisma schema from repo root (single source of truth)
 COPY prisma ./prisma
-COPY prisma.config.ts ./prisma.config.ts
 
 RUN npm install
 RUN npx prisma generate
@@ -22,7 +21,7 @@ WORKDIR /app
 COPY --from=builder /app/package*.json ./
 RUN npm install --omit=dev
 
-# Prisma runtime artifacts
+# Prisma runtime artifacts (generated client lives in .prisma)
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 

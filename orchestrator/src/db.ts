@@ -1,5 +1,5 @@
 import pkg from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+const { PrismaClient } = pkg;
 import { env } from "./env.js";
 
 const { PrismaClient } = pkg as any;
