@@ -1,3 +1,4 @@
+// src/app/app/strategy-setup/_components/PositionSizingCard.tsx
 "use client";
 
 import type { StrategySettings } from "../_lib/types";

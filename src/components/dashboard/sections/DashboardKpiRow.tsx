@@ -13,7 +13,7 @@ export default function DashboardKpiRow({
   accountEquity: string;
 }) {
   return (
-    <section className="aura-grid-4">
+    <section className="aura-kpi-row">
       <div className="aura-card">
         <div className="aura-stat-label">Total Profit</div>
         <div className="aura-stat-value">{totalProfit}</div>

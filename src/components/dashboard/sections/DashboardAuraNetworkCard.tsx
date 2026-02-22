@@ -25,7 +25,7 @@ export default function DashboardAuraNetworkCard(props: {
         </div>
       </div>
 
-      <div className="aura-grid-4" style={{ marginTop: 12 }}>
+      <div className="aura-kpi-row" style={{ marginTop: 12 }}>
         <div className="aura-card">
           <div className="aura-stat-label">Active Traders</div>
           <div className="aura-stat-value">{active.toLocaleString()}</div>

@@ -1735,19 +1735,6 @@ html.light .aura-cum-day {
 .aura-cum-bar--h19 { height: 88%; }
 .aura-cum-bar--h20 { height: 100%; }
 
-.aura-dashboard-charts-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
-
-@media (min-width: 1024px) {
-  .aura-dashboard-charts-row {
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
-  }
-}
-
 /* minimal so Share Snapshot is visibly a button until designer swaps CSS */
 .aura-topbar__action {
   padding: 8px 12px;
@@ -1829,4 +1816,45 @@ html.light .aura-cum-day {
   text-decoration: none;
   color: inherit;
   display: flex;
+}
+
+/* ----------------------------------------------
+   AURA GLOBAL PRIMITIVES (Used everywhere)
+   ---------------------------------------------- */
+
+/* Generic semantic rows */
+.aura-kpi-row { /* 4-tile KPI tiles row */
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .aura-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .aura-kpi-row { grid-template-columns: 1fr; }
+}
+
+/* 2-tile KPI row */
+.aura-kpi-row-2 {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 640px) {
+  .aura-kpi-row-2 { grid-template-columns: 1fr; }
+}
+
+/* Charts row (2-col on desktop) */
+.aura-charts-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 1024px) {
+  .aura-charts-row {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
 }

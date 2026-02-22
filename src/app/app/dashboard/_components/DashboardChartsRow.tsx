@@ -16,7 +16,7 @@ export default function DashboardChartsRow(props: {
   onCumRangeChange: (r: RangeKey) => void;
 }) {
   return (
-    <div className="aura-dashboard-charts-row">
+    <div className="aura-charts-row">
       <DashboardCumulativePnlCard
         points={props.cumulative?.points ?? []}
         cumRange={props.cumRange}

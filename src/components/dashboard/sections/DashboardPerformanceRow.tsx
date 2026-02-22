@@ -5,7 +5,7 @@ import { fmtFixed, fmtMoneyUsd } from "@/components/dashboard/dashboardFormat";
 
 export default function DashboardPerformanceRow({ perf }: { perf: any | null }) {
   return (
-    <section className="aura-grid-4">
+    <section className="aura-kpi-row">
       <div className="aura-card">
         <div className="aura-stat-label">Win Rate</div>
         <div className="aura-mini-value">{perf ? `${Math.round(perf.winRatePct)}%` : "—%"}</div>

@@ -107,7 +107,7 @@ export function StrategyConfigSummaryCard() {
           {loading ? "Loadingâ€¦" : `${preset} â€¢ ${String(mode).toUpperCase()}`}
         </div>
 
-        <div className="aura-mt-12 aura-grid-4">
+        <div className="aura-mt-12 aura-kpi-row">
           <div className="aura-card-muted">
             <div className="aura-stat-label">Risk</div>
             <div className="aura-mini-value">{loading || !cfg ? "â€”" : `$${cfg.riskUsd}`}</div>
