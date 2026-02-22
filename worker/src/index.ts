@@ -26,7 +26,7 @@ async function main() {
   await checkDb();
   console.log(`[${env.WORKER_NAME}] DB connected`);
 
-  // 2) Acquire worker lock (single active worker)
+  // 2) Acquire worker lock (single active worker process by WORKER_NAME)
   const lockKey = `workerLock:${env.WORKER_NAME}`;
   const lockTtlMs = 60_000;
   const lockOwnerId = randomUUID();
@@ -53,19 +53,6 @@ async function main() {
     }
   };
 
-  async function shutdown(code: number) {
-    try {
-      await markLeaseStoppedSafe();
-    } catch {}
-    try {
-      await cleanupLock();
-    } catch {}
-    process.exit(code);
-  }
-
-  process.once("SIGINT", () => void shutdown(0));
-  process.once("SIGTERM", () => void shutdown(0));
-
   // 3) Required environment
   const expectedClerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
   if (!expectedClerkUserId) {
@@ -80,6 +67,8 @@ async function main() {
   const instanceId =
     (process.env.WORKER_INSTANCE_ID || "").trim() || `${env.WORKER_NAME}:${randomUUID()}`;
 
+  // ---- shutdown helpers (defined BEFORE we register handlers) ----
+
   const markLeaseStoppedSafe = async () => {
     try {
       await db.workerLease.update({
@@ -92,7 +81,18 @@ async function main() {
     }
   };
 
-  const leaseTtlMs = 60_000; // consider dead if not seen in 60s
+  async function shutdown(code: number) {
+    try {
+      await markLeaseStoppedSafe();
+    } catch {}
+    try {
+      await cleanupLock();
+    } catch {}
+    process.exit(code);
+  }
+
+  process.once("SIGINT", () => void shutdown(0));
+  process.once("SIGTERM", () => void shutdown(0));
 
   // 4) Connect to Ably
   const ably = createAblyRealtime();
@@ -146,20 +146,22 @@ async function main() {
   console.log(`[${env.WORKER_NAME}] broker account scope`, acct);
 
   // 5c) Claim/renew WorkerLease (single-worker per broker account)
+  const leaseTtlMs = 60_000; // consider dead if not seen in 60s
   const now = new Date();
-  const lease = await db.workerLease.findUnique({
+
+  const existingLease = await db.workerLease.findUnique({
     where: { brokerAccountId },
     select: { instanceId: true, lastSeenAt: true },
   });
 
-  if (lease && lease.instanceId !== instanceId) {
-    const ageMs = now.getTime() - new Date(lease.lastSeenAt).getTime();
+  if (existingLease && existingLease.instanceId !== instanceId) {
+    const ageMs = now.getTime() - new Date(existingLease.lastSeenAt).getTime();
     if (ageMs < leaseTtlMs) {
       console.log(`[${env.WORKER_NAME}] lease held by another instance - exiting`, {
         brokerAccountId,
-        currentInstanceId: lease.instanceId,
+        currentInstanceId: existingLease.instanceId,
         thisInstanceId: instanceId,
-        lastSeenAt: lease.lastSeenAt,
+        lastSeenAt: existingLease.lastSeenAt,
         ageMs,
       });
       process.exit(0);
@@ -192,39 +194,41 @@ async function main() {
 
   console.log(`[${env.WORKER_NAME}] lease claimed`, { brokerAccountId, instanceId });
 
-  // 5c) Heartbeat loop (updates BrokerAccount.lastHeartbeatAt)
+  // 5d) Heartbeat loop (updates BrokerAccount.lastHeartbeatAt + WorkerLease.lastSeenAt)
   const heartbeatEveryMs = 15_000;
 
   const heartbeatInterval = setInterval(() => {
     const ts = new Date();
 
-    void db.$transaction([
-      db.brokerAccount.update({
-        where: { id: brokerAccountId },
-        data: { lastHeartbeatAt: ts },
-        select: { id: true },
-      }),
-      db.workerLease.update({
-        where: { brokerAccountId },
-        data: { lastSeenAt: ts, status: "RUNNING" },
-        select: { id: true },
-      }),
-    ]).catch((e) => {
-      console.warn(`[${env.WORKER_NAME}] heartbeat failed`, {
-        brokerAccountId,
-        instanceId,
-        name: e?.name ?? null,
-        message: e?.message ?? String(e),
-        stack: e?.stack ?? null,
+    void db
+      .$transaction([
+        db.brokerAccount.update({
+          where: { id: brokerAccountId },
+          data: { lastHeartbeatAt: ts },
+          select: { id: true },
+        }),
+        db.workerLease.update({
+          where: { brokerAccountId },
+          data: { lastSeenAt: ts, status: "RUNNING" },
+          select: { id: true },
+        }),
+      ])
+      .catch((e) => {
+        console.warn(`[${env.WORKER_NAME}] heartbeat failed`, {
+          brokerAccountId,
+          instanceId,
+          name: e?.name ?? null,
+          message: e?.message ?? String(e),
+          stack: e?.stack ?? null,
+        });
       });
-    });
   }, heartbeatEveryMs);
 
-  const cleanupHeartbeat = () => clearInterval(heartbeatInterval);
-  process.once("SIGINT", cleanupHeartbeat);
-  process.once("SIGTERM", cleanupHeartbeat);
-  
-  // 5d) Worker uptime heartbeat (writes EventLog once per minute)
+  // stop intervals on shutdown signals (in addition to shutdown())
+  process.once("SIGINT", () => clearInterval(heartbeatInterval));
+  process.once("SIGTERM", () => clearInterval(heartbeatInterval));
+
+  // 5e) Worker uptime heartbeat (writes EventLog once per minute)
   const workerHeartbeatEveryMs = 60_000;
 
   const writeWorkerHeartbeat = async () => {
@@ -251,15 +255,13 @@ async function main() {
     }
   };
 
-  // write immediately, then every minute
   await writeWorkerHeartbeat();
   const workerHeartbeatInterval = setInterval(() => {
     void writeWorkerHeartbeat();
   }, workerHeartbeatEveryMs);
 
-  const cleanupWorkerHeartbeat = () => clearInterval(workerHeartbeatInterval);
-  process.once("SIGINT", cleanupWorkerHeartbeat);
-  process.once("SIGTERM", cleanupWorkerHeartbeat);
+  process.once("SIGINT", () => clearInterval(workerHeartbeatInterval));
+  process.once("SIGTERM", () => clearInterval(workerHeartbeatInterval));
 
   // 6) Exec listener
   const ablyKey = (process.env.ABLY_API_KEY || "").trim();
@@ -285,7 +287,7 @@ async function main() {
         broker: brokerRef,
         input: {
           execKey,
-          userId,
+          userId, // internal userProfile id
           brokerName: (brokerRef as any)?.name ?? "projectx",
           contractId: p.contractId,
           side: p.side,
@@ -309,9 +311,7 @@ async function main() {
           name: (b as any)?.name ?? null,
         });
 
-        const { resumeOpenExecutions } = await import(
-          "./execution/resumeOpenExecutions.js"
-        );
+        const { resumeOpenExecutions } = await import("./execution/resumeOpenExecutions.js");
 
         await resumeOpenExecutions({
           prisma: db,
@@ -342,3 +342,4 @@ main()
   .finally(async () => {
     await db.$disconnect();
   });
+  
