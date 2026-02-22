@@ -109,30 +109,7 @@ export default function StrategyPage() {
 
   return (
     <div className="aura-page">
-      {/* Header */}
-      <div>
-        <div className="aura-row-between">
-          <div
-            className={`aura-lock-badge ${
-              isTrading ? "aura-lock-badge--locked" : "aura-lock-badge--editable"
-            }`}
-            title={isTrading ? "Pause Aura to edit settings" : "Settings can be edited"}
-          >
-            <span className="aura-lock-dot" />
-            <span>{lockLabel}</span>
-          </div>
-        </div>
-
-        <div className="aura-summary-strip" aria-label="Strategy summary">
-          <div className="aura-row-between">
-            <div>
-              <div className="aura-summary-title">Summary</div>
-              <div className="aura-muted aura-text-xs aura-mt-6">
-                Key settings snapshot.
-              </div>
-            </div>
-            <div className="aura-muted aura-text-xs">{loading ? "Loadingâ€¦" : " "}</div>
-          </div>
+      <div className="aura-summary-strip" aria-label="Strategy summary">
 
           <div className="aura-mt-12 aura-health-strip">
             <div className="aura-health-pill aura-health-pill--static">
@@ -252,4 +229,3 @@ export default function StrategyPage() {
     </div>
   );
 }
-
