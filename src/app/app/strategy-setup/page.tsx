@@ -112,6 +112,9 @@ export default function StrategyPage() {
       {/* Header */}
       <div>
         <div className="aura-row-between">
+          <div>
+            <div className="aura-page-title">Strategy Setup</div>
+          </div>
 
           <div
             className={`aura-lock-badge ${
