@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { StrategyGetResponse, StrategyPostResponse, StrategySettings } from "./_lib/types";
 import { fetchJSON } from "./_lib/api";
 
+import { StrategySummaryStrip } from "./_components/StrategySummaryStrip";
+import { StrategyPresetCard } from "./_components/StrategyPresetCard";
 import { TradableSymbolsCard } from "./_components/TradableSymbolsCard";
 import { TradingSessionsCard } from "./_components/TradingSessionsCard";
 import { RiskConfigurationCard } from "./_components/RiskConfigurationCard";
@@ -25,15 +27,6 @@ export default function StrategyPage() {
 
   // collapsed by default (we’ll persist per-user in the NEXT step)
   const [advancedOpen, setAdvancedOpen] = useState(false);
-
-  const refreshRuntime = useCallback(async () => {
-    try {
-      const res = await fetchJSON<{ ok: true; isTrading: boolean }>("/api/trading-state/runtime");
-      setIsTrading(!!res.isTrading);
-    } catch {
-      setIsTrading(false);
-    }
-  }, []);
 
   // Runtime state
   useEffect(() => {
@@ -98,105 +91,15 @@ export default function StrategyPage() {
 
   const disabled = loading || saving;
 
-  const pauseAura = useCallback(async () => {
-    try {
-      setSaving(true);
-      setErr(null);
-
-      const res = await fetch("/api/trading-state/pause", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isPaused: true }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(`${res.status} ${res.statusText}${text ? ` - ${text}` : ""}`);
-      }
-
-      await refreshRuntime();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  }, [refreshRuntime]);
-
   return (
     <div className="mx-auto max-w-6xl px-6 pb-10">
       <div className="aura-page">
-        {/* Summary strip only (top bar already provides title + system status) */}
-        <div className="aura-summary-strip" aria-label="Strategy summary">
-          <div className="aura-row-between">
-            <div>
-              <div className="aura-summary-title">Summary</div>
-            </div>
-
-            <div className="aura-muted aura-text-xs">
-              {loading ? "Loading…" : saving ? "Saving…" : isTrading ? "Locked" : "Saved"}
-            </div>
-          </div>
-
-          {/* Locked banner + Pause action */}
-          {isTrading ? (
-            <div className="aura-mt-12 aura-card-muted">
-              <div className="aura-row-between">
-                <div>
-                  <div className="aura-group-title">Locked – Aura is running</div>
-                  <div className="aura-control-help">Pause Aura to edit strategy settings.</div>
-                </div>
-
-                <button
-                  type="button"
-                  className={`aura-btn ${saving ? "aura-disabled-btn" : ""}`}
-                  onClick={pauseAura}
-                  disabled={saving}
-                >
-                  Pause Aura
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="aura-mt-12 aura-health-strip">
-            <div className="aura-health-pill aura-health-pill--static">
-              <span className="aura-health-key">Symbol(s)</span>
-              <span className="aura-health-val">
-                {current?.symbols?.length ? current.symbols.join(", ") : "None"}
-              </span>
-            </div>
-
-            <div className="aura-health-pill aura-health-pill--static">
-              <span className="aura-health-key">Sessions</span>
-              <span className="aura-health-val">
-                {current
-                  ? [
-                      current.sessions.asia ? "Asia" : null,
-                      current.sessions.london ? "London" : null,
-                      current.sessions.ny ? "New York" : null,
-                    ]
-                      .filter(Boolean)
-                      .join(", ") || "None"
-                  : "None"}
-              </span>
-            </div>
-
-            <div className="aura-health-pill aura-health-pill--static">
-              <span className="aura-health-key">Risk</span>
-              <span className="aura-health-val">
-                {current ? `$${current.riskUsd} risk • ${current.rr}RR` : "None"}
-              </span>
-            </div>
-
-            {/* State chip only when NOT locked (cleaner) */}
-            {!isTrading ? (
-              <div className="aura-health-pill aura-health-pill--static">
-                <span className="aura-health-key">State</span>
-                <span className="aura-health-val">Editable</span>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <StrategySummaryStrip
+          current={current}
+          loading={loading}
+          saving={saving}
+          isTrading={isTrading}
+        />
 
         {err ? (
           <section className="aura-card">
@@ -207,6 +110,8 @@ export default function StrategyPage() {
 
         {/* Core */}
         <div className="aura-section-stack">
+          <StrategyPresetCard current={current} />
+
           <TradableSymbolsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
 
           <TradingSessionsCard
@@ -236,7 +141,9 @@ export default function StrategyPage() {
               <div className="aura-advanced-header" onClick={() => setAdvancedOpen((v) => !v)}>
                 <div>
                   <div className="aura-card-title">Advanced Strategy Controls</div>
-                  <div className="aura-muted aura-text-xs aura-mt-6">Additional filters and execution preferences.</div>
+                  <div className="aura-muted aura-text-xs aura-mt-6">
+                    Additional filters and execution preferences.
+                  </div>
                 </div>
                 <span className="aura-advanced-chevron">{advancedOpen ? "−" : "+"}</span>
               </div>
