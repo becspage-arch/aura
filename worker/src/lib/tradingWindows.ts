@@ -51,7 +51,7 @@ export function matchTradingWindows(params: {
       ukHm,
       matched: null,
       selected,
-      reason: "NONE_SELECTED",
+      reason: "ALL_HOURS",
     };
   }
 
