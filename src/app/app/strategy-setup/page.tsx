@@ -11,9 +11,6 @@ import { StrategySummaryStrip } from "./_components/StrategySummaryStrip";
 import { StrategyTopCardsRow } from "./_components/StrategyTopCardsRow";
 import { TradingSessionsCard } from "./_components/TradingSessionsCard";
 import { RiskConfigurationCard } from "./_components/RiskConfigurationCard";
-import { TradingOptionsCard } from "./_components/TradingOptionsCard";
-import { ExecutionPreferencesCard } from "./_components/ExecutionPreferencesCard";
-import { SafetyLimitsCard } from "./_components/SafetyLimitsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -150,32 +147,6 @@ export default function StrategyPage() {
             patchStrategySettings={patchStrategySettings}
           />
 
-          <SafetyLimitsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
-
-          <section className="aura-section">
-            <div className="aura-advanced-container">
-              <div className="aura-advanced-header" onClick={() => setAdvancedOpen((v) => !v)}>
-                <div>
-                  <div className="aura-card-title">Advanced Strategy Controls</div>
-                  <div className="aura-muted aura-text-xs aura-mt-6">
-                    Additional filters and execution preferences.
-                  </div>
-                </div>
-                <span className="aura-advanced-chevron">{advancedOpen ? "−" : "+"}</span>
-              </div>
-
-              {advancedOpen && (
-                <div className="aura-advanced-content">
-                  <TradingOptionsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
-                  <ExecutionPreferencesCard
-                    current={current}
-                    saving={saving}
-                    patchStrategySettings={patchStrategySettings}
-                  />
-                </div>
-              )}
-            </div>
-          </section>
         </div>
       </div>
     </div>
