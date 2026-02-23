@@ -500,6 +500,7 @@ enum StrategyBlockReason {
   NOT_LIVE_CANDLE
   INVALID_BRACKET
   EXECUTION_FAILED
+  OUTSIDE_TRADING_WINDOWS
 
   // Engine / near-miss reasons (new)
   NO_ACTIVE_FVG

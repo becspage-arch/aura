@@ -22,6 +22,10 @@ export async function startProjectXMarketFeed(params: {
   getUserIdentityForWorker: () => Promise<{ clerkUserId: string; userId: string }>;
   getStrategyEnabledForAccount: (p: { brokerName: string; externalAccountId: string }) => Promise<boolean>;
 
+  getStrategySettingsForWorker: () => Promise<{
+    sessions: { asia: boolean; london: boolean; ny: boolean };
+  }>;
+
   strategy: any;
 
   token: string;
@@ -39,6 +43,7 @@ export async function startProjectXMarketFeed(params: {
     emitSafe: params.emitSafe,
     getUserTradingState: params.getUserTradingState,
     getUserIdentityForWorker: params.getUserIdentityForWorker,
+    getStrategySettingsForWorker: params.getStrategySettingsForWorker,
     getStrategyEnabledForAccount: params.getStrategyEnabledForAccount,
     strategy: params.strategy,
     status: params.status,

@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "StrategyBlockReason" ADD VALUE 'OUTSIDE_TRADING_WINDOWS';

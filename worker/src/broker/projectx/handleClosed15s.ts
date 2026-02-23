@@ -9,6 +9,7 @@ import { executeBracket } from "../../execution/executeBracket.js";
 import { logTag } from "../../lib/logTags";
 import { onClosed15sUpdate3m } from "../../candles/deriveCandle3m.js";
 import { flush3mForSymbol } from "../../candles/deriveCandle3m.js";
+import { matchTradingWindows } from "../../lib/tradingWindows.js";
 
 export type HandleClosed15sDeps = {
   env: { WORKER_NAME: string };
@@ -27,6 +28,9 @@ export type HandleClosed15sDeps = {
 
   getUserTradingState: () => Promise<{ isPaused: boolean; isKillSwitched: boolean }>;
   getUserIdentityForWorker: () => Promise<{ clerkUserId: string; userId: string }>;
+  getStrategySettingsForWorker: () => Promise<{
+    sessions: { asia: boolean; london: boolean; ny: boolean };
+  }>;
   getStrategyEnabledForAccount: (params: {
     brokerName: string;
     externalAccountId: string;
@@ -492,6 +496,48 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         });
         console.log(`[${deps.env.WORKER_NAME}] Trading paused - intent blocked`);
         return;
+      }
+
+      // Trading Windows gate (blocks opening new trades outside selected windows)
+      try {
+        const ss = await deps.getStrategySettingsForWorker();
+
+        const tw = matchTradingWindows({
+          atEpochSec: intent.entryTime, // use signal time, not "now"
+          sessions: ss.sessions,
+        });
+
+        if (!tw.ok) {
+          await db.strategySignal.update({
+            where: { signalKey },
+            data: {
+              status: "BLOCKED",
+              blockReason: "OUTSIDE_TRADING_WINDOWS",
+              meta: {
+                intent,
+                bracket,
+                tradingWindows: tw,
+              },
+            },
+          });
+
+          console.log(`[${deps.env.WORKER_NAME}] Trading windows blocked`, {
+            signalKey,
+            ukTime: tw.ukIso,
+            ukHm: tw.ukHm,
+            matched: tw.matched,
+            selected: tw.selected,
+            reason: tw.reason,
+          });
+
+          return;
+        }
+      } catch (e) {
+        // Fail-safe: if we can't load settings, DO NOT block trading unexpectedly
+        console.warn(
+          `[${deps.env.WORKER_NAME}] Trading windows check failed (allowing trade)`,
+          e
+        );
       }
 
       if (deps.DRY_RUN) {

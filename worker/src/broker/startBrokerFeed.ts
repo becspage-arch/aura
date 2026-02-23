@@ -1,3 +1,4 @@
+// worker/src/broker/startBrokerFeed.ts
 import { env, DRY_RUN } from "../env.js";
 import { PrismaClient } from "@prisma/client";
 import { createBroker } from "./createBroker.js";
@@ -209,7 +210,13 @@ async function getUserIdentityForWorker(): Promise<{
   return { clerkUserId, userId: user.id };
 }
 
-async function getStrategySettingsForWorker() {
+async function getStrategySettingsForWorker(): Promise<{
+  riskUsd: number;
+  rr: number;
+  maxStopTicks: number;
+  entryType: "market" | "limit";
+  sessions: { asia: boolean; london: boolean; ny: boolean };
+}> {
   const clerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
   if (!clerkUserId) {
     throw new Error("Missing AURA_CLERK_USER_ID for worker config lookup");
@@ -241,11 +248,28 @@ async function getStrategySettingsForWorker() {
     );
   }
 
-  return ss as {
-    riskUsd: number;
-    rr: number;
-    maxStopTicks: number;
-    entryType: "market" | "limit";
+  const sessionsRaw = (ss as any)?.sessions ?? null;
+
+  const sessions = {
+    asia: Boolean(sessionsRaw?.asia),
+    london: Boolean(sessionsRaw?.london),
+    ny: Boolean(sessionsRaw?.ny),
+  };
+
+  // "All Hours" mode = none selected (no restriction)
+  const noneSelected = !sessions.asia && !sessions.london && !sessions.ny;
+
+  return {
+    riskUsd: Number((ss as any)?.riskUsd ?? 200),
+    rr: Number((ss as any)?.rr ?? 2),
+    maxStopTicks: Number((ss as any)?.maxStopTicks ?? 45),
+    entryType: ((ss as any)?.entryType === "limit" ? "limit" : "market") as
+      | "market"
+      | "limit",
+
+    sessions: noneSelected
+      ? { asia: false, london: false, ny: false } // explicitly represent "All Hours"
+      : sessions,
   };
 }
 
@@ -397,6 +421,7 @@ export async function startBrokerFeed(params?: {
           emitSafe,
           getUserTradingState,
           getUserIdentityForWorker,
+          getStrategySettingsForWorker,
           getStrategyEnabledForAccount,
           strategy,
           token,
