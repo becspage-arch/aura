@@ -6,20 +6,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { UserButton, useUser } from "@clerk/nextjs";
 import { subscribeUserChannel } from "@/lib/ably/client";
 
-type PauseGetResponse = {
+type DashboardSummaryResponse = {
   ok: true;
-  isPaused: boolean;
-  isKillSwitched?: boolean;
-  killSwitchedAt?: string | null;
-};
-
-type StatusGetResponse = {
-  ok: true;
-  brokerAccountId: string | null;
-  isPaused: boolean;
-  isKillSwitched: boolean;
-  brokerConnected: boolean;
-  lastHeartbeatAt: string | null;
+  status: {
+    strategy: "PAUSED" | "ACTIVE";
+    trading: "STOPPED" | "LIVE";
+    brokerConnected: boolean;
+  };
 };
 
 function titleFromPath(pathname: string) {
@@ -68,38 +61,20 @@ export function AppTopBar() {
 
   const [shareBusy, setShareBusy] = useState(false);
 
-  // initial pause/kill (existing endpoint)
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const res = await fetchJSON<PauseGetResponse>("/api/trading-state/pause");
-        if (cancelled) return;
-        setIsPaused(!!res.isPaused);
-        setIsKillSwitched(!!res.isKillSwitched);
-      } catch {
-        // ignore
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // status poll (brokerConnected + also keeps pause/kill consistent)
+  // Poll status from dashboard summary (single source of truth)
   useEffect(() => {
     let cancelled = false;
     let t: any = null;
 
     async function tick() {
       try {
-        const res = await fetchJSON<StatusGetResponse>("/api/trading-state/status");
+        // Range doesn't matter for top bar; endpoint supports it.
+        const res = await fetchJSON<DashboardSummaryResponse>("/api/dashboard/summary?range=1Y");
         if (cancelled) return;
-        setIsPaused(!!res.isPaused);
-        setIsKillSwitched(!!res.isKillSwitched);
-        setBrokerConnected(!!res.brokerConnected);
+
+        setIsPaused(res.status.strategy === "PAUSED");
+        setIsKillSwitched(res.status.trading === "STOPPED");
+        setBrokerConnected(!!res.status.brokerConnected);
       } catch {
         // ignore
       } finally {
@@ -115,7 +90,7 @@ export function AppTopBar() {
     };
   }, []);
 
-  // realtime updates for pause/kill
+  // realtime updates for pause/kill (and brokerConnected if present)
   useEffect(() => {
     if (!isLoaded) return;
     const clerkUserId = user?.id;
@@ -128,6 +103,7 @@ export function AppTopBar() {
       const data = (item.event as any)?.data ?? {};
       if (typeof data.isPaused === "boolean") setIsPaused(data.isPaused);
       if (typeof data.isKillSwitched === "boolean") setIsKillSwitched(data.isKillSwitched);
+      if (typeof data.brokerConnected === "boolean") setBrokerConnected(data.brokerConnected);
     });
 
     return () => {
