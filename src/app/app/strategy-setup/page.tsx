@@ -155,8 +155,6 @@ export default function StrategyPage() {
             setErr={setErr}
           />
 
-          <PositionSizingCard current={current} />
-
           <SafetyLimitsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
 
           <section className="aura-section">

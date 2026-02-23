@@ -222,6 +222,32 @@ async function reconcileOnce() {
     }
   }
 
+  // --- Lease cleanup: if no task is running, mark lease STOPPED once it goes stale ---
+  const leaseTtlMs = 60_000; // must match (or exceed) worker's leaseTtlMs
+  const nowMs = Date.now();
+
+  // Find any RUNNING leases whose broker account is disabled OR not desired anymore.
+  const leases = await db.workerLease.findMany({
+    where: {
+      status: "RUNNING",
+      brokerAccount: { isEnabled: false },
+    },
+    select: { brokerAccountId: true, lastSeenAt: true },
+  });
+
+  for (const l of leases) {
+    const hasRunningTask = (byAccount.get(l.brokerAccountId) || []).length > 0;
+    if (hasRunningTask) continue;
+
+    const ageMs = nowMs - new Date(l.lastSeenAt).getTime();
+    if (ageMs < leaseTtlMs) continue;
+
+    await db.workerLease.update({
+      where: { brokerAccountId: l.brokerAccountId },
+      data: { status: "STOPPED" },
+    });
+  }
+
   console.log("[orchestrator] reconcile done", {
     desiredAccounts: desired.length,
     runningTasks: runningTasks.length,
