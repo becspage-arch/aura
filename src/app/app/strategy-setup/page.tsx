@@ -11,7 +11,6 @@ import { StrategySummaryStrip } from "./_components/StrategySummaryStrip";
 import { StrategyTopCardsRow } from "./_components/StrategyTopCardsRow";
 import { TradingSessionsCard } from "./_components/TradingSessionsCard";
 import { RiskConfigurationCard } from "./_components/RiskConfigurationCard";
-import { PositionSizingCard } from "./_components/PositionSizingCard";
 import { TradingOptionsCard } from "./_components/TradingOptionsCard";
 import { ExecutionPreferencesCard } from "./_components/ExecutionPreferencesCard";
 import { SafetyLimitsCard } from "./_components/SafetyLimitsCard";
