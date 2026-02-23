@@ -108,7 +108,7 @@ async function runWorker(a: DesiredAccount) {
   });
 }
 
-async function stopTask(taskArn: string, reason: string) {
+async function stopTask(taskArn: string, reason: string, brokerAccountId?: string) {
   await ecs.send(
     new StopTaskCommand({
       cluster: env.ECS_CLUSTER,
@@ -116,7 +116,15 @@ async function stopTask(taskArn: string, reason: string) {
       reason,
     })
   );
+
   console.log("[orchestrator] stopped task", { taskArn, reason });
+
+  if (brokerAccountId) {
+    await db.workerLease.updateMany({
+      where: { brokerAccountId },
+      data: { status: "STOPPED" },
+    });
+  }
 }
 
 async function reconcileOnce() {
@@ -143,7 +151,10 @@ async function reconcileOnce() {
   // Stop any unknown tasks (no account id override)
   for (const t of unknownTasks) {
     if (t?.taskArn) {
-      await stopTask(t.taskArn, "orchestrator:missing-brokerAccountId-override");
+      await stopTask(
+        t.taskArn,
+        "orchestrator:missing-brokerAccountId-override"
+      );
     }
   }
 
@@ -169,7 +180,11 @@ async function reconcileOnce() {
 
       for (const t of stop) {
         if (t?.taskArn) {
-          await stopTask(t.taskArn, `orchestrator:duplicate-for-account keep=${keep?.taskArn || "unknown"}`);
+          await stopTask(
+            t.taskArn,
+            `orchestrator:duplicate-for-account keep=${keep?.taskArn || "unknown"}`,
+            acct.brokerAccountId
+          );
         }
       }
     }
@@ -180,7 +195,11 @@ async function reconcileOnce() {
     if (!desiredSet.has(acctId)) {
       for (const t of tasks) {
         if (t?.taskArn) {
-          await stopTask(t.taskArn, "orchestrator:account-disabled");
+          await stopTask(
+            t.taskArn,
+            "orchestrator:account-disabled",
+            acctId
+          );
         }
       }
     }
