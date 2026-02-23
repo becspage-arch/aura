@@ -15,6 +15,8 @@ import { TradingOptionsCard } from "./_components/TradingOptionsCard";
 import { ExecutionPreferencesCard } from "./_components/ExecutionPreferencesCard";
 import { SafetyLimitsCard } from "./_components/SafetyLimitsCard";
 
+import { emitToast } from "@/components/toastBus";
+
 export const dynamic = "force-dynamic";
 
 export default function StrategyPage() {
@@ -24,7 +26,6 @@ export default function StrategyPage() {
   const [err, setErr] = useState<string | null>(null);
   const [current, setCurrent] = useState<StrategySettings | null>(null);
 
-  // collapsed by default (we’ll persist per-user in the NEXT step)
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // Runtime state
@@ -57,7 +58,11 @@ export default function StrategyPage() {
         const res = await fetchJSON<StrategyGetResponse>("/api/trading-state/strategy-settings");
         if (!cancelled) setCurrent(res.strategySettings);
       } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setErr(msg);
+          emitToast({ title: "Strategy Setup", body: `Failed to load settings - ${msg}` });
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -79,9 +84,22 @@ export default function StrategyPage() {
       });
 
       setCurrent(res.strategySettings);
+
+      emitToast({
+        title: "Saved",
+        body: "Strategy settings updated",
+      });
+
       return res.strategySettings;
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setErr(msg);
+
+      emitToast({
+        title: "Save failed",
+        body: msg,
+      });
+
       throw e;
     } finally {
       setSaving(false);
@@ -107,7 +125,6 @@ export default function StrategyPage() {
           </section>
         ) : null}
 
-        {/* Core */}
         <div className="aura-section-stack">
           <StrategyTopCardsRow current={current} />
 
@@ -131,7 +148,11 @@ export default function StrategyPage() {
 
           <PositionSizingCard current={current} />
 
-          <SafetyLimitsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
+          <SafetyLimitsCard
+            current={current}
+            saving={saving}
+            patchStrategySettings={patchStrategySettings}
+          />
 
           <section className="aura-section">
             <div className="aura-advanced-container">
@@ -147,7 +168,11 @@ export default function StrategyPage() {
 
               {advancedOpen && (
                 <div className="aura-advanced-content">
-                  <TradingOptionsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
+                  <TradingOptionsCard
+                    current={current}
+                    saving={saving}
+                    patchStrategySettings={patchStrategySettings}
+                  />
                   <ExecutionPreferencesCard
                     current={current}
                     saving={saving}
