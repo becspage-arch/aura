@@ -15,6 +15,7 @@ model UserProfile {
   clerkUserId                 String?                  @unique
   auditLogs                   AuditLog[]
   brokerAccounts              BrokerAccount[]
+  executions                  Execution[]
   userState                   UserTradingState?
   onboardingNotificationsDone Boolean                  @default(false)
   notificationPrefs           NotificationPreferences?
@@ -33,9 +34,10 @@ model BrokerAccount {
   user UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Trading artifacts tied to this account
-  fills     Fill[]
-  orders    Order[]
-  snapshots AccountSnapshot[]
+  fills      Fill[]
+  orders     Order[]
+  executions Execution[]
+  snapshots  AccountSnapshot[]
 
   // Desired run state (user intention)
   // - true  = Aura should run for this account (subject to pause/kill safety gates)
@@ -73,8 +75,8 @@ model WorkerLease {
   updatedAt DateTime @updatedAt
 
   // One lease row per broker account (we overwrite/renew it)
-  brokerAccountId String        @unique
-  brokerAccount   BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+  brokerAccountId String         @unique
+  brokerAccount   BrokerAccount? @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
 
   // Who currently "owns" the worker
   instanceId String
@@ -148,7 +150,7 @@ model Fill {
   side            OrderSide
   qty             Decimal
   price           Decimal
-  filledAt        DateTime? // ✅ add this
+  filledAt        DateTime? // 
 
   brokerAccount BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
   order         Order?        @relation(fields: [orderId], references: [id])
@@ -164,10 +166,14 @@ model Execution {
   updatedAt DateTime @updatedAt
 
   // Who / where
-  userId     String
-  brokerName String
-  contractId String
-  symbol     String?
+  userId          String
+  brokerAccountId String?
+  brokerName      String
+  contractId      String
+  symbol          String?
+
+  user          UserProfile    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerAccount BrokerAccount? @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
 
   // Deterministic idempotency key (unique)
   execKey String @unique
@@ -175,12 +181,12 @@ model Execution {
   // Intent
   side            OrderSide
   qty             Decimal
-  entryType       String // "market" | "limit" | "stop" (string so brokers can extend)
+  entryType       String
   stopLossTicks   Int?
   takeProfitTicks Int?
   customTag       String?
 
-  // Broker linkage (for now ProjectX returns one orderId; future brokers may have separate ids)
+  // Broker linkage
   entryOrderId String?
   stopOrderId  String?
   tpOrderId    String?
@@ -190,6 +196,7 @@ model Execution {
   meta   Json?
 
   @@index([userId, createdAt])
+  @@index([brokerAccountId, createdAt])
   @@index([brokerName, createdAt])
   @@index([contractId, createdAt])
 }

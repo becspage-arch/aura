@@ -1,3 +1,4 @@
+// ssrc/app/app/activity/page.tsx
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";

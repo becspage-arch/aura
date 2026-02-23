@@ -91,7 +91,15 @@ export async function startManualExecListener(params: {
   const client = new Ably.Realtime(apiKey);
 
   // IMPORTANT: match how you publish: aura:exec:<clerkUserId>
-  const channelName = `aura:exec:${params.expectedUser}`;
+  const brokerName = (process.env.AURA_BROKER_NAME || "").trim();
+  const brokerAccountId = (process.env.AURA_BROKER_ACCOUNT_ID || "").trim();
+
+  if (!brokerName || !brokerAccountId) {
+    console.warn(`[${params.env.WORKER_NAME}] manual exec enabled but missing AURA_BROKER_NAME/AURA_BROKER_ACCOUNT_ID`);
+    return;
+  }
+
+  const channelName = `aura:exec:${params.expectedUser}:${brokerName}:${brokerAccountId}`;
   const execChannel = client.channels.get(channelName);
 
   const handler = async (msg: Ably.Types.Message) => {
@@ -234,6 +242,7 @@ export async function startManualExecListener(params: {
           execKey,
           userId: ident.userId,
           brokerName: (params.broker as any)?.name ?? "unknown",
+          brokerAccountId,
           contractId,
           symbol,
           side,

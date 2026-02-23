@@ -22,10 +22,9 @@ function isManualOrderPayload(x: any): x is ManualOrderPayload {
 
 export async function startAblyExecListener(params: {
   ablyApiKey: string;
-
-  // IMPORTANT: this must be the Clerk user id for this worker instance
   clerkUserId: string;
-
+  brokerName: string;
+  brokerAccountId: string;
   placeManualBracket: (p: ManualOrderPayload) => Promise<void>;
   log: (msg: string, extra?: any) => void;
 }) {
@@ -36,7 +35,7 @@ export async function startAblyExecListener(params: {
     throw new Error("[ABLY_EXEC] Missing clerkUserId");
   }
 
-  const channelName = `aura:exec:${clerkUserId}`;
+  const channelName = `aura:exec:${clerkUserId}:${params.brokerName}:${params.brokerAccountId}`;
   const ch = client.channels.get(channelName);
 
   const handler = async (msg: Ably.Types.Message) => {

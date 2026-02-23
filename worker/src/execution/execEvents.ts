@@ -13,7 +13,13 @@ export type ExecEventType =
 
 export async function emitExecEvent(params: {
   prisma: PrismaClient;
+
+  // internal UserProfile.id
   userId: string;
+
+  // broker account scope (BrokerAccount.id)
+  brokerAccountId?: string | null;
+
   executionId?: string | null;
   type: ExecEventType;
   message: string;
@@ -23,26 +29,27 @@ export async function emitExecEvent(params: {
   const { prisma } = params;
   const level = params.level ?? "info";
 
-  // CloudWatch / logs
   console.log(`[exec-event] ${params.type}`, {
     level,
     userId: params.userId,
+    brokerAccountId: params.brokerAccountId ?? null,
     executionId: params.executionId ?? null,
     message: params.message,
     data: params.data ?? null,
   });
 
-  // Persist
   await prisma.eventLog.create({
     data: {
       type: params.type,
       level,
       message: params.message,
       data: {
+        brokerAccountId: params.brokerAccountId ?? null,
         executionId: params.executionId ?? null,
         ...(params.data ?? {}),
       },
       userId: params.userId,
+      brokerAccountId: params.brokerAccountId ?? null,
     },
   });
 }

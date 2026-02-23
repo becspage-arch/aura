@@ -102,7 +102,9 @@ async function main() {
   console.log(`[${env.WORKER_NAME}] Ably connected`);
 
   const uiChannel = ably.channels.get(`aura:ui:${scope.clerkUserId}`);
-  const brokerChannel = ably.channels.get(`aura:broker:${scope.clerkUserId}`);
+  const brokerChannel = ably.channels.get(
+    `aura:broker:${scope.clerkUserId}:${scope.brokerName}:${scope.brokerAccountId}`
+  );
 
   // 4b) Daily summary scheduler
   startDailyScheduler({
@@ -249,6 +251,8 @@ async function main() {
   await startAblyExecListener({
     ablyApiKey: ablyKey,
     clerkUserId: scope.clerkUserId,
+    brokerName: scope.brokerName,
+    brokerAccountId: scope.brokerAccountId,
     log: (msg, extra) => console.log(msg, extra ?? ""),
     placeManualBracket: async (p) => {
       if (!brokerRef) {
@@ -263,7 +267,8 @@ async function main() {
         broker: brokerRef,
         input: {
           execKey,
-          userId: scope.userId, // internal userProfile id
+          userId: scope.userId,
+          brokerAccountId: scope.brokerAccountId, // ✅ ADD THIS
           brokerName: (brokerRef as any)?.name ?? scope.brokerName,
           contractId: p.contractId,
           side: p.side,

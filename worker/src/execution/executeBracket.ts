@@ -1,3 +1,4 @@
+// worker/src/execution/executeBracket.ts
 import { PrismaClient, OrderSide } from "@prisma/client";
 import type { IBrokerAdapter } from "../broker/IBrokerAdapter.js";
 import { logTag } from "../lib/logTags";
@@ -159,6 +160,7 @@ export async function executeBracket(params: {
     await emitExecEvent({
       prisma,
       userId: input.userId,
+      brokerAccountId: input.brokerAccountId,
       type: "exec.broker_blocked",
       message: "Blocked: broker account not found for user",
       data: {
@@ -179,6 +181,7 @@ export async function executeBracket(params: {
     await emitExecEvent({
       prisma,
       userId: input.userId,
+      brokerAccountId: input.brokerAccountId,
       type: "exec.broker_blocked",
       message: "Blocked: kill switch active",
       data: {
@@ -201,6 +204,7 @@ export async function executeBracket(params: {
     await emitExecEvent({
       prisma,
       userId: input.userId,
+      brokerAccountId: input.brokerAccountId,
       type: "exec.broker_blocked",
       message: "Blocked: trading paused",
       data: {
@@ -219,6 +223,7 @@ export async function executeBracket(params: {
   await emitExecEvent({
     prisma,
     userId: input.userId,
+    brokerAccountId: input.brokerAccountId,
     type: "exec.requested",
     message: "executeBracket requested",
     data: {
@@ -247,7 +252,7 @@ export async function executeBracket(params: {
   // v1 policy: forced to 1 for now (UI shows it; later you can unlock)
   const maxOpenTrades = 1;
 
-  const lockKey1 = `aura:${input.userId}`;
+  const lockKey1 = `aura:${input.userId}:${input.brokerAccountId}`;
   const lockKey2 = `openTrade:${input.brokerName}:${input.contractId}:${resolvedSymbol ?? ""}`;
 
   try {
@@ -352,6 +357,7 @@ export async function executeBracket(params: {
         const res = await prisma.execution.updateMany({
           where: {
             userId: input.userId,
+            brokerAccountId: input.brokerAccountId,
             brokerName: input.brokerName,
             contractId: input.contractId,
             ...(resolvedSymbol ? { symbol: resolvedSymbol } : {}),
@@ -409,6 +415,7 @@ export async function executeBracket(params: {
       const openCount = await prisma.execution.count({
         where: {
           userId: input.userId,
+          brokerAccountId: input.brokerAccountId,
           brokerName: input.brokerName,
           contractId: input.contractId,
           ...(resolvedSymbol ? { symbol: resolvedSymbol } : {}),
@@ -484,6 +491,7 @@ export async function executeBracket(params: {
       await emitExecEvent({
         prisma,
         userId: input.userId,
+        brokerAccountId: input.brokerAccountId,
         executionId: existing.id,
         type: "exec.duplicate_ignored",
         message: "Idempotent hit - existing execution returned",
@@ -505,6 +513,7 @@ export async function executeBracket(params: {
       data: {
         execKey: input.execKey,
         userId: input.userId,
+        brokerAccountId: input.brokerAccountId,
         brokerName: input.brokerName,
         contractId: input.contractId,
         symbol: resolvedSymbol,
@@ -521,6 +530,7 @@ export async function executeBracket(params: {
     await emitExecEvent({
       prisma,
       userId: input.userId,
+      brokerAccountId: input.brokerAccountId,
       executionId: exec.id,
       type: "exec.intent_created",
       message: "Execution intent created",
@@ -556,6 +566,7 @@ export async function executeBracket(params: {
       await emitExecEvent({
         prisma,
         userId: input.userId,
+        brokerAccountId: input.brokerAccountId,
         executionId: updated.id,
         type: "exec.brackets_submitted",
         message: "Entry and exits submitted to broker",
@@ -588,6 +599,7 @@ export async function executeBracket(params: {
       await emitExecEvent({
         prisma,
         userId: input.userId,
+        brokerAccountId: input.brokerAccountId,
         executionId: updated.id,
         type: "exec.oco_watch_started",
         message: "OCO watcher started",
@@ -621,6 +633,7 @@ export async function executeBracket(params: {
       await emitExecEvent({
         prisma,
         userId: input.userId,
+        brokerAccountId: input.brokerAccountId,
         executionId: exec.id,
         type: "exec.failed",
         message: "Execution failed",
