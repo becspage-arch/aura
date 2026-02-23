@@ -238,7 +238,7 @@ export async function startManualExecListener(params: {
           symbol,
           side,
           qty,
-          maxContracts: process.env.AURA_MAX_CONTRACTS ? Number(process.env.AURA_MAX_CONTRACTS) : null,
+          maxContracts: null,
           entryType,
           stopLossTicks,
           takeProfitTicks,

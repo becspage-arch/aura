@@ -10,6 +10,7 @@ import { startDailyScheduler } from "./notifications/dailyScheduler.js";
 import { startAblyExecListener } from "./exec/ablyExecListener.js";
 import { executeBracket } from "./execution/executeBracket.js";
 import type { IBrokerAdapter } from "./broker/IBrokerAdapter.js";
+import { getWorkerScope } from "./scope/workerScope.js";
 
 async function main() {
   console.log(`[${env.WORKER_NAME}] BUILD`, {
@@ -53,16 +54,14 @@ async function main() {
     }
   };
 
-  // 3) Required environment
-  const expectedClerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
-  if (!expectedClerkUserId) {
-    throw new Error(`[${env.WORKER_NAME}] Missing AURA_CLERK_USER_ID`);
-  }
+  // 3) Resolve HARD worker scope (source of truth)
+  const scope = await getWorkerScope({
+    prisma: db,
+    env: process.env,
+    workerName: env.WORKER_NAME,
+  });
 
-  const brokerAccountId = (process.env.AURA_BROKER_ACCOUNT_ID || "").trim();
-  if (!brokerAccountId) {
-    throw new Error(`[${env.WORKER_NAME}] Missing AURA_BROKER_ACCOUNT_ID`);
-  }
+  console.log(`[${env.WORKER_NAME}] WORKER_SCOPE`, scope);
 
   const instanceId =
     (process.env.WORKER_INSTANCE_ID || "").trim() || `${env.WORKER_NAME}:${randomUUID()}`;
@@ -72,7 +71,7 @@ async function main() {
   const markLeaseStoppedSafe = async () => {
     try {
       await db.workerLease.update({
-        where: { brokerAccountId },
+        where: { brokerAccountId: scope.brokerAccountId },
         data: { status: "STOPPED", lastSeenAt: new Date() },
         select: { id: true },
       });
@@ -102,8 +101,8 @@ async function main() {
   });
   console.log(`[${env.WORKER_NAME}] Ably connected`);
 
-  const uiChannel = ably.channels.get(`aura:ui:${expectedClerkUserId}`);
-  const brokerChannel = ably.channels.get(`aura:broker:${expectedClerkUserId}`);
+  const uiChannel = ably.channels.get(`aura:ui:${scope.clerkUserId}`);
+  const brokerChannel = ably.channels.get(`aura:broker:${scope.clerkUserId}`);
 
   // 4b) Daily summary scheduler
   startDailyScheduler({
@@ -112,45 +111,17 @@ async function main() {
       const { emitDailySummary } = await import("./notifications/emitDailySummary.js");
       await emitDailySummary({
         prisma: db,
-        clerkUserId: expectedClerkUserId,
+        clerkUserId: scope.clerkUserId,
       });
     },
   });
 
-  // 5) Resolve internal userProfile id
-  const user = await db.userProfile.findUnique({
-    where: { clerkUserId: expectedClerkUserId },
-    select: { id: true },
-  });
-
-  if (!user?.id) {
-    throw new Error(
-      `[${env.WORKER_NAME}] No userProfile found for clerkUserId=${expectedClerkUserId}`
-    );
-  }
-
-  const userId = user.id;
-
-  // 5b) Verify broker account ownership
-  const acct = await db.brokerAccount.findFirst({
-    where: { id: brokerAccountId, userId },
-    select: { id: true, brokerName: true, externalId: true },
-  });
-
-  if (!acct) {
-    throw new Error(
-      `[${env.WORKER_NAME}] BrokerAccount not found or not owned by user. brokerAccountId=${brokerAccountId}`
-    );
-  }
-
-  console.log(`[${env.WORKER_NAME}] broker account scope`, acct);
-
-  // 5c) Claim/renew WorkerLease (single-worker per broker account)
+  // 5) Claim/renew WorkerLease (single-worker per broker account)
   const leaseTtlMs = 60_000; // consider dead if not seen in 60s
   const now = new Date();
 
   const existingLease = await db.workerLease.findUnique({
-    where: { brokerAccountId },
+    where: { brokerAccountId: scope.brokerAccountId },
     select: { instanceId: true, lastSeenAt: true },
   });
 
@@ -158,7 +129,7 @@ async function main() {
     const ageMs = now.getTime() - new Date(existingLease.lastSeenAt).getTime();
     if (ageMs < leaseTtlMs) {
       console.log(`[${env.WORKER_NAME}] lease held by another instance - exiting`, {
-        brokerAccountId,
+        brokerAccountId: scope.brokerAccountId,
         currentInstanceId: existingLease.instanceId,
         thisInstanceId: instanceId,
         lastSeenAt: existingLease.lastSeenAt,
@@ -169,9 +140,9 @@ async function main() {
   }
 
   await db.workerLease.upsert({
-    where: { brokerAccountId },
+    where: { brokerAccountId: scope.brokerAccountId },
     create: {
-      brokerAccountId,
+      brokerAccountId: scope.brokerAccountId,
       instanceId,
       startedAt: now,
       lastSeenAt: now,
@@ -192,7 +163,10 @@ async function main() {
     select: { id: true },
   });
 
-  console.log(`[${env.WORKER_NAME}] lease claimed`, { brokerAccountId, instanceId });
+  console.log(`[${env.WORKER_NAME}] lease claimed`, {
+    brokerAccountId: scope.brokerAccountId,
+    instanceId,
+  });
 
   // 5d) Heartbeat loop (updates BrokerAccount.lastHeartbeatAt + WorkerLease.lastSeenAt)
   const heartbeatEveryMs = 15_000;
@@ -203,19 +177,19 @@ async function main() {
     void db
       .$transaction([
         db.brokerAccount.update({
-          where: { id: brokerAccountId },
+          where: { id: scope.brokerAccountId },
           data: { lastHeartbeatAt: ts },
           select: { id: true },
         }),
         db.workerLease.update({
-          where: { brokerAccountId },
+          where: { brokerAccountId: scope.brokerAccountId },
           data: { lastSeenAt: ts, status: "RUNNING" },
           select: { id: true },
         }),
       ])
       .catch((e) => {
         console.warn(`[${env.WORKER_NAME}] heartbeat failed`, {
-          brokerAccountId,
+          brokerAccountId: scope.brokerAccountId,
           instanceId,
           name: e?.name ?? null,
           message: e?.message ?? String(e),
@@ -242,9 +216,10 @@ async function main() {
             workerName: env.WORKER_NAME,
             workerEnv: env.WORKER_ENV,
             dryRun: DRY_RUN,
+            scope,
           },
-          userId: userId,
-          brokerAccountId: brokerAccountId,
+          userId: scope.userId,
+          brokerAccountId: scope.brokerAccountId,
         },
         select: { id: true },
       });
@@ -273,22 +248,23 @@ async function main() {
 
   await startAblyExecListener({
     ablyApiKey: ablyKey,
-    clerkUserId: expectedClerkUserId,
+    clerkUserId: scope.clerkUserId,
     log: (msg, extra) => console.log(msg, extra ?? ""),
     placeManualBracket: async (p) => {
       if (!brokerRef) {
         throw new Error("Broker not ready yet (brokerRef is null)");
       }
 
-      const execKey = `manual:${expectedClerkUserId}:${Date.now()}`;
+      // include account identity to avoid collisions across accounts
+      const execKey = `manual:${scope.clerkUserId}:${scope.brokerName}:${scope.brokerAccountId}:${Date.now()}`;
 
       await executeBracket({
         prisma: db,
         broker: brokerRef,
         input: {
           execKey,
-          userId, // internal userProfile id
-          brokerName: (brokerRef as any)?.name ?? "projectx",
+          userId: scope.userId, // internal userProfile id
+          brokerName: (brokerRef as any)?.name ?? scope.brokerName,
           contractId: p.contractId,
           side: p.side,
           qty: p.size,
@@ -304,6 +280,7 @@ async function main() {
   // 7) Start broker feed
   try {
     await startBrokerFeed({
+      scope,
       onBrokerReady: async (b) => {
         brokerRef = b;
 
@@ -316,7 +293,7 @@ async function main() {
         await resumeOpenExecutions({
           prisma: db,
           broker: b,
-          userId,
+          userId: scope.userId,
         });
       },
       emitSafe: async (event) => {

@@ -1,4 +1,6 @@
-﻿"use client";
+﻿// src/app/app/strategy-setup/_components/TradingSessionsCard.tsx
+
+"use client";
 
 import type { StrategySettings } from "../_lib/types";
 

@@ -17,6 +17,7 @@ type RiskFormState = {
   riskUsd: string;
   rr: string;
   maxStopTicks: string;
+  maxContracts: string; // NEW
 };
 
 function formFromCurrent(current: StrategySettings): RiskFormState {
@@ -24,11 +25,17 @@ function formFromCurrent(current: StrategySettings): RiskFormState {
     riskUsd: String(current.riskUsd),
     rr: String(current.rr),
     maxStopTicks: String(current.maxStopTicks),
+    maxContracts:
+      current.maxContracts == null ? "" : String(current.maxContracts),
   };
 }
 
 function isPositiveNumber(n: number) {
   return Number.isFinite(n) && n > 0;
+}
+
+function isPositiveInt(n: number) {
+  return Number.isFinite(n) && Number.isInteger(n) && n > 0;
 }
 
 export function RiskConfigurationCard({ current, saving, disabled, patchStrategySettings }: Props) {
@@ -38,24 +45,37 @@ export function RiskConfigurationCard({ current, saving, disabled, patchStrategy
     riskUsd: "",
     rr: "",
     maxStopTicks: "",
+    maxContracts: "",
   });
 
   const dirtyRisk = useMemo(() => {
     if (!current) return false;
+
+    const currMaxContracts = current.maxContracts == null ? "" : String(current.maxContracts);
+
     return (
       riskForm.riskUsd !== String(current.riskUsd) ||
       riskForm.rr !== String(current.rr) ||
-      riskForm.maxStopTicks !== String(current.maxStopTicks)
+      riskForm.maxStopTicks !== String(current.maxStopTicks) ||
+      riskForm.maxContracts !== currMaxContracts
     );
   }, [current, riskForm]);
 
   useEffect(() => {
     if (!current) return;
 
-    const isBlank = riskForm.riskUsd === "" && riskForm.rr === "" && riskForm.maxStopTicks === "";
+    const isBlank =
+      riskForm.riskUsd === "" &&
+      riskForm.rr === "" &&
+      riskForm.maxStopTicks === "" &&
+      riskForm.maxContracts === "";
+
     if (isBlank || !dirtyRisk) setRiskForm(formFromCurrent(current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current]);
+
+  // Max Open Trades is fixed at 1 for now (shown but locked)
+  const maxOpenTradesDisplay = 1;
 
   const summary = current
     ? `Current: $${current.riskUsd} • RR ${current.rr} • Max stop ${current.maxStopTicks} ticks`
@@ -68,11 +88,18 @@ export function RiskConfigurationCard({ current, saving, disabled, patchStrategy
   };
 
   const applyRisk = async () => {
+    if (!current) return;
+
     setErrorLocal(null);
 
     const riskUsd = toNumberOrNull(riskForm.riskUsd);
     const rr = toNumberOrNull(riskForm.rr);
     const maxStopTicks = toNumberOrNull(riskForm.maxStopTicks);
+
+    // maxContracts is optional; blank => null
+    const maxContractsRaw = riskForm.maxContracts.trim();
+    const maxContracts =
+      maxContractsRaw === "" ? null : toNumberOrNull(maxContractsRaw);
 
     if (riskUsd === null || rr === null || maxStopTicks === null) {
       setErrorLocal("Please enter valid numbers for Max Risk, RR, and Max Stop (ticks).");
@@ -94,7 +121,20 @@ export function RiskConfigurationCard({ current, saving, disabled, patchStrategy
       return;
     }
 
-    await patchStrategySettings({ riskUsd, rr, maxStopTicks });
+    if (maxContracts !== null) {
+      if (!isPositiveInt(maxContracts)) {
+        setErrorLocal("Max Contracts must be a whole number greater than 0 (or leave blank for no cap).");
+        return;
+      }
+    }
+
+    await patchStrategySettings({
+      riskUsd,
+      rr,
+      maxStopTicks,
+      maxContracts,
+      // NOTE: we are NOT saving maxOpenTrades yet (fixed at 1)
+    });
   };
 
   return (
@@ -157,6 +197,33 @@ export function RiskConfigurationCard({ current, saving, disabled, patchStrategy
               market (fixed)
             </div>
             <div className="aura-muted aura-text-xs aura-mt-10">Aura places market orders only.</div>
+          </div>
+
+          {/* NEW: Max Contracts (editable) */}
+          <div>
+            <div className="aura-muted aura-text-xs">Max contracts</div>
+            <input
+              className="aura-input aura-mt-10"
+              inputMode="numeric"
+              value={riskForm.maxContracts}
+              onChange={(e) => setRiskForm((s) => ({ ...s, maxContracts: e.target.value }))}
+              placeholder="Leave blank for no cap"
+              disabled={disabled}
+            />
+            <div className="aura-muted aura-text-xs aura-mt-10">
+              Caps the number of contracts Aura can place per trade.
+            </div>
+          </div>
+
+          {/* NEW: Max Open Trades (locked) */}
+          <div>
+            <div className="aura-muted aura-text-xs">Max open trades</div>
+            <div className="aura-input aura-mt-10 aura-input--readonly" aria-readonly="true">
+              {maxOpenTradesDisplay} (locked)
+            </div>
+            <div className="aura-muted aura-text-xs aura-mt-10">
+              Aura can only have 1 open trade at a time for now.
+            </div>
           </div>
         </div>
 

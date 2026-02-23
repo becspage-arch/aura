@@ -1,5 +1,3 @@
-// worker/src/execution/executeBracket.ts
-
 import { PrismaClient, OrderSide } from "@prisma/client";
 import type { IBrokerAdapter } from "../broker/IBrokerAdapter.js";
 import { logTag } from "../lib/logTags";
@@ -8,7 +6,8 @@ import { emitExecEvent } from "./execEvents.js";
 
 export type ExecuteBracketInput = {
   execKey: string; // deterministic idempotency key
-  userId: string;
+  userId: string; // internal UserProfile.id
+  brokerAccountId: string; // ✅ REQUIRED (Option B)
   brokerName: string;
 
   contractId: string;
@@ -25,11 +24,10 @@ export type ExecuteBracketInput = {
   stopLossTicks?: number | null;
   takeProfitTicks?: number | null;
 
-  // NEW: absolute prices from strategy (preferred)
+  // absolute prices from strategy (preferred)
   stopPrice?: number | null;
   takeProfitPrice?: number | null;
 
-  // optional user-provided tag (keep short if you use it)
   customTag?: string | null;
 };
 
@@ -39,7 +37,7 @@ function jsonSafe<T>(v: T): T {
 
 function makeBrokerTag(execKey: string): string {
   const h = createHash("sha1").update(execKey).digest("hex").slice(0, 8);
-  return `aura-${h}`; // short + unique enough for ProjectX
+  return `aura-${h}`;
 }
 
 function isFilled(o: any): boolean {
@@ -87,7 +85,7 @@ async function ocoWatchAndCancel(params: {
   if (typeof broker.cancelOrder !== "function") return;
 
   const start = Date.now();
-  const timeoutMs = 10 * 60 * 1000; // 10 minutes
+  const timeoutMs = 10 * 60 * 1000;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   while (Date.now() - start < timeoutMs) {
@@ -122,38 +120,6 @@ async function ocoWatchAndCancel(params: {
   console.warn("[executeBracket] OCO_WATCH_TIMEOUT", { execKey, tag });
 }
 
-function normalizeStopTicks(params: {
-  side: "buy" | "sell";
-  ticks: number;
-  requiresSigned: boolean;
-}): number {
-  const t = Number(params.ticks);
-  if (!Number.isFinite(t) || t <= 0) {
-    throw new Error(`executeBracket: invalid stopLossTicks ${String(params.ticks)}`);
-  }
-
-  if (!params.requiresSigned) return Math.abs(t);
-
-  // ProjectX expects signed ticks relative to side
-  return params.side === "buy" ? Math.abs(t) : -Math.abs(t);
-}
-
-function normalizeTakeProfitTicks(params: {
-  side: "buy" | "sell";
-  ticks: number;
-  requiresSigned: boolean;
-}): number {
-  const t = Number(params.ticks);
-  if (!Number.isFinite(t) || t <= 0) {
-    throw new Error(`executeBracket: invalid takeProfitTicks ${String(params.ticks)}`);
-  }
-
-  if (!params.requiresSigned) return Math.abs(t);
-
-  // ProjectX expects signed ticks relative to side
-  return params.side === "buy" ? Math.abs(t) : -Math.abs(t);
-}
-
 export async function executeBracket(params: {
   prisma: PrismaClient;
   broker: IBrokerAdapter;
@@ -176,34 +142,16 @@ export async function executeBracket(params: {
   const { prisma, broker, input } = params;
 
   // -------------------------
-  // 8M.3 Run-state source of truth (DB) - PER ACCOUNT
+  // Run-state source of truth (DB) - PER ACCOUNT (Option B)
   // -------------------------
-  const state = await prisma.userTradingState.findUnique({
-    where: { userId: input.userId }, // input.userId is INTERNAL userProfile id ✅
-    select: { selectedBrokerAccountId: true },
+  const runState = await prisma.brokerAccount.findFirst({
+    where: { id: input.brokerAccountId, userId: input.userId },
+    select: { isPaused: true, isKillSwitched: true, killSwitchedAt: true, config: true },
   });
 
-  const brokerAccountId = state?.selectedBrokerAccountId ?? null;
-  if (!brokerAccountId) {
-    await emitExecEvent({
-      prisma,
-      userId: input.userId,
-      type: "exec.broker_blocked",
-      message: "Blocked: no broker account selected",
-      data: {
-        execKey: input.execKey,
-        brokerName: input.brokerName,
-        contractId: input.contractId,
-        symbol: input.symbol ?? null,
-      },
-      level: "warn",
-    });
-
-    throw new Error("Blocked: no broker account selected");
-  }
-
-  const runState = await prisma.brokerAccount.findFirst({
-    where: { id: brokerAccountId, userId: input.userId },
+  // Optional global gates (“pause everything” / “kill everything”)
+  const globalState = await prisma.userTradingState.findUnique({
+    where: { userId: input.userId },
     select: { isPaused: true, isKillSwitched: true, killSwitchedAt: true },
   });
 
@@ -215,7 +163,7 @@ export async function executeBracket(params: {
       message: "Blocked: broker account not found for user",
       data: {
         execKey: input.execKey,
-        brokerAccountId,
+        brokerAccountId: input.brokerAccountId,
         brokerName: input.brokerName,
       },
       level: "warn",
@@ -224,7 +172,10 @@ export async function executeBracket(params: {
     throw new Error("Blocked: broker account not found");
   }
 
-  if (runState.isKillSwitched) {
+  const killActive = Boolean(runState.isKillSwitched) || Boolean(globalState?.isKillSwitched);
+  const pausedActive = Boolean(runState.isPaused) || Boolean(globalState?.isPaused);
+
+  if (killActive) {
     await emitExecEvent({
       prisma,
       userId: input.userId,
@@ -232,11 +183,13 @@ export async function executeBracket(params: {
       message: "Blocked: kill switch active",
       data: {
         execKey: input.execKey,
-        brokerAccountId,
+        brokerAccountId: input.brokerAccountId,
         brokerName: input.brokerName,
         contractId: input.contractId,
         symbol: input.symbol ?? null,
-        killSwitchedAt: runState.killSwitchedAt?.toISOString?.() ?? null,
+        killSwitchedAt:
+          runState.killSwitchedAt?.toISOString?.() ??
+          (globalState?.killSwitchedAt?.toISOString?.() ?? null),
       },
       level: "warn",
     });
@@ -244,7 +197,7 @@ export async function executeBracket(params: {
     throw new Error("Blocked: kill switch active");
   }
 
-  if (runState.isPaused) {
+  if (pausedActive) {
     await emitExecEvent({
       prisma,
       userId: input.userId,
@@ -252,7 +205,7 @@ export async function executeBracket(params: {
       message: "Blocked: trading paused",
       data: {
         execKey: input.execKey,
-        brokerAccountId,
+        brokerAccountId: input.brokerAccountId,
         brokerName: input.brokerName,
         contractId: input.contractId,
         symbol: input.symbol ?? null,
@@ -263,7 +216,6 @@ export async function executeBracket(params: {
     throw new Error("Blocked: trading paused");
   }
 
-  // Emit ONCE (after passing run-state checks)
   await emitExecEvent({
     prisma,
     userId: input.userId,
@@ -271,7 +223,7 @@ export async function executeBracket(params: {
     message: "executeBracket requested",
     data: {
       execKey: input.execKey,
-      brokerAccountId,
+      brokerAccountId: input.brokerAccountId,
       broker: (broker as any)?.name ?? null,
       brokerName: input.brokerName,
       contractId: input.contractId,
@@ -282,16 +234,22 @@ export async function executeBracket(params: {
     },
   });
 
-  const resolvedSymbol = (input.symbol ?? input.contractId ?? null);
+  const resolvedSymbol = input.symbol ?? input.contractId ?? null;
 
   // --- MAX OPEN TRADES (DB guard) + anti-double-click lock ---
-  const maxOpenTrades =
-    process.env.AURA_MAX_OPEN_TRADES != null ? Number(process.env.AURA_MAX_OPEN_TRADES) : 1;
+  const cfg = (runState.config as any) ?? null;
+
+  const maxOpenTradesParsed =
+    cfg?.maxOpenTrades != null && Number.isFinite(Number(cfg.maxOpenTrades))
+      ? Math.max(1, Math.floor(Number(cfg.maxOpenTrades)))
+      : 1;
+
+  // v1 policy: forced to 1 for now (UI shows it; later you can unlock)
+  const maxOpenTrades = 1;
 
   const lockKey1 = `aura:${input.userId}`;
   const lockKey2 = `openTrade:${input.brokerName}:${input.contractId}:${resolvedSymbol ?? ""}`;
 
-  // Acquire lock (best-effort)
   try {
     await prisma.$executeRaw`
       SELECT pg_advisory_lock(hashtext(${lockKey1}), hashtext(${lockKey2}))
@@ -304,10 +262,12 @@ export async function executeBracket(params: {
   }
 
   try {
-    // --- REAL broker position guard (no DB-ghost blocking) ---
-    // We try a few method names because adapters differ.
+    // --- REAL broker position guard ---
     const getPosFn =
-      (broker as any).getPosition ?? (broker as any).fetchPosition ?? (broker as any).getOpenPosition ?? null;
+      (broker as any).getPosition ??
+      (broker as any).fetchPosition ??
+      (broker as any).getOpenPosition ??
+      null;
 
     let brokerHasOpenPosition = false;
     let brokerPositionSize: number | null = null;
@@ -351,7 +311,6 @@ export async function executeBracket(params: {
           throw new Error(`Blocked: broker reports open position (size=${sizeNum})`);
         }
       } catch (e: any) {
-        // Non-blocking if the position check fails
         console.warn("[executeBracket] broker position check failed (non-blocking)", {
           execKey: input.execKey,
           err: e?.message ? String(e.message) : String(e),
@@ -364,9 +323,7 @@ export async function executeBracket(params: {
       });
     }
 
-    // --- If broker is flat, auto-cancel stale "ghost" open executions so they can't block forever ---
-    // This is ONLY done when broker position check succeeded AND broker is flat.
-    // (If we cannot verify broker flat, we do not auto-cancel anything.)
+    // --- Auto-cancel stale ghosts if broker check succeeded AND broker is flat ---
     const ghostTtlMinutes =
       process.env.AURA_GHOST_EXEC_TTL_MINUTES != null
         ? Number(process.env.AURA_GHOST_EXEC_TTL_MINUTES)
@@ -381,8 +338,6 @@ export async function executeBracket(params: {
     if (shouldGhostClean) {
       const staleBefore = new Date(Date.now() - ghostTtlMinutes * 60 * 1000);
 
-      // These are the statuses that frequently get stuck and block users.
-      // Note: We INCLUDE ORDER_FILLED here for cleanup purposes (but we do NOT count it as "open" below).
       const ghostStatuses: any[] = [
         "INTENT_CREATED",
         "ORDER_SUBMITTED",
@@ -441,9 +396,6 @@ export async function executeBracket(params: {
     }
 
     // 0) Max open trades guard (DB)
-    // IMPORTANT: DO NOT treat ORDER_FILLED as "open" here.
-    // If the broker is actually still in a position, the broker guard above blocks it.
-    // If broker is flat, ORDER_FILLED rows can exist transiently and must not block forever.
     if (Number.isFinite(maxOpenTrades) && maxOpenTrades > 0) {
       const openStatuses: any[] = [
         "INTENT_CREATED",
@@ -473,6 +425,7 @@ export async function executeBracket(params: {
           symbol: input.symbol ?? null,
           openCount,
           maxOpenTrades,
+          maxOpenTradesParsed,
         });
 
         logTag("[executeBracket] BLOCKED_MAX_OPEN_TRADES", {
@@ -483,6 +436,7 @@ export async function executeBracket(params: {
           symbol: input.symbol ?? null,
           openCount,
           maxOpenTrades,
+          maxOpenTradesParsed,
         });
 
         throw new Error(`Blocked: max open trades reached (${openCount}/${maxOpenTrades})`);
@@ -509,9 +463,10 @@ export async function executeBracket(params: {
       });
     }
 
-    // ALWAYS use a short tag for broker calls (ProjectX can 500 on long tags)
     const brokerTag =
-      input.customTag && input.customTag.trim().length > 0 ? input.customTag.trim() : makeBrokerTag(input.execKey);
+      input.customTag && input.customTag.trim().length > 0
+        ? input.customTag.trim()
+        : makeBrokerTag(input.execKey);
 
     // 1) Idempotency check
     const existing = await prisma.execution.findUnique({
@@ -525,6 +480,7 @@ export async function executeBracket(params: {
         status: existing.status,
         entryOrderId: existing.entryOrderId ?? null,
       });
+
       await emitExecEvent({
         prisma,
         userId: input.userId,
@@ -540,6 +496,7 @@ export async function executeBracket(params: {
         },
         level: "warn",
       });
+
       return existing;
     }
 
@@ -570,9 +527,7 @@ export async function executeBracket(params: {
       data: { execKey: input.execKey },
     });
 
-    // -------------------------
     // Place entry + brackets using normalized broker interface
-    // -------------------------
     try {
       const result = await (broker as any).placeBracketOrder({
         contractId: input.contractId,
@@ -641,7 +596,6 @@ export async function executeBracket(params: {
 
       return updated;
     } catch (e: any) {
-
       const errMsg = e?.message ? String(e.message) : String(e);
 
       console.error("[executeBracket] FAIL", {
@@ -677,7 +631,6 @@ export async function executeBracket(params: {
       throw e;
     }
   } finally {
-    // Always attempt unlock
     try {
       await prisma.$executeRaw`
         SELECT pg_advisory_unlock(hashtext(${lockKey1}), hashtext(${lockKey2}))

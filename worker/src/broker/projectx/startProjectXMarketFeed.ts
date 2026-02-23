@@ -1,4 +1,3 @@
-// src/broker/projectx/startProjectXMarketFeed.ts
 import { ProjectXMarketHub } from "./projectxMarketHub.js";
 import { Candle15sAggregator } from "../../candles/candle15sAggregator.js";
 import { makeHandleClosed15s } from "./handleClosed15s.js";
@@ -19,11 +18,13 @@ export async function startProjectXMarketFeed(params: {
   emitSafe: (event: any) => Promise<void>;
 
   getUserTradingState: () => Promise<{ isPaused: boolean; isKillSwitched: boolean }>;
-  getUserIdentityForWorker: () => Promise<{ clerkUserId: string; userId: string }>;
+  getUserIdentityForWorker: () => Promise<{ clerkUserId: string; userId: string; brokerAccountId: string }>;
   getStrategyEnabledForAccount: (p: { brokerName: string; externalAccountId: string }) => Promise<boolean>;
 
   getStrategySettingsForWorker: () => Promise<{
     sessions: { asia: boolean; london: boolean; ny: boolean };
+    maxContracts?: number | null;
+    maxOpenTrades?: number | null;
   }>;
 
   strategy: any;
@@ -31,7 +32,6 @@ export async function startProjectXMarketFeed(params: {
   token: string;
   contractId: string;
 }) {
-  // Gate forceClose so it only runs when we are actually seeing live quotes
   let lastLiveQuoteAtMs = 0;
   const rolloverOkLoggedRef = { value: false };
 
@@ -56,7 +56,6 @@ export async function startProjectXMarketFeed(params: {
     raw: true,
     debugInvocations: true,
     onQuote: async (q) => {
-      // Used to gate forceClose so we never fabricate candles when the market is closed
       const tsMs = q.ts ? Date.parse(q.ts) : NaN;
       const ageMs = Number.isFinite(tsMs) ? Date.now() - tsMs : null;
 
@@ -92,6 +91,7 @@ export async function startProjectXMarketFeed(params: {
                 ts: q.ts ?? null,
               },
               userId: ident.userId,
+              brokerAccountId: ident.brokerAccountId,
             },
           });
         }
@@ -113,7 +113,6 @@ export async function startProjectXMarketFeed(params: {
         },
       });
 
-      // If we have no price, we can't build candles.
       if (q.last == null && q.bid == null && q.ask == null) return;
 
       // 3) Build 15s candle from quote stream
@@ -142,7 +141,6 @@ export async function startProjectXMarketFeed(params: {
         }
         await handleClosed15s({ source: "rollover", closed });
       }
-
     },
   });
 
@@ -196,7 +194,6 @@ export async function startProjectXMarketFeed(params: {
           });
         }
         await handleClosed15s({ source: "forceClose", closed: forced });
-
       } catch (e) {
         console.error("[projectx-market] forceCloseIfDue failed", e);
       }

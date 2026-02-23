@@ -9,11 +9,13 @@ import { startProjectXMarketFeed } from "./projectx/startProjectXMarketFeed.js";
 import { bootstrapStrategy } from "../strategy/bootstrapStrategy.js";
 import { startProjectXUserFeed } from "./projectx/startProjectXUserFeed.js";
 import type { IBrokerAdapter } from "./IBrokerAdapter.js";
+import type { WorkerScope } from "../scope/workerScope.js";
 
 console.log("[startBrokerFeed.ts] LOADED", {
   MANUAL_EXEC: process.env.MANUAL_EXEC ?? null,
   hasManualToken: Boolean((process.env.MANUAL_EXEC_TOKEN || "").trim()),
   AURA_CLERK_USER_ID: process.env.AURA_CLERK_USER_ID ?? null,
+  AURA_BROKER_ACCOUNT_ID: process.env.AURA_BROKER_ACCOUNT_ID ?? null,
 });
 
 export type BrokerEventName =
@@ -81,89 +83,8 @@ let lastUserTradingStateCheck = 0;
 const USER_STATE_REFRESH_MS = 5_000;
 
 // --- debug: log pause/kill changes even when markets are closed ---
-// (safe: read-only, no trading impact)
 let lastLoggedUserState: { isPaused: boolean; isKillSwitched: boolean } | null =
   null;
-
-setInterval(() => {
-  void (async () => {
-    try {
-      // Only run when we're configured for a specific user
-      if (!process.env.AURA_CLERK_USER_ID) return;
-      if (process.env.DEBUG_USER_STATE !== "1") return;
-
-      const s = await getUserTradingState();
-
-      if (
-        !lastLoggedUserState ||
-        s.isPaused !== lastLoggedUserState.isPaused ||
-        s.isKillSwitched !== lastLoggedUserState.isKillSwitched
-      ) {
-        console.log(`[${env.WORKER_NAME}] user trading state`, {
-          clerkUserId: process.env.AURA_CLERK_USER_ID ?? null,
-          ...s,
-        });
-        lastLoggedUserState = s;
-      }
-    } catch (e) {
-      console.warn(`[${env.WORKER_NAME}] user state watcher failed`, e);
-    }
-  })();
-}, 5_000);
-
-async function getUserTradingState(): Promise<{
-  isPaused: boolean;
-  isKillSwitched: boolean;
-}> {
-  const clerkUserId = process.env.AURA_CLERK_USER_ID;
-  if (!clerkUserId) {
-    return { isPaused: false, isKillSwitched: false };
-  }
-
-  const now = Date.now();
-  if (
-    cachedUserTradingState &&
-    now - lastUserTradingStateCheck < USER_STATE_REFRESH_MS
-  ) {
-    return cachedUserTradingState;
-  }
-
-  const db = getPrisma();
-
-  const user = await db.userProfile.findUnique({
-    where: { clerkUserId },
-    include: { userState: true },
-  });
-
-  const state = {
-    isPaused: Boolean(user?.userState?.isPaused),
-    isKillSwitched: Boolean(user?.userState?.isKillSwitched),
-  };
-
-  cachedUserTradingState = state;
-  lastUserTradingStateCheck = now;
-
-  return state;
-}
-
-async function getStrategyEnabledForAccount(params: {
-  brokerName: string;
-  externalAccountId: string;
-}): Promise<boolean> {
-  const db = getPrisma();
-  const key = `strategy.enabled:${params.brokerName}:${params.externalAccountId}`;
-
-  const row = await db.systemState.findUnique({ where: { key } });
-
-  // Default = enabled (backwards compatible)
-  if (!row) return true;
-
-  const v: any = row.value;
-  if (typeof v === "boolean") return v;
-  if (v && typeof v.enabled === "boolean") return v.enabled;
-
-  return true;
-}
 
 async function shutdownPrisma(): Promise<void> {
   try {
@@ -187,101 +108,215 @@ async function shutdownPrisma(): Promise<void> {
   }
 }
 
-async function getUserIdentityForWorker(): Promise<{
-  clerkUserId: string;
-  userId: string;
-}> {
-  const clerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
-  if (!clerkUserId) {
-    throw new Error("Missing AURA_CLERK_USER_ID for worker user identity");
-  }
-
-  const db = getPrisma();
-
-  const user = await db.userProfile.findUnique({
-    where: { clerkUserId },
-    select: { id: true },
-  });
-
-  if (!user) {
-    throw new Error(`No userProfile found for clerkUserId=${clerkUserId}`);
-  }
-
-  return { clerkUserId, userId: user.id };
-}
-
-async function getStrategySettingsForWorker(): Promise<{
-  riskUsd: number;
-  rr: number;
-  maxStopTicks: number;
-  entryType: "market" | "limit";
-  sessions: { asia: boolean; london: boolean; ny: boolean };
-}> {
-  const clerkUserId = (process.env.AURA_CLERK_USER_ID || "").trim();
-  if (!clerkUserId) {
-    throw new Error("Missing AURA_CLERK_USER_ID for worker config lookup");
-  }
-
-  const db = getPrisma();
-
-  // 1) Map Clerk user -> internal userProfile id
-  const user = await db.userProfile.findUnique({
-    where: { clerkUserId },
-    select: { id: true },
-  });
-
-  if (!user) {
-    throw new Error(`No userProfile found for clerkUserId=${clerkUserId}`);
-  }
-
-  // 2) Read strategySettings from UserTradingState (this matches your API route)
-  const state = await db.userTradingState.findUnique({
-    where: { userId: user.id },
-    select: { strategySettings: true },
-  });
-
-  const ss = state?.strategySettings as any;
-
-  if (!ss) {
-    throw new Error(
-      "No strategySettings found on userTradingState for this user"
-    );
-  }
-
-  const sessionsRaw = (ss as any)?.sessions ?? null;
-
-  const sessions = {
-    asia: Boolean(sessionsRaw?.asia),
-    london: Boolean(sessionsRaw?.london),
-    ny: Boolean(sessionsRaw?.ny),
-  };
-
-  // "All Hours" mode = none selected (no restriction)
-  const noneSelected = !sessions.asia && !sessions.london && !sessions.ny;
-
-  return {
-    riskUsd: Number((ss as any)?.riskUsd ?? 200),
-    rr: Number((ss as any)?.rr ?? 2),
-    maxStopTicks: Number((ss as any)?.maxStopTicks ?? 45),
-    entryType: ((ss as any)?.entryType === "limit" ? "limit" : "market") as
-      | "market"
-      | "limit",
-
-    sessions: noneSelected
-      ? { asia: false, london: false, ny: false } // explicitly represent "All Hours"
-      : sessions,
-  };
-}
-
-export async function startBrokerFeed(params?: {
+export async function startBrokerFeed(params: {
+  scope: WorkerScope;
   emitSafe?: EmitFn;
   onBrokerReady?: (broker: IBrokerAdapter) => void;
 }): Promise<void> {
+  const scope = params.scope;
+  if (!scope?.clerkUserId || !scope?.userId || !scope?.brokerAccountId) {
+    throw new Error(
+      `[${env.WORKER_NAME}] startBrokerFeed missing scope (8M.7.1)`
+    );
+  }
+
+  const userStateWatchInterval = setInterval(() => {
+    void (async () => {
+      try {
+        if (process.env.DEBUG_USER_STATE !== "1") return;
+
+        const s = await getUserTradingState();
+
+        if (
+          !lastLoggedUserState ||
+          s.isPaused !== lastLoggedUserState.isPaused ||
+          s.isKillSwitched !== lastLoggedUserState.isKillSwitched
+        ) {
+          console.log(`[${env.WORKER_NAME}] user trading state`, {
+            clerkUserId: scope.clerkUserId,
+            ...s,
+          });
+          lastLoggedUserState = s;
+        }
+      } catch (e) {
+        console.warn(`[${env.WORKER_NAME}] user state watcher failed`, e);
+      }
+    })();
+  }, 5_000);
+
+  process.once("SIGINT", () => clearInterval(userStateWatchInterval));
+  process.once("SIGTERM", () => clearInterval(userStateWatchInterval));
+
+  async function getUserTradingState(): Promise<{
+    isPaused: boolean;
+    isKillSwitched: boolean;
+  }> {
+    const now = Date.now();
+    if (cachedUserTradingState && now - lastUserTradingStateCheck < USER_STATE_REFRESH_MS) {
+      return cachedUserTradingState;
+    }
+
+    const db = getPrisma();
+    // use startBrokerFeed's scope (source of truth)
+
+    // Per-account gates (PRIMARY)
+    const acct = await db.brokerAccount.findUnique({
+      where: { id: scope.brokerAccountId },
+      select: { isPaused: true, isKillSwitched: true },
+    });
+
+    // Optional global gates (SECONDARY / “pause everything”)
+    const userState = await db.userTradingState.findUnique({
+      where: { userId: scope.userId },
+      select: { isPaused: true, isKillSwitched: true },
+    });
+
+    const state = {
+      isPaused: Boolean(acct?.isPaused) || Boolean(userState?.isPaused),
+      isKillSwitched: Boolean(acct?.isKillSwitched) || Boolean(userState?.isKillSwitched),
+    };
+
+    cachedUserTradingState = state;
+    lastUserTradingStateCheck = now;
+
+    return state;
+  }
+
+  async function getStrategyEnabledForAccount(p: {
+    brokerName: string;
+    externalAccountId: string;
+  }): Promise<boolean> {
+    const db = getPrisma();
+
+    // NEW (8M.7.2): prefer brokerAccountId scoping
+    const keyV2 = `strategy.enabled:${p.brokerName}:${scope.brokerAccountId}`;
+    const rowV2 = await db.systemState.findUnique({ where: { key: keyV2 } });
+
+    if (rowV2) {
+      const v: any = rowV2.value;
+      if (typeof v === "boolean") return v;
+      if (v && typeof v.enabled === "boolean") return v.enabled;
+      return true;
+    }
+
+    // BACKWARDS COMPAT (old key used external account id)
+    const keyV1 = `strategy.enabled:${p.brokerName}:${p.externalAccountId}`;
+    const rowV1 = await db.systemState.findUnique({ where: { key: keyV1 } });
+
+    // Default = enabled (backwards compatible)
+    if (!rowV1) return true;
+
+    const v: any = rowV1.value;
+    if (typeof v === "boolean") return v;
+    if (v && typeof v.enabled === "boolean") return v.enabled;
+
+    return true;
+  }
+
+  async function getUserIdentityForWorker(): Promise<{
+    clerkUserId: string;
+    userId: string;
+    brokerAccountId: string;
+  }> {
+    return {
+      clerkUserId: scope.clerkUserId,
+      userId: scope.userId,
+      brokerAccountId: scope.brokerAccountId,
+    };
+  }
+
+  async function getStrategySettingsForWorker(): Promise<{
+    riskUsd: number;
+    rr: number;
+    maxStopTicks: number;
+    entryType: "market" | "limit";
+    sessions: { asia: boolean; london: boolean; ny: boolean };
+  }> {
+    const db = getPrisma();
+
+    // 1) Preferred: BrokerAccount.config (per-account)
+    const acct = await db.brokerAccount.findUnique({
+      where: { id: scope.brokerAccountId },
+      select: { config: true },
+    });
+
+    const cfg = (acct as any)?.config ?? null;
+
+    // normalize sessions from cfg if present
+    const sessionsFromCfgRaw = cfg?.sessions ?? null;
+    const sessionsFromCfg = sessionsFromCfgRaw
+      ? {
+          asia: Boolean(sessionsFromCfgRaw?.asia),
+          london: Boolean(sessionsFromCfgRaw?.london),
+          ny: Boolean(sessionsFromCfgRaw?.ny),
+        }
+      : null;
+
+    // if cfg has sessions but none selected => treat as "All Hours"
+    const cfgNoneSelected =
+      sessionsFromCfg != null &&
+      !sessionsFromCfg.asia &&
+      !sessionsFromCfg.london &&
+      !sessionsFromCfg.ny;
+
+    if (cfg) {
+      return {
+        riskUsd: Number(cfg?.riskUsd ?? 200),
+        rr: Number(cfg?.rr ?? 2),
+        maxStopTicks: Number(cfg?.maxStopTicks ?? 45),
+        entryType: (cfg?.entryType === "limit" ? "limit" : "market") as "market" | "limit",
+        sessions:
+          sessionsFromCfg == null
+            ? { asia: false, london: false, ny: false }
+            : cfgNoneSelected
+              ? { asia: false, london: false, ny: false }
+              : sessionsFromCfg,
+      };
+    }
+
+    // 2) Fallback (temporary backwards compatibility): UserTradingState.strategySettings
+    const state = await db.userTradingState.findUnique({
+      where: { userId: scope.userId },
+      select: { strategySettings: true },
+    });
+
+    const ss = state?.strategySettings as any;
+
+    if (!ss) {
+      // still safe defaults if both missing
+      return {
+        riskUsd: 200,
+        rr: 2,
+        maxStopTicks: 45,
+        entryType: "market",
+        sessions: { asia: false, london: false, ny: false },
+      };
+    }
+
+    const sessionsRaw = ss?.sessions ?? null;
+    const sessions = {
+      asia: Boolean(sessionsRaw?.asia),
+      london: Boolean(sessionsRaw?.london),
+      ny: Boolean(sessionsRaw?.ny),
+    };
+
+    // "All Hours" mode = none selected (no restriction)
+    const noneSelected = !sessions.asia && !sessions.london && !sessions.ny;
+
+    return {
+      riskUsd: Number(ss?.riskUsd ?? 200),
+      rr: Number(ss?.rr ?? 2),
+      maxStopTicks: Number(ss?.maxStopTicks ?? 45),
+      entryType: (ss?.entryType === "limit" ? "limit" : "market") as "market" | "limit",
+      sessions: noneSelected ? { asia: false, london: false, ny: false } : sessions,
+    };
+  }
+
   const broker = createBroker();
 
   const emitSafe = async (event: BrokerEvent) => {
     try {
-      await params?.emitSafe?.(event);
+      await params.emitSafe?.(event);
     } catch (e) {
       console.error(`[${env.WORKER_NAME}] broker event emit failed`, {
         event,
@@ -292,6 +327,12 @@ export async function startBrokerFeed(params?: {
 
   console.log(`[${env.WORKER_NAME}] broker starting`, {
     broker: broker.name,
+    scope: {
+      clerkUserId: scope.clerkUserId,
+      brokerAccountId: scope.brokerAccountId,
+      brokerName: scope.brokerName,
+      externalId: scope.externalId,
+    },
   });
 
   // Ensure we cleanly close Prisma on shutdown
@@ -342,7 +383,7 @@ export async function startBrokerFeed(params?: {
 
     // IMPORTANT: hand the live broker instance back to index.ts for Ably exec
     try {
-      params?.onBrokerReady?.(broker as unknown as IBrokerAdapter);
+      params.onBrokerReady?.(broker as unknown as IBrokerAdapter);
     } catch (e) {
       console.warn(`[${env.WORKER_NAME}] onBrokerReady callback failed`, e);
     }
@@ -353,7 +394,7 @@ export async function startBrokerFeed(params?: {
     console.log(`[${env.WORKER_NAME}] MANUAL_EXEC_CHECK`, {
       MANUAL_EXEC: process.env.MANUAL_EXEC ?? null,
       manualTokenLen: (process.env.MANUAL_EXEC_TOKEN || "").trim().length,
-      expectedUser: (process.env.AURA_CLERK_USER_ID || "").trim(),
+      expectedUser: scope.clerkUserId,
     });
 
     await startManualExecListener({
@@ -364,7 +405,7 @@ export async function startBrokerFeed(params?: {
       getUserIdentityForWorker,
       enabled: process.env.MANUAL_EXEC === "1",
       manualToken: (process.env.MANUAL_EXEC_TOKEN || "").trim(),
-      expectedUser: (process.env.AURA_CLERK_USER_ID || "").trim(),
+      expectedUser: scope.clerkUserId,
     });
 
     const { strategy } = await bootstrapStrategy({
@@ -384,16 +425,12 @@ export async function startBrokerFeed(params?: {
       const contractId = process.env.PROJECTX_CONTRACT_ID?.trim() || null;
 
       if (!token) {
-        console.warn(
-          "[projectx-market] no token available, market hub not started"
-        );
+        console.warn("[projectx-market] no token available, market hub not started");
         return;
       }
 
       if (!contractId) {
-        console.warn(
-          "[projectx-market] PROJECTX_CONTRACT_ID not set, market hub not started"
-        );
+        console.warn("[projectx-market] PROJECTX_CONTRACT_ID not set, market hub not started");
         return;
       }
 

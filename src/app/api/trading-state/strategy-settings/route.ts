@@ -1,4 +1,3 @@
-// src/app/api/trading-state/strategy-settings/route.ts
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { ensureUserProfile } from "@/lib/user-profile";
@@ -6,10 +5,10 @@ import { publishToUser } from "@/lib/ably/server";
 import { writeAuditLog, writeEventLog } from "@/lib/logging/server";
 
 /**
- * Strategy settings are per-user and stored in UserTradingState.strategySettings (Json).
- * This route mirrors risk-settings but with a richer shape.
+ * Strategy settings are PER BROKER ACCOUNT and stored in BrokerAccount.config (Json).
+ * This route loads/saves the selected broker account (UserTradingState.selectedBrokerAccountId).
  *
- * UI can POST partial patches; we merge, then normalize.
+ * PATCH: client can POST partial patches; we merge, then normalize.
  */
 
 type StrategyMode = "paper" | "live";
@@ -62,6 +61,10 @@ type StrategySettings = {
     maxConsecutiveLosses: number; // 0 = disabled
     autoPauseEnabled: boolean;
   };
+
+  // Risk rails (account-level)
+  maxContracts?: number | null; // null => no cap
+  maxOpenTrades?: number | null; // forced to 1 for now
 };
 
 const DEFAULTS: StrategySettings = {
@@ -98,6 +101,9 @@ const DEFAULTS: StrategySettings = {
     maxConsecutiveLosses: 0,
     autoPauseEnabled: true,
   },
+
+  maxContracts: null,
+  maxOpenTrades: 1,
 };
 
 function clampNumber(v: unknown, min: number, max: number, fallback: number) {
@@ -235,6 +241,17 @@ function normalize(input: unknown): StrategySettings {
         DEFAULTS.safety.autoPauseEnabled
       ),
     },
+
+    // Max Contracts (nullable)
+    maxContracts:
+      obj.maxContracts == null
+        ? DEFAULTS.maxContracts
+        : Number.isFinite(Number(obj.maxContracts))
+          ? Math.max(1, Math.floor(Number(obj.maxContracts)))
+          : DEFAULTS.maxContracts,
+
+    // Max Open Trades (stored, but forced to 1 for now)
+    maxOpenTrades: 1,
   };
 }
 
@@ -242,8 +259,6 @@ function mergeAndNormalize(existing: unknown, patch: unknown): StrategySettings 
   const base = normalize(existing);
   const p = (patch ?? {}) as Record<string, unknown>;
 
-  // Shallow merge for top-level, then allow nested objects to be patched too.
-  // We merge nested objects individually so PATCH can be small.
   const merged = {
     ...base,
     ...p,
@@ -257,6 +272,25 @@ function mergeAndNormalize(existing: unknown, patch: unknown): StrategySettings 
   return normalize(merged);
 }
 
+async function getSelectedBrokerAccountIdOrThrow(params: { userId: string }) {
+  const state = await db.userTradingState.upsert({
+    where: { userId: params.userId },
+    update: {},
+    create: { userId: params.userId },
+    select: { selectedBrokerAccountId: true, strategySettings: true },
+  });
+
+  const brokerAccountId = state.selectedBrokerAccountId ?? null;
+  if (!brokerAccountId) {
+    throw new Error("No broker account selected");
+  }
+
+  return {
+    brokerAccountId,
+    legacyStrategySettings: state.strategySettings ?? null,
+  };
+}
+
 export async function GET() {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
@@ -267,19 +301,27 @@ export async function GET() {
     displayName: null,
   });
 
-  const state = await db.userTradingState.upsert({
-    where: { userId: user.id },
-    update: {},
-    create: { userId: user.id },
+  const { brokerAccountId, legacyStrategySettings } =
+    await getSelectedBrokerAccountIdOrThrow({ userId: user.id });
+
+  const acct = await db.brokerAccount.findFirst({
+    where: { id: brokerAccountId, userId: user.id },
+    select: { id: true, config: true },
   });
 
-  const strategySettings = normalize(state.strategySettings);
+  if (!acct) {
+    return Response.json({ ok: false, error: "broker account not found" }, { status: 404 });
+  }
 
-  // Optional: persist defaults if missing
-  if (!state.strategySettings) {
-    await db.userTradingState.update({
-      where: { userId: user.id },
-      data: { strategySettings },
+  // Option B: canonical store is BrokerAccount.config
+  // Migration: if config missing but legacy exists, migrate once.
+  const existing = acct.config ?? legacyStrategySettings ?? null;
+  const strategySettings = normalize(existing);
+
+  if (!acct.config) {
+    await db.brokerAccount.update({
+      where: { id: acct.id },
+      data: { config: strategySettings },
     });
   }
 
@@ -298,35 +340,45 @@ export async function POST(req: Request) {
     displayName: null,
   });
 
-  const current = await db.userTradingState.upsert({
-    where: { userId: user.id },
-    update: {},
-    create: { userId: user.id },
+  const { brokerAccountId, legacyStrategySettings } =
+    await getSelectedBrokerAccountIdOrThrow({ userId: user.id });
+
+  const acct = await db.brokerAccount.findFirst({
+    where: { id: brokerAccountId, userId: user.id },
+    select: { id: true, config: true },
   });
 
-  const nextStrategySettings = mergeAndNormalize(current.strategySettings, body);
+  if (!acct) {
+    return Response.json({ ok: false, error: "broker account not found" }, { status: 404 });
+  }
 
-  const next = await db.userTradingState.update({
-    where: { userId: user.id },
-    data: { strategySettings: nextStrategySettings },
+  const existing = acct.config ?? legacyStrategySettings ?? null;
+  const nextStrategySettings = mergeAndNormalize(existing, body);
+
+  const next = await db.brokerAccount.update({
+    where: { id: acct.id },
+    data: { config: nextStrategySettings },
   });
 
-  await writeAuditLog(user.id, "STRATEGY_SETTINGS_UPDATED", nextStrategySettings);
+  await writeAuditLog(user.id, "STRATEGY_SETTINGS_UPDATED", {
+    brokerAccountId: acct.id,
+    strategySettings: nextStrategySettings,
+  });
 
   await writeEventLog({
     type: "config_changed",
     level: "info",
     message: "Strategy settings updated",
-    data: nextStrategySettings,
+    data: { brokerAccountId: acct.id, strategySettings: nextStrategySettings },
     userId: user.id,
   });
 
   await publishToUser(clerkUserId, "strategy_settings_update", {
-    strategySettings: normalize(next.strategySettings),
+    strategySettings: normalize(next.config),
   });
 
   return Response.json({
     ok: true,
-    strategySettings: normalize(next.strategySettings),
+    strategySettings: normalize(next.config),
   });
 }

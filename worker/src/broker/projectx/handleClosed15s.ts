@@ -27,9 +27,11 @@ export type HandleClosed15sDeps = {
   }) => Promise<void>;
 
   getUserTradingState: () => Promise<{ isPaused: boolean; isKillSwitched: boolean }>;
-  getUserIdentityForWorker: () => Promise<{ clerkUserId: string; userId: string }>;
+getUserIdentityForWorker: () => Promise<{ clerkUserId: string; userId: string; brokerAccountId: string }>;
   getStrategySettingsForWorker: () => Promise<{
     sessions: { asia: boolean; london: boolean; ny: boolean };
+    maxContracts?: number | null;
+    maxOpenTrades?: number | null;
   }>;
   getStrategyEnabledForAccount: (params: {
     brokerName: string;
@@ -148,6 +150,7 @@ async function hasOpenTrade(params: {
   brokerName: string;
   contractId: string;
   symbol?: string | null;
+  maxOpenTrades: number; // NEW
 }) {
   const openStatuses: any[] = [
     "INTENT_CREATED",
@@ -169,7 +172,7 @@ async function hasOpenTrade(params: {
     },
   });
 
-  return openCount > 0;
+  return openCount >= Math.max(1, Math.floor(params.maxOpenTrades));
 }
 
 export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
@@ -498,9 +501,23 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         return;
       }
 
+            let enforcedMaxOpenTrades = 1;
+      let maxContracts: number | null = null;
+
       // Trading Windows gate (blocks opening new trades outside selected windows)
       try {
         const ss = await deps.getStrategySettingsForWorker();
+
+        // For now it's always 1 even if DB has something else
+        enforcedMaxOpenTrades = 1;
+
+        // Max contracts cap (null = no cap)
+        maxContracts =
+          ss.maxContracts == null
+            ? null
+            : Number.isFinite(Number(ss.maxContracts))
+              ? Math.max(1, Math.floor(Number(ss.maxContracts)))
+              : null;
 
         const tw = matchTradingWindows({
           atEpochSec: intent.entryTime, // use signal time, not "now"
@@ -616,6 +633,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         brokerName: deps.broker.name,
         contractId: contractIdFromBracket,
         symbol: (process.env.PROJECTX_SYMBOL || "").trim() || null,
+        maxOpenTrades: enforcedMaxOpenTrades,
       });
 
       if (inTrade) {
@@ -658,19 +676,17 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           input: {
             execKey,
             userId: ident.userId,
+            brokerAccountId: ident.brokerAccountId, // ✅ ADD THIS (3B)
             brokerName: deps.broker.name,
             contractId: contractIdFromBracket,
             symbol: (process.env.PROJECTX_SYMBOL || "").trim() || null,
             side,
             qty,
-            maxContracts: process.env.AURA_MAX_CONTRACTS
-              ? Number(process.env.AURA_MAX_CONTRACTS)
-              : null,
+            maxContracts,
             entryType: (deps.strategy?.getConfig?.()?.entryType ?? "market"),
             stopLossTicks: Number(stopLossTicks),
             takeProfitTicks: Number(takeProfitTicks),
 
-            // ✅ NEW: absolute prices from strategy intent
             stopPrice: stopPriceAbs,
             takeProfitPrice: takeProfitPriceAbs,
 
