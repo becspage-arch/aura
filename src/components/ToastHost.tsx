@@ -23,41 +23,25 @@ export function ToastHost({ toasts }: { toasts: ToastItem[] }) {
   if (items.length === 0) return null;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        right: 16,
-        bottom: 16,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        zIndex: 9999,
-        maxWidth: 360,
-      }}
-    >
-      {items.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          onClick={() => {
-            if (t.deepLink) router.push(t.deepLink);
-          }}
-          style={{
-            textAlign: "left",
-            borderRadius: 14,
-            padding: "12px 14px",
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(10,10,10,0.92)",
-            color: "white",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-            cursor: t.deepLink ? "pointer" : "default",
-          }}
-          title={t.deepLink ? "Open trade" : undefined}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>{t.title}</div>
-          <div style={{ opacity: 0.9, fontSize: 13, lineHeight: 1.35 }}>{t.body}</div>
-        </button>
-      ))}
+    <div className="aura-toast-host">
+      {items.map((t) => {
+        const clickable = !!t.deepLink;
+
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => {
+              if (t.deepLink) router.push(t.deepLink);
+            }}
+            className={`aura-toast ${clickable ? "aura-toast--clickable" : ""}`}
+            title={t.deepLink ? "Open" : undefined}
+          >
+            <div className="aura-toast__title">{t.title}</div>
+            <div className="aura-toast__body">{t.body}</div>
+          </button>
+        );
+      })}
     </div>
   );
 }

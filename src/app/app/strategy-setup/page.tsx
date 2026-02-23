@@ -10,7 +10,6 @@ import { StrategySummaryStrip } from "./_components/StrategySummaryStrip";
 import { StrategyTopCardsRow } from "./_components/StrategyTopCardsRow";
 import { TradingSessionsCard } from "./_components/TradingSessionsCard";
 import { RiskConfigurationCard } from "./_components/RiskConfigurationCard";
-import { PositionSizingCard } from "./_components/PositionSizingCard";
 import { TradingOptionsCard } from "./_components/TradingOptionsCard";
 import { ExecutionPreferencesCard } from "./_components/ExecutionPreferencesCard";
 import { SafetyLimitsCard } from "./_components/SafetyLimitsCard";
@@ -58,11 +57,13 @@ export default function StrategyPage() {
         const res = await fetchJSON<StrategyGetResponse>("/api/trading-state/strategy-settings");
         if (!cancelled) setCurrent(res.strategySettings);
       } catch (e) {
-        if (!cancelled) {
-          const msg = e instanceof Error ? e.message : String(e);
-          setErr(msg);
-          emitToast({ title: "Strategy Setup", body: `Failed to load settings - ${msg}` });
-        }
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!cancelled) setErr(msg);
+
+        emitToast({
+          title: "Strategy Setup",
+          body: `Failed to load settings - ${msg}`,
+        });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -73,50 +74,56 @@ export default function StrategyPage() {
     };
   }, []);
 
-  const patchStrategySettings = useCallback(async (patch: Partial<StrategySettings>) => {
-    try {
-      setSaving(true);
-      setErr(null);
+  const patchStrategySettings = useCallback(
+    async (patch: Partial<StrategySettings>) => {
+      if (isTrading) {
+        emitToast({
+          title: "Locked",
+          body: "Pause Aura to edit settings",
+        });
+        throw new Error("Locked while Aura is running");
+      }
 
-      const res = await fetchJSON<StrategyPostResponse>("/api/trading-state/strategy-settings", {
-        method: "POST",
-        body: JSON.stringify(patch),
-      });
+      try {
+        setSaving(true);
+        setErr(null);
 
-      setCurrent(res.strategySettings);
+        const res = await fetchJSON<StrategyPostResponse>("/api/trading-state/strategy-settings", {
+          method: "POST",
+          body: JSON.stringify(patch),
+        });
 
-      emitToast({
-        title: "Saved",
-        body: "Strategy settings updated",
-      });
+        setCurrent(res.strategySettings);
 
-      return res.strategySettings;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setErr(msg);
+        emitToast({
+          title: "Saved",
+          body: "Strategy settings updated",
+        });
 
-      emitToast({
-        title: "Save failed",
-        body: msg,
-      });
+        return res.strategySettings;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setErr(msg);
 
-      throw e;
-    } finally {
-      setSaving(false);
-    }
-  }, []);
+        emitToast({
+          title: "Save failed",
+          body: msg,
+        });
 
-  const disabled = loading || saving;
+        throw e;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [isTrading]
+  );
+
+  const disabled = loading || saving || isTrading;
 
   return (
     <div className="mx-auto max-w-6xl px-6 pb-10">
       <div className="aura-page">
-        <StrategySummaryStrip
-          current={current}
-          loading={loading}
-          saving={saving}
-          isTrading={isTrading}
-        />
+        <StrategySummaryStrip current={current} loading={loading} saving={saving} isTrading={isTrading} />
 
         {err ? (
           <section className="aura-card">
@@ -132,27 +139,17 @@ export default function StrategyPage() {
             current={current}
             saving={saving}
             disabled={disabled}
-            setCurrent={setCurrent}
-            setSaving={setSaving}
-            setErr={setErr}
+            patchStrategySettings={patchStrategySettings}
           />
 
           <RiskConfigurationCard
             current={current}
             saving={saving}
             disabled={disabled}
-            setCurrent={setCurrent}
-            setSaving={setSaving}
-            setErr={setErr}
-          />
-
-          <PositionSizingCard current={current} />
-
-          <SafetyLimitsCard
-            current={current}
-            saving={saving}
             patchStrategySettings={patchStrategySettings}
           />
+
+          <SafetyLimitsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
 
           <section className="aura-section">
             <div className="aura-advanced-container">
@@ -168,16 +165,8 @@ export default function StrategyPage() {
 
               {advancedOpen && (
                 <div className="aura-advanced-content">
-                  <TradingOptionsCard
-                    current={current}
-                    saving={saving}
-                    patchStrategySettings={patchStrategySettings}
-                  />
-                  <ExecutionPreferencesCard
-                    current={current}
-                    saving={saving}
-                    patchStrategySettings={patchStrategySettings}
-                  />
+                  <TradingOptionsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
+                  <ExecutionPreferencesCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
                 </div>
               )}
             </div>

@@ -1858,3 +1858,49 @@ html.light .aura-cum-day {
     align-items: start;
   }
 }
+
+/* ----------------------------------------------
+   AURA TOASTS (Used everywhere)
+   ---------------------------------------------- */
+
+.aura-toast-host {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+  max-width: 360px;
+}
+
+.aura-toast {
+  text-align: left;
+  border-radius: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 10, 10, 0.92);
+  color: white;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+html.light .aura-toast {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--foreground);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.aura-toast--clickable {
+  cursor: pointer;
+}
+
+.aura-toast__title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.aura-toast__body {
+  opacity: 0.9;
+  font-size: 13px;
+  line-height: 1.35;
+}

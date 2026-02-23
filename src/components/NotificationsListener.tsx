@@ -31,11 +31,14 @@ export function NotificationsListener() {
     const title = p.title ?? "Aura";
     const body = p.body ?? "";
     const ts = p.ts ?? new Date().toISOString();
+
+    if (!body.trim()) return;
+
     const id = `${ts}:${Math.random().toString(36).slice(2)}`;
 
     setToasts((prev) => {
       const next = [{ id, title, body, ts, deepLink: p.deepLink }, ...prev];
-      return next.slice(0, 3); // keep max 3 stacked
+      return next.slice(0, 3);
     });
 
     window.setTimeout(() => {
@@ -43,7 +46,7 @@ export function NotificationsListener() {
     }, 6000);
   }
 
-  // 1) Local toasts (no Ably)
+  // Local toasts (no Ably)
   useEffect(() => {
     const onLocalToast = (ev: Event) => {
       const e = ev as CustomEvent<AuraToastPayload>;
@@ -62,7 +65,7 @@ export function NotificationsListener() {
     return () => window.removeEventListener("aura:toast", onLocalToast);
   }, []);
 
-  // 2) Ably toasts (from worker etc.)
+  // Ably toasts
   useEffect(() => {
     if (!isLoaded) return;
     if (!channelName) return;
@@ -70,10 +73,7 @@ export function NotificationsListener() {
     const client = getAblyRealtime();
     const channel = client.channels.get(channelName);
 
-    console.log("[notifications] subscribing", { channelName });
-
     const handler = (msg: Ably.Message) => {
-      console.log("[notifications] received", msg.name, msg.data);
       const p = msg.data as InAppPayload;
       pushToast(p);
     };

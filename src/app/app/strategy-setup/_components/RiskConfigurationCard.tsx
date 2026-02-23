@@ -3,16 +3,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import type { StrategyPostResponse, StrategySettings } from "../_lib/types";
-import { fetchJSON, toNumberOrNull } from "../_lib/api";
+import type { StrategySettings } from "../_lib/types";
+import { toNumberOrNull } from "../_lib/api";
 
 type Props = {
   current: StrategySettings | null;
   saving: boolean;
   disabled: boolean;
-  setCurrent: (next: StrategySettings | null) => void;
-  setSaving: (next: boolean) => void;
-  setErr: (next: string | null) => void;
+  patchStrategySettings: (patch: Partial<StrategySettings>) => Promise<any>;
 };
 
 type RiskFormState = {
@@ -33,14 +31,9 @@ function isPositiveNumber(n: number) {
   return Number.isFinite(n) && n > 0;
 }
 
-export function RiskConfigurationCard({
-  current,
-  saving,
-  disabled,
-  setCurrent,
-  setSaving,
-  setErr,
-}: Props) {
+export function RiskConfigurationCard({ current, saving, disabled, patchStrategySettings }: Props) {
+  const [errorLocal, setErrorLocal] = useState<string | null>(null);
+
   const [riskForm, setRiskForm] = useState<RiskFormState>({
     riskUsd: "",
     rr: "",
@@ -59,78 +52,49 @@ export function RiskConfigurationCard({
   useEffect(() => {
     if (!current) return;
 
-    const isBlank =
-      riskForm.riskUsd === "" && riskForm.rr === "" && riskForm.maxStopTicks === "";
-
-    if (isBlank || !dirtyRisk) {
-      setRiskForm(formFromCurrent(current));
-    }
+    const isBlank = riskForm.riskUsd === "" && riskForm.rr === "" && riskForm.maxStopTicks === "";
+    if (isBlank || !dirtyRisk) setRiskForm(formFromCurrent(current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current]);
 
+  const summary = current
+    ? `Current: $${current.riskUsd} • RR ${current.rr} • Max stop ${current.maxStopTicks} ticks`
+    : "—";
+
   const resetRisk = () => {
     if (!current) return;
-    setErr(null);
+    setErrorLocal(null);
     setRiskForm(formFromCurrent(current));
   };
 
   const applyRisk = async () => {
+    setErrorLocal(null);
+
     const riskUsd = toNumberOrNull(riskForm.riskUsd);
     const rr = toNumberOrNull(riskForm.rr);
     const maxStopTicks = toNumberOrNull(riskForm.maxStopTicks);
 
     if (riskUsd === null || rr === null || maxStopTicks === null) {
-      setErr("Please enter valid numbers for Max Risk, RR, and Max Stop (ticks).");
+      setErrorLocal("Please enter valid numbers for Max Risk, RR, and Max Stop (ticks).");
       return;
     }
 
     if (!isPositiveNumber(riskUsd)) {
-      setErr("Max Risk (USD) must be greater than 0.");
+      setErrorLocal("Max Risk (USD) must be greater than 0.");
       return;
     }
 
     if (!isPositiveNumber(rr)) {
-      setErr("RR must be greater than 0.");
+      setErrorLocal("RR must be greater than 0.");
       return;
     }
 
     if (!isPositiveNumber(maxStopTicks)) {
-      setErr("Max Stop (ticks) must be greater than 0.");
+      setErrorLocal("Max Stop (ticks) must be greater than 0.");
       return;
     }
 
-    const ok = window.confirm(
-      [
-        "Apply these risk settings?",
-        "",
-        `Max Risk: $${riskUsd}`,
-        `RR: ${rr}`,
-        `Max Stop: ${maxStopTicks} ticks`,
-        "",
-        "Aura will place MARKET orders using these limits.",
-      ].join("\n")
-    );
-    if (!ok) return;
-
-    try {
-      setSaving(true);
-      setErr(null);
-
-      const res = await fetchJSON<StrategyPostResponse>(
-        "/api/trading-state/strategy-settings",
-        {
-          method: "POST",
-          body: JSON.stringify({ riskUsd, rr, maxStopTicks }),
-        }
-      );
-
-      setCurrent(res.strategySettings);
-      setRiskForm(formFromCurrent(res.strategySettings));
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
+    await patchStrategySettings({ riskUsd, rr, maxStopTicks });
   };
 
   return (
@@ -139,15 +103,11 @@ export function RiskConfigurationCard({
         <div>
           <div className="aura-card-title">Risk</div>
           <div className="aura-muted aura-text-xs aura-mt-6">
-            Set your max risk and stop-size limits (in ticks). Aura will size positions around these rules.
+            Set max risk and stop-size limits (in ticks). Aura sizes positions around these rules.
           </div>
         </div>
 
-        <div className="aura-muted aura-text-xs">
-          {current
-            ? `Current: $${current.riskUsd} â€¢ RR ${current.rr} â€¢ Max stop ${current.maxStopTicks} ticks`
-            : "â€”"}
-        </div>
+        <div className="aura-muted aura-text-xs">{saving ? "Saving…" : summary}</div>
       </div>
 
       <div className="aura-mt-12 aura-grid-gap-12">
@@ -158,9 +118,7 @@ export function RiskConfigurationCard({
               className="aura-input aura-mt-10"
               inputMode="decimal"
               value={riskForm.riskUsd}
-              onChange={(e) =>
-                setRiskForm((s) => ({ ...s, riskUsd: e.target.value }))
-              }
+              onChange={(e) => setRiskForm((s) => ({ ...s, riskUsd: e.target.value }))}
               placeholder="e.g. 50"
               disabled={disabled}
             />
@@ -184,9 +142,7 @@ export function RiskConfigurationCard({
               className="aura-input aura-mt-10"
               inputMode="numeric"
               value={riskForm.maxStopTicks}
-              onChange={(e) =>
-                setRiskForm((s) => ({ ...s, maxStopTicks: e.target.value }))
-              }
+              onChange={(e) => setRiskForm((s) => ({ ...s, maxStopTicks: e.target.value }))}
               placeholder="e.g. 50"
               disabled={disabled}
             />
@@ -197,24 +153,21 @@ export function RiskConfigurationCard({
 
           <div>
             <div className="aura-muted aura-text-xs">Order type</div>
-            <div
-              className="aura-input aura-mt-10 aura-input--readonly"
-              aria-readonly="true"
-            >
+            <div className="aura-input aura-mt-10 aura-input--readonly" aria-readonly="true">
               market (fixed)
             </div>
-            <div className="aura-muted aura-text-xs aura-mt-10">
-              Aura places market orders only.
-            </div>
+            <div className="aura-muted aura-text-xs aura-mt-10">Aura places market orders only.</div>
           </div>
         </div>
+
+        {errorLocal ? (
+          <div className="aura-error-block aura-text-sm">{errorLocal}</div>
+        ) : null}
 
         <div className="aura-row-between aura-mt-10">
           <button
             type="button"
-            className={`aura-btn aura-btn-subtle ${
-              disabled || !dirtyRisk ? "aura-disabled-btn" : ""
-            }`}
+            className={`aura-btn aura-btn-subtle ${disabled || !dirtyRisk ? "aura-disabled-btn" : ""}`}
             onClick={resetRisk}
             disabled={disabled || !dirtyRisk}
           >
@@ -227,16 +180,10 @@ export function RiskConfigurationCard({
             onClick={applyRisk}
             disabled={disabled || !dirtyRisk}
           >
-            {saving ? "Savingâ€¦" : "Apply"}
+            {saving ? "Saving…" : "Apply"}
           </button>
         </div>
-
-        <p className="aura-muted aura-text-xs">
-          Tip: these settings are saved to{" "}
-          <span className="aura-mono">strategySettings</span>.
-        </p>
       </div>
     </section>
   );
 }
-
