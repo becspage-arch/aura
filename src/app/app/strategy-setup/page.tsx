@@ -140,18 +140,14 @@ export default function StrategyPage() {
             current={current}
             saving={saving}
             disabled={disabled}
-            setCurrent={setCurrent}
-            setSaving={setSaving}
-            setErr={setErr}
+            patchStrategySettings={patchStrategySettings}
           />
 
           <RiskConfigurationCard
             current={current}
             saving={saving}
             disabled={disabled}
-            setCurrent={setCurrent}
-            setSaving={setSaving}
-            setErr={setErr}
+            patchStrategySettings={patchStrategySettings}
           />
 
           <SafetyLimitsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
