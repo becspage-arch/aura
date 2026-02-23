@@ -1,3 +1,5 @@
+// worker/src/broker/createBroker.ts
+
 import type { IBrokerAdapter, BrokerName } from "./IBrokerAdapter.js";
 import { CqgBrokerAdapter } from "./CqgBrokerAdapter.js";
 import { RithmicBrokerAdapter } from "./RithmicBrokerAdapter.js";

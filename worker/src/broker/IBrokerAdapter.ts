@@ -1,3 +1,5 @@
+// worker/src/broker/IBrokerAdapter.ts
+
 import type { BrokerCapabilities } from "./BrokerCapabilities.js";
 
 export type BrokerName = "cqg" | "rithmic" | "projectx" | "mock";

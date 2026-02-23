@@ -1,5 +1,4 @@
-﻿// src/app/app/strategy-setup/_components/TradingSessionsCard.tsx
-"use client";
+﻿"use client";
 
 import type { StrategySettings } from "../_lib/types";
 
@@ -16,35 +15,43 @@ const SESSION_DEFS = [
   { key: "ny", label: "New York", hours: "13:00 – 21:59" },
 ] as const;
 
-export function TradingSessionsCard({
-  current,
-  saving,
-  disabled,
-  patchStrategySettings,
-}: Props) {
+type SessionKey = (typeof SESSION_DEFS)[number]["key"];
+
+export function TradingSessionsCard({ current, saving, disabled, patchStrategySettings }: Props) {
   if (!current) return null;
 
   const sessions = current.sessions;
 
-  const allHours =
-    sessions.asia && sessions.london && sessions.ny;
+  const noneSelected = !sessions.asia && !sessions.london && !sessions.ny;
+  const allHours = noneSelected; // ✅ single source of truth
 
   const summary = saving
     ? "Saving…"
     : allHours
       ? "All hours (market open)"
-      : (SESSION_DEFS
-          .filter((s) => sessions[s.key])
-          .map((s) => s.label)
-          .join(", ") || "None selected");
+      : (SESSION_DEFS.filter((s) => sessions[s.key]).map((s) => s.label).join(", ") || "All hours");
 
-  async function updateSessions(next: {
-    asia: boolean;
-    london: boolean;
-    ny: boolean;
-  }) {
+  async function updateSessions(next: { asia: boolean; london: boolean; ny: boolean }) {
     if (disabled) return;
     await patchStrategySettings({ sessions: next });
+  }
+
+  function toggleSession(key: SessionKey) {
+    // If we’re in All-hours mode (none selected), start from all false, then turn THIS one on.
+    if (noneSelected) {
+      void updateSessions({
+        asia: key === "asia",
+        london: key === "london",
+        ny: key === "ny",
+      });
+      return;
+    }
+
+    // Normal toggle
+    void updateSessions({
+      ...sessions,
+      [key]: !sessions[key],
+    });
   }
 
   return (
@@ -61,24 +68,21 @@ export function TradingSessionsCard({
       </div>
 
       <div className="aura-mt-12">
-        <div className={`aura-pill-group ${disabled ? "aura-disabled" : ""}`}>
-
-          {/* All Hours */}
+        <div className={`aura-pill-group ${disabled ? "aura-disabled" : ""}`} role="group" aria-label="Trading windows">
+          {/* All Hours (clears selection) */}
           <button
             type="button"
             className="aura-pill-toggle"
             aria-pressed={allHours}
             disabled={disabled}
-            onClick={() =>
-              updateSessions({
-                asia: true,
-                london: true,
-                ny: true,
-              })
-            }
+            onClick={() => updateSessions({ asia: false, london: false, ny: false })}
+            title="Trade any time the market is open"
           >
             <span className="aura-pill-indicator" />
-            <span>All hours</span>
+            <span>
+              All hours
+              <div className="aura-muted aura-text-xs">Market open</div>
+            </span>
           </button>
 
           {/* Individual Sessions */}
@@ -90,21 +94,15 @@ export function TradingSessionsCard({
                 key={s.key}
                 type="button"
                 className="aura-pill-toggle"
-                aria-pressed={on}
+                aria-pressed={on && !allHours}
                 disabled={disabled}
-                onClick={() =>
-                  updateSessions({
-                    ...sessions,
-                    [s.key]: !on,
-                  })
-                }
+                onClick={() => toggleSession(s.key)}
+                title={on ? "Enabled" : "Disabled"}
               >
                 <span className="aura-pill-indicator" />
                 <span>
                   {s.label}
-                  <div className="aura-muted aura-text-xs">
-                    {s.hours}
-                  </div>
+                  <div className="aura-muted aura-text-xs">{s.hours}</div>
                 </span>
               </button>
             );
@@ -112,8 +110,7 @@ export function TradingSessionsCard({
         </div>
 
         <div className="aura-muted aura-text-xs aura-mt-10">
-          Aura will only open new trades inside the selected windows.
-          Existing trades can continue running outside these hours.
+          Aura will only open new trades inside the selected windows. Existing trades can continue running outside these hours.
         </div>
 
         <div className="aura-muted aura-text-xs aura-mt-6">

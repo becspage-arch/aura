@@ -43,15 +43,15 @@ export function matchTradingWindows(params: {
   if (params.sessions.london) selected.push("london");
   if (params.sessions.ny) selected.push("ny");
 
-  // ✅ "All Hours" mode
+  //  If none selected => ALL HOURS (no restriction).
   if (selected.length === 0) {
     return {
-      ok: true,
+      ok: true, // ✅ All hours (no restriction)
       ukIso: uk.toISO() ?? uk.toString(),
       ukHm,
       matched: null,
       selected,
-      reason: "ALL_HOURS",
+      reason: "NONE_SELECTED",
     };
   }
 
