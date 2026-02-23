@@ -127,6 +127,19 @@ async function stopTask(taskArn: string, reason: string, brokerAccountId?: strin
   }
 }
 
+async function markLeaseStopped(brokerAccountId: string, reason: string) {
+  await db.workerLease.updateMany({
+    where: { brokerAccountId },
+    data: {
+      status: "STOPPED",
+      meta: {
+        reason,
+        stoppedAt: new Date().toISOString(),
+      } as any,
+    },
+  });
+}
+
 async function reconcileOnce() {
   const desired = await fetchDesiredAccounts();
   const desiredSet = new Set(desired.map((d) => d.brokerAccountId));
@@ -193,15 +206,19 @@ async function reconcileOnce() {
   // Stop tasks for accounts no longer enabled
   for (const [acctId, tasks] of byAccount.entries()) {
     if (!desiredSet.has(acctId)) {
+      if (tasks.length === 0) {
+        await markLeaseStopped(acctId, "orchestrator:account-disabled (no running task)");
+        continue;
+      }
+
       for (const t of tasks) {
         if (t?.taskArn) {
-          await stopTask(
-            t.taskArn,
-            "orchestrator:account-disabled",
-            acctId
-          );
+          await stopTask(t.taskArn, "orchestrator:account-disabled", acctId);
         }
       }
+
+      // If we stopped tasks, also ensure lease gets marked STOPPED
+      await markLeaseStopped(acctId, "orchestrator:account-disabled (stopped task)");
     }
   }
 

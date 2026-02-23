@@ -1,18 +1,14 @@
 // src/app/app/strategy-setup/_components/StrategySummaryStrip.tsx
 "use client";
 
-import { useState } from "react";
 import type { StrategySettings } from "../_lib/types";
-import { fetchJSON } from "../_lib/api";
 
 export function StrategySummaryStrip(props: {
   current: StrategySettings | null;
   loading: boolean;
   saving: boolean;
   isTrading: boolean; // locked when true
-  onPaused?: (isPaused: boolean) => void;
 }) {
-  const [pausing, setPausing] = useState(false);
   const locked = props.isTrading;
 
   const rightStatus = props.loading
@@ -20,7 +16,7 @@ export function StrategySummaryStrip(props: {
     : props.saving
       ? "Saving…"
       : locked
-        ? "Locked (Aura running)"
+        ? "Locked"
         : "Saved";
 
   const symbolsText =
@@ -40,50 +36,12 @@ export function StrategySummaryStrip(props: {
     ? `$${props.current.riskUsd} risk • ${props.current.rr}RR`
     : "None";
 
-  async function pauseAura() {
-    try {
-      setPausing(true);
-      const res = await fetchJSON<{ ok: true; isPaused: boolean }>(
-        "/api/trading-state/pause",
-        {
-          method: "POST",
-          body: JSON.stringify({ isPaused: true }),
-        }
-      );
-      props.onPaused?.(!!res.isPaused);
-    } finally {
-      setPausing(false);
-    }
-  }
-
   return (
     <section className="aura-card aura-health">
       <div className="aura-health-top">
         <div className="aura-card-title">Summary</div>
         <div className="aura-muted aura-text-xs">{rightStatus}</div>
       </div>
-
-      {locked ? (
-        <div className="aura-mt-10">
-          <div className="aura-card-muted">
-            <div className="aura-row-between">
-              <div className="aura-muted aura-text-xs">
-                Locked while Aura is running. Pause Aura to edit settings.
-              </div>
-
-              <button
-                type="button"
-                className={`aura-btn ${pausing ? "aura-disabled-btn" : ""}`}
-                onClick={pauseAura}
-                disabled={pausing}
-                title="Pause Aura so you can edit settings"
-              >
-                {pausing ? "Pausing…" : "Pause Aura"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       <div className="aura-health-strip" aria-label="Strategy summary">
         <div className="aura-health-pill">
@@ -101,12 +59,12 @@ export function StrategySummaryStrip(props: {
           <span className="aura-health-val">{riskText}</span>
         </div>
 
-        {!locked ? (
-          <div className="aura-health-pill">
-            <span className="aura-health-key">State</span>
-            <span className="aura-health-val">Editable</span>
-          </div>
-        ) : null}
+        <div className="aura-health-pill">
+          <span className="aura-health-key">State</span>
+          <span className="aura-health-val">
+            {locked ? "Locked (Aura running)" : "Editable"}
+          </span>
+        </div>
       </div>
     </section>
   );

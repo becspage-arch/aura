@@ -6,44 +6,50 @@ import { useCallback, useEffect, useState } from "react";
 import type { StrategyGetResponse, StrategyPostResponse, StrategySettings } from "./_lib/types";
 import { fetchJSON } from "./_lib/api";
 
+import { StrategyRunStateBanner } from "./_components/StrategyRunStateBanner";
 import { StrategySummaryStrip } from "./_components/StrategySummaryStrip";
 import { StrategyTopCardsRow } from "./_components/StrategyTopCardsRow";
 import { TradingSessionsCard } from "./_components/TradingSessionsCard";
 import { RiskConfigurationCard } from "./_components/RiskConfigurationCard";
+import { PositionSizingCard } from "./_components/PositionSizingCard";
 import { TradingOptionsCard } from "./_components/TradingOptionsCard";
 import { ExecutionPreferencesCard } from "./_components/ExecutionPreferencesCard";
 import { SafetyLimitsCard } from "./_components/SafetyLimitsCard";
 
-import { emitToast } from "@/components/toastBus";
-
 export const dynamic = "force-dynamic";
 
+type RuntimeRes = {
+  ok: true;
+  isTrading: boolean;
+  isPaused: boolean;
+  isKillSwitched: boolean;
+};
+
 export default function StrategyPage() {
-  const [isTrading, setIsTrading] = useState<boolean>(false);
+  const [runtime, setRuntime] = useState<RuntimeRes | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [current, setCurrent] = useState<StrategySettings | null>(null);
 
+  // collapsed by default (we’ll persist per-user in the NEXT step)
   const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  const refreshRuntime = useCallback(async () => {
+    try {
+      const res = await fetchJSON<RuntimeRes>("/api/trading-state/runtime");
+      setRuntime(res);
+    } catch {
+      // Fail safe: treat as not trading (editable) so we never block users accidentally.
+      setRuntime({ ok: true, isTrading: false, isPaused: false, isKillSwitched: false });
+    }
+  }, []);
 
   // Runtime state
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const res = await fetchJSON<{ ok: true; isTrading: boolean }>("/api/trading-state/runtime");
-        if (!cancelled) setIsTrading(!!res.isTrading);
-      } catch {
-        if (!cancelled) setIsTrading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    refreshRuntime();
+  }, [refreshRuntime]);
 
   // Load strategy settings
   useEffect(() => {
@@ -57,13 +63,7 @@ export default function StrategyPage() {
         const res = await fetchJSON<StrategyGetResponse>("/api/trading-state/strategy-settings");
         if (!cancelled) setCurrent(res.strategySettings);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (!cancelled) setErr(msg);
-
-        emitToast({
-          title: "Strategy Setup",
-          body: `Failed to load settings - ${msg}`,
-        });
+        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -76,15 +76,13 @@ export default function StrategyPage() {
 
   const patchStrategySettings = useCallback(
     async (patch: Partial<StrategySettings>) => {
-      if (isTrading) {
-        emitToast({
-          title: "Locked",
-          body: "Pause Aura to edit settings",
-        });
-        throw new Error("Locked while Aura is running");
-      }
-
       try {
+        // HARD GUARD: never save while running
+        if (runtime?.isTrading) {
+          setErr("Settings are locked while Aura is running. Pause Aura to edit.");
+          throw new Error("locked");
+        }
+
         setSaving(true);
         setErr(null);
 
@@ -94,36 +92,39 @@ export default function StrategyPage() {
         });
 
         setCurrent(res.strategySettings);
-
-        emitToast({
-          title: "Saved",
-          body: "Strategy settings updated",
-        });
-
         return res.strategySettings;
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setErr(msg);
-
-        emitToast({
-          title: "Save failed",
-          body: msg,
-        });
-
+        if (!(e instanceof Error && e.message === "locked")) {
+          setErr(e instanceof Error ? e.message : String(e));
+        }
         throw e;
       } finally {
         setSaving(false);
       }
     },
-    [isTrading]
+    [runtime?.isTrading]
   );
 
+  const isTrading = !!runtime?.isTrading;
   const disabled = loading || saving || isTrading;
 
   return (
     <div className="mx-auto max-w-6xl px-6 pb-10">
       <div className="aura-page">
-        <StrategySummaryStrip current={current} loading={loading} saving={saving} isTrading={isTrading} />
+        <StrategyRunStateBanner
+          loading={!runtime}
+          isTrading={!!runtime?.isTrading}
+          isPaused={!!runtime?.isPaused}
+          isKillSwitched={!!runtime?.isKillSwitched}
+          onRuntimeRefresh={refreshRuntime}
+        />
+
+        <StrategySummaryStrip
+          current={current}
+          loading={loading}
+          saving={saving}
+          isTrading={isTrading}
+        />
 
         {err ? (
           <section className="aura-card">
@@ -132,6 +133,7 @@ export default function StrategyPage() {
           </section>
         ) : null}
 
+        {/* Core */}
         <div className="aura-section-stack">
           <StrategyTopCardsRow current={current} />
 
@@ -139,15 +141,21 @@ export default function StrategyPage() {
             current={current}
             saving={saving}
             disabled={disabled}
-            patchStrategySettings={patchStrategySettings}
+            setCurrent={setCurrent}
+            setSaving={setSaving}
+            setErr={setErr}
           />
 
           <RiskConfigurationCard
             current={current}
             saving={saving}
             disabled={disabled}
-            patchStrategySettings={patchStrategySettings}
+            setCurrent={setCurrent}
+            setSaving={setSaving}
+            setErr={setErr}
           />
+
+          <PositionSizingCard current={current} />
 
           <SafetyLimitsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
 
@@ -166,7 +174,11 @@ export default function StrategyPage() {
               {advancedOpen && (
                 <div className="aura-advanced-content">
                   <TradingOptionsCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
-                  <ExecutionPreferencesCard current={current} saving={saving} patchStrategySettings={patchStrategySettings} />
+                  <ExecutionPreferencesCard
+                    current={current}
+                    saving={saving}
+                    patchStrategySettings={patchStrategySettings}
+                  />
                 </div>
               )}
             </div>

@@ -1904,3 +1904,53 @@ html.light .aura-toast {
   font-size: 13px;
   line-height: 1.35;
 }
+
+/* Strategy Setup - run state banner */
+.aura-runBanner {
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  /* stand out from normal cards */
+  background: color-mix(in srgb, var(--muted) 72%, transparent);
+}
+
+.aura-runBanner--locked {
+  border-color: color-mix(in srgb, var(--aura-gold-2) 40%, var(--border));
+  background: color-mix(in srgb, rgba(214, 194, 143, 0.12) 55%, var(--muted));
+}
+
+.aura-runBanner--paused {
+  border-color: color-mix(in srgb, var(--aura-success) 35%, var(--border));
+  background: color-mix(in srgb, rgba(127, 168, 161, 0.12) 55%, var(--muted));
+}
+
+.aura-runBanner__left {
+  display: grid;
+  gap: 6px;
+}
+
+.aura-runBanner__title {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.aura-runBanner__sub {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.aura-runBanner__actions {
+  display: flex;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.aura-runBanner__icon {
+  font-size: 14px;
+  opacity: 0.9;
+}
