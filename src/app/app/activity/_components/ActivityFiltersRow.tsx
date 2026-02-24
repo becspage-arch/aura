@@ -3,11 +3,18 @@
 
 export type ActivityScope = "user" | "user+aura" | "all";
 
+export type SystemPreset = "important" | "errors" | "settings" | "all";
+
 export function ActivityFiltersRow(props: {
-  scope: ActivityScope;
-  onScopeChange: (v: ActivityScope) => void;
+  scope: "user" | "user+aura" | "all";
+  onScopeChange: (v: "user" | "user+aura" | "all") => void;
+
+  systemPreset: SystemPreset;
+  onSystemPresetChange: (v: SystemPreset) => void;
+
   q: string;
   onQueryChange: (v: string) => void;
+
   onExport: () => void;
   loading?: boolean;
 }) {

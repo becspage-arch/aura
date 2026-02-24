@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { ensureUserProfile } from "@/lib/user-profile";
-import { fetchActivity, type ActivityScope } from "./_lib/activity";
+import { fetchActivity, type ActivityScope, type SystemPreset } from "./_lib/activity";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,8 @@ export async function GET(req: Request) {
   const limit = Number(url.searchParams.get("limit") || 35);
   const cursor = url.searchParams.get("cursor");
 
+  const systemPreset = (url.searchParams.get("systemPreset") || "important") as SystemPreset;
+
   const profile = await ensureUserProfile({
     clerkUserId,
     email: null,
@@ -28,12 +30,22 @@ export async function GET(req: Request) {
   const safeScope: ActivityScope =
     scope === "all" ? "all" : scope === "user+aura" ? "user+aura" : "user";
 
+  const safePreset: SystemPreset =
+    systemPreset === "all"
+      ? "all"
+      : systemPreset === "errors"
+        ? "errors"
+        : systemPreset === "settings"
+          ? "settings"
+          : "important";
+
   const { items, nextCursor } = await fetchActivity({
     userId: profile.id,
     scope: safeScope,
     q,
     limit,
     cursor,
+    systemPreset: safePreset,
   });
 
   return NextResponse.json({ ok: true, items, nextCursor });

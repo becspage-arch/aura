@@ -1,18 +1,16 @@
 // src/app/app/activity/_components/ActivityFeedCard.tsx
 "use client";
 
-import { ActivityFiltersRow, type ActivityScope } from "./ActivityFiltersRow";
+import { ActivityFiltersRow, type ActivityScope, type SystemPreset } from "./ActivityFiltersRow";
 import { ActivityItemRow } from "./ActivityItemRow";
-
-type ActivityResponse = {
-  ok: true;
-  items: any[];
-  nextCursor: string | null;
-};
 
 export function ActivityFeedCard(props: {
   scope: ActivityScope;
   onScopeChange: (v: ActivityScope) => void;
+
+  systemPreset: SystemPreset;
+  onSystemPresetChange: (v: SystemPreset) => void;
+
   q: string;
   onQueryChange: (v: string) => void;
 
@@ -28,6 +26,8 @@ export function ActivityFeedCard(props: {
   const {
     scope,
     onScopeChange,
+    systemPreset,
+    onSystemPresetChange,
     q,
     onQueryChange,
     items,
@@ -59,6 +59,8 @@ export function ActivityFeedCard(props: {
         <ActivityFiltersRow
           scope={scope}
           onScopeChange={onScopeChange}
+          systemPreset={systemPreset}
+          onSystemPresetChange={onSystemPresetChange}
           q={q}
           onQueryChange={onQueryChange}
           onExport={onExport}
@@ -68,9 +70,7 @@ export function ActivityFeedCard(props: {
 
       <div className="aura-divider" />
 
-      {error ? (
-        <div className="aura-muted aura-text-xs">Error: {error}</div>
-      ) : null}
+      {error ? <div className="aura-muted aura-text-xs">Error: {error}</div> : null}
 
       {!loading && !items?.length ? (
         <div className="aura-muted aura-text-xs">

@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { ensureUserProfile } from "@/lib/user-profile";
-import { fetchActivity, toCsv, type ActivityScope } from "../_lib/activity";
+import { fetchActivity, toCsv, type ActivityScope, type SystemPreset } from "../_lib/activity";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +17,8 @@ export async function GET(req: Request) {
   const scope = (url.searchParams.get("scope") || "user") as ActivityScope;
   const q = (url.searchParams.get("q") || "").trim() || null;
 
+  const systemPreset = (url.searchParams.get("systemPreset") || "important") as SystemPreset;
+
   const profile = await ensureUserProfile({
     clerkUserId,
     email: null,
@@ -26,6 +28,15 @@ export async function GET(req: Request) {
   const safeScope: ActivityScope =
     scope === "all" ? "all" : scope === "user+aura" ? "user+aura" : "user";
 
+  const safePreset: SystemPreset =
+    systemPreset === "all"
+      ? "all"
+      : systemPreset === "errors"
+        ? "errors"
+        : systemPreset === "settings"
+          ? "settings"
+          : "important";
+
   // Export a larger batch. Keep a sane cap.
   const { items } = await fetchActivity({
     userId: profile.id,
@@ -33,12 +44,14 @@ export async function GET(req: Request) {
     q,
     limit: 1000,
     cursor: null,
+    systemPreset: safePreset,
   });
 
   const csv = toCsv(items);
 
   const now = new Date();
   const yyyy = now.getUTCFullYear();
+  
   const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(now.getUTCDate()).padStart(2, "0");
   const filename = `aura-activity-${yyyy}-${mm}-${dd}.csv`;

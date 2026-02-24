@@ -1,90 +1,123 @@
-// src/app/app/activity/_components/ActivityItemRow.tsx
+// src/app/app/activity/_components/ActivityFiltersRow.tsx
 "use client";
 
-type ActivityItem =
-  | {
-      kind: "user_action";
-      id: string;
-      createdAt: string;
-      title: string;
-      summary: string;
-      details: any | null;
-    }
-  | {
-      kind: "aura_eval";
-      id: string;
-      createdAt: string;
-      title: string;
-      summary: string;
-      details: any | null;
-      symbol: string;
-      side: "BUY" | "SELL";
-      status: "DETECTED" | "BLOCKED" | "TAKEN";
-      blockReason: string | null;
-    }
-  | {
-      kind: "system_event";
-      id: string;
-      createdAt: string;
-      title: string;
-      summary: string;
-      details: any | null;
-      level: string;
-      type: string;
-    };
+export type ActivityScope = "user" | "user+aura" | "all";
+export type SystemPreset = "important" | "errors" | "settings" | "all";
 
-function safeJsonString(v: any) {
-  try {
-    if (v == null) return "";
-    return JSON.stringify(v, null, 2);
-  } catch {
-    return "";
-  }
-}
+export function ActivityFiltersRow(props: {
+  scope: ActivityScope;
+  onScopeChange: (v: ActivityScope) => void;
 
-function pillFor(item: ActivityItem) {
-  if (item.kind === "user_action") return <span className="aura-pill">User</span>;
-  if (item.kind === "aura_eval") {
-    if (item.status === "TAKEN") return <span className="aura-pill">Entered</span>;
-    if (item.status === "BLOCKED") return <span className="aura-pill">Skipped</span>;
-    return <span className="aura-pill">Detected</span>;
-  }
-  return <span className="aura-pill">System</span>;
-}
+  systemPreset: SystemPreset;
+  onSystemPresetChange: (v: SystemPreset) => void;
 
-function rightFor(item: ActivityItem) {
-  if (item.kind === "system_event") {
-    return <span className="aura-muted aura-text-xs">{String(item.level).toUpperCase()}</span>;
-  }
-  if (item.kind === "aura_eval") {
-    return <span className="aura-muted aura-text-xs">{item.side}</span>;
-  }
-  return <span className="aura-muted aura-text-xs">—</span>;
-}
+  q: string;
+  onQueryChange: (v: string) => void;
 
-export function ActivityItemRow({ item }: { item: ActivityItem }) {
+  onExport: () => void;
+  loading?: boolean;
+}) {
+  const { scope, onScopeChange, systemPreset, onSystemPresetChange, q, onQueryChange, onExport, loading } =
+    props;
+
   return (
-    <details className="aura-table aura-card-muted aura-details">
-      <summary className="aura-control-row aura-row-link aura-summary" style={{ padding: 12 }}>
-        <div className="aura-control-meta">
-          <div className="aura-control-title">{item.title}</div>
-          <div className="aura-control-help">
-            {new Date(item.createdAt).toLocaleString()} •{" "}
-            <span className="aura-muted">{item.summary || "—"}</span>
-          </div>
+    <div className="aura-grid-gap-12">
+      <div className="aura-row-between">
+        <div className="aura-pill-group">
+          <button
+            type="button"
+            className="aura-pill-toggle"
+            aria-pressed={scope === "user"}
+            onClick={() => onScopeChange("user")}
+          >
+            <span className="aura-pill-indicator" />
+            User
+          </button>
+
+          <button
+            type="button"
+            className="aura-pill-toggle"
+            aria-pressed={scope === "user+aura"}
+            onClick={() => onScopeChange("user+aura")}
+          >
+            <span className="aura-pill-indicator" />
+            User + Aura evaluations
+          </button>
+
+          <button
+            type="button"
+            className="aura-pill-toggle"
+            aria-pressed={scope === "all"}
+            onClick={() => onScopeChange("all")}
+          >
+            <span className="aura-pill-indicator" />
+            Include system (no noise)
+          </button>
         </div>
 
         <div className="aura-control-right">
-          {pillFor(item)}
-          {rightFor(item)}
-        </div>
-      </summary>
+          <input
+            className="aura-input aura-control-right--lg"
+            placeholder="Search activity…"
+            value={q}
+            onChange={(e) => onQueryChange(e.target.value)}
+            disabled={!!loading}
+          />
 
-      <div className="aura-expand">
-        <pre className="aura-card-muted aura-text-xs" style={{ margin: 0 }}>
-{safeJsonString(item.details)}
-        </pre>
+          <button
+            type="button"
+            className="aura-btn aura-btn-subtle"
+            onClick={onExport}
+            disabled={!!loading}
+          >
+            Export CSV
+          </button>
+        </div>
       </div>
-    </details>
+
+      {scope === "all" ? (
+        <div className="aura-pill-group">
+          <button
+            type="button"
+            className="aura-pill-toggle"
+            aria-pressed={systemPreset === "important"}
+            onClick={() => onSystemPresetChange("important")}
+          >
+            <span className="aura-pill-indicator" />
+            Important
+          </button>
+
+          <button
+            type="button"
+            className="aura-pill-toggle"
+            aria-pressed={systemPreset === "errors"}
+            onClick={() => onSystemPresetChange("errors")}
+          >
+            <span className="aura-pill-indicator" />
+            Errors &amp; warnings
+          </button>
+
+          <button
+            type="button"
+            className="aura-pill-toggle"
+            aria-pressed={systemPreset === "settings"}
+            onClick={() => onSystemPresetChange("settings")}
+          >
+            <span className="aura-pill-indicator" />
+            Settings changes
+          </button>
+
+          <button
+            type="button"
+            className="aura-pill-toggle"
+            aria-pressed={systemPreset === "all"}
+            onClick={() => onSystemPresetChange("all")}
+          >
+            <span className="aura-pill-indicator" />
+            All system (clean)
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }

@@ -49,6 +49,8 @@ function safeJson(v: any) {
   }
 }
 
+export type SystemPreset = "important" | "errors" | "settings" | "all";
+
 const BLOCK_REASON_LABEL: Record<string, string> = {
   IN_TRADE: "In trade",
   PAUSED: "Paused",
@@ -82,9 +84,42 @@ function isHeartbeatLike(type: string, message: string | null | undefined) {
 
 function isNoisySystemType(type: string) {
   if (!type) return true;
+
+  // Hard exclusions (confirmed by your Neon query)
   if (type === "market.quote") return true;
+  if (type === "worker_heartbeat") return true;
+
+  // Existing exclusions
   if (type.startsWith("candle_")) return true;
+
   return false;
+}
+
+function isSettingsType(type: string) {
+  return type === "control_changed" || type === "config_changed";
+}
+
+function isExecType(type: string) {
+  return type.startsWith("exec.");
+}
+
+function keepByPreset(params: { type: string; level: string; preset: SystemPreset }) {
+  const t = params.type;
+  const lvl = (params.level || "").toLowerCase();
+  const preset = params.preset;
+
+  if (preset === "all") return true;
+
+  if (preset === "errors") {
+    return lvl === "warn" || lvl === "error";
+  }
+
+  if (preset === "settings") {
+    return isSettingsType(t);
+  }
+
+  // preset === "important" (default)
+  return lvl === "warn" || lvl === "error" || isSettingsType(t) || isExecType(t);
 }
 
 type Cursor = { createdAt: Date; id: string } | null;
@@ -111,16 +146,18 @@ function cursorWhere(cursor: Cursor) {
 }
 
 export async function fetchActivity(params: {
-  userId: string; // internal UserProfile.id
+  userId: string;
   scope: ActivityScope;
   q: string | null;
   limit: number;
   cursor: string | null;
+  systemPreset?: SystemPreset;
 }) {
   const { userId } = params;
   const limit = Math.max(1, Math.min(100, params.limit));
   const q = (params.q || "").trim();
   const cursor = parseCursor(params.cursor);
+  const systemPreset: SystemPreset = params.systemPreset ?? "important";
 
   // Pull a bit extra from each source so merge/sort has enough
   const perSourceTake = Math.min(200, limit * 4);
@@ -249,7 +286,9 @@ export async function fetchActivity(params: {
 
   const systemItems: ActivityItem[] = (systemRaw as any[])
     .filter((e) => !isNoisySystemType(String(e.type)))
+    // Keep this as a fallback safeguard, but worker_heartbeat is now excluded explicitly:
     .filter((e) => !isHeartbeatLike(String(e.type), e.message))
+    .filter((e) => keepByPreset({ type: String(e.type), level: String(e.level), preset: systemPreset }))
     .map((e) => ({
       kind: "system_event",
       id: e.id,

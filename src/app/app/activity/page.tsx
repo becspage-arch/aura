@@ -3,8 +3,8 @@
 
 export const dynamic = "force-dynamic";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ActivityScope } from "./_components/ActivityFiltersRow";
+import { useCallback, useEffect, useState } from "react";
+import type { ActivityScope, SystemPreset } from "./_components/ActivityFiltersRow";
 import { ActivityFeedCard } from "./_components/ActivityFeedCard";
 
 type ApiRes = {
@@ -13,26 +13,39 @@ type ApiRes = {
   nextCursor: string | null;
 };
 
-function buildUrl(params: { scope: ActivityScope; q: string; limit: number; cursor?: string | null }) {
+function buildUrl(params: {
+  scope: ActivityScope;
+  systemPreset: SystemPreset;
+  q: string;
+  limit: number;
+  cursor?: string | null;
+}) {
   const sp = new URLSearchParams();
   sp.set("scope", params.scope);
   sp.set("limit", String(params.limit));
   if (params.q.trim()) sp.set("q", params.q.trim());
   if (params.cursor) sp.set("cursor", params.cursor);
+
+  if (params.scope === "all") sp.set("systemPreset", params.systemPreset);
+
   return `/api/activity?${sp.toString()}`;
 }
 
-function buildExportUrl(params: { scope: ActivityScope; q: string }) {
+function buildExportUrl(params: { scope: ActivityScope; systemPreset: SystemPreset; q: string }) {
   const sp = new URLSearchParams();
   sp.set("scope", params.scope);
   if (params.q.trim()) sp.set("q", params.q.trim());
+
+  if (params.scope === "all") sp.set("systemPreset", params.systemPreset);
+
   return `/api/activity/export?${sp.toString()}`;
 }
 
 export default function ActivityPage() {
   const LIMIT = 35;
 
-  const [scope, setScope] = useState<ActivityScope>("user"); // default: user only ✅
+  const [scope, setScope] = useState<ActivityScope>("user");
+  const [systemPreset, setSystemPreset] = useState<SystemPreset>("important");
   const [q, setQ] = useState("");
 
   const [items, setItems] = useState<any[]>([]);
@@ -46,7 +59,7 @@ export default function ActivityPage() {
     setErr(null);
 
     try {
-      const url = buildUrl({ scope, q, limit: LIMIT });
+      const url = buildUrl({ scope, systemPreset, q, limit: LIMIT });
       const res = await fetch(url, { method: "GET" });
       const json = (await res.json().catch(() => null)) as ApiRes | any;
 
@@ -63,7 +76,7 @@ export default function ActivityPage() {
     } finally {
       setLoading(false);
     }
-  }, [scope, q]);
+  }, [scope, systemPreset, q]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor) return;
@@ -72,7 +85,7 @@ export default function ActivityPage() {
     setErr(null);
 
     try {
-      const url = buildUrl({ scope, q, limit: LIMIT, cursor: nextCursor });
+      const url = buildUrl({ scope, systemPreset, q, limit: LIMIT, cursor: nextCursor });
       const res = await fetch(url, { method: "GET" });
       const json = (await res.json().catch(() => null)) as ApiRes | any;
 
@@ -87,9 +100,8 @@ export default function ActivityPage() {
     } finally {
       setLoading(false);
     }
-  }, [scope, q, nextCursor]);
+  }, [scope, systemPreset, q, nextCursor]);
 
-  // Reload on scope/q changes (with a tiny debounce for typing)
   useEffect(() => {
     const t = setTimeout(() => {
       loadFirst();
@@ -98,9 +110,9 @@ export default function ActivityPage() {
   }, [loadFirst]);
 
   const onExport = useCallback(() => {
-    const url = buildExportUrl({ scope, q });
+    const url = buildExportUrl({ scope, systemPreset, q });
     window.open(url, "_blank");
-  }, [scope, q]);
+  }, [scope, systemPreset, q]);
 
   const canLoadMore = !!nextCursor;
 
@@ -111,7 +123,10 @@ export default function ActivityPage() {
           scope={scope}
           onScopeChange={(v) => {
             setScope(v);
+            if (v !== "all") setSystemPreset("important");
           }}
+          systemPreset={systemPreset}
+          onSystemPresetChange={setSystemPreset}
           q={q}
           onQueryChange={setQ}
           items={items}
