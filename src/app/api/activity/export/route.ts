@@ -38,7 +38,7 @@ export async function GET(req: Request) {
           ? "settings"
           : "important";
 
-  // Export a larger batch. Keep a sane cap.
+  // Export a larger batch. Keep a sane cap. 
   const { items } = await fetchActivity({
     userId: profile.id,
     scope: safeScope,
