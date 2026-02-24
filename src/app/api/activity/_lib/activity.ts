@@ -1,8 +1,14 @@
 // src/app/api/activity/_lib/activity.ts
 import { prisma } from "@/lib/prisma";
+import {
+  blockReasonLabel,
+  tradingDecisionTitle,
+  tradingDecisionSummary,
+  type AuraDecisionStatus,
+  type AuraSide,
+} from "@/lib/auraCopy";
 
-export type ActivityScope = "user" | "aura" | "system";
-
+export type ActivityScope = "user" | "user+aura" | "all";
 export type ActivityItem =
   | {
       kind: "user_action";
@@ -13,7 +19,7 @@ export type ActivityItem =
       details: any | null;
     }
   | {
-      kind: "trade_decision";
+      kind: "aura_eval";
       id: string;
       createdAt: string; // ISO
       title: string;
@@ -51,31 +57,6 @@ function safeJson(v: any) {
 }
 
 export type SystemPreset = "important" | "errors" | "settings" | "all";
-
-const BLOCK_REASON_LABEL: Record<string, string> = {
-  IN_TRADE: "Already in a trade",
-  PAUSED: "Paused",
-  KILL_SWITCH: "Kill switch on",
-  NOT_LIVE_CANDLE: "Not live candle",
-  INVALID_BRACKET: "Invalid bracket",
-  EXECUTION_FAILED: "Execution failed",
-  OUTSIDE_TRADING_WINDOWS: "Outside trading window",
-
-  NO_ACTIVE_FVG: "No active FVG",
-  FVG_INVALID: "FVG invalidated",
-  FVG_ALREADY_TRADED: "Already traded",
-  NOT_RETESTED: "No retest",
-  DIRECTION_MISMATCH: "Direction mismatch",
-  NO_EXPANSION_PATTERN: "No expansion pattern",
-  STOP_INVALID: "Stop invalid",
-  STOP_TOO_BIG: "Stop too big",
-  CONTRACTS_ZERO: "Contracts = 0",
-};
-
-function labelBlockReason(r: string | null | undefined) {
-  if (!r) return "";
-  return BLOCK_REASON_LABEL[r] ?? r;
-}
 
 function isHeartbeatLike(type: string, message: string | null | undefined) {
   const t = (type || "").toLowerCase();
@@ -143,78 +124,45 @@ function cursorWhere(cursor: Cursor) {
   };
 }
 
-function rangeWhere(params: { from?: Date | null; to?: Date | null }) {
-  const { from, to } = params;
-  if (!from && !to) return undefined;
-
-  if (from && to) return { createdAt: { gte: from, lte: to } };
-  if (from) return { createdAt: { gte: from } };
-  return { createdAt: { lte: to! } };
-}
-
-export type ActivitySummary = {
-  tradeOpportunities: number;
-  tradesEntered: number;
-  skipped: number;
-  systemIssues: number; // warn+error count
-};
-
 export async function fetchActivity(params: {
   userId: string;
-
-  includeMyActivity: boolean;
-  includeTradeDecisions: boolean;
-  includeAccountSystem: boolean;
-
-  systemPreset?: SystemPreset;
-
-  from?: Date | null;
-  to?: Date | null;
-
+  scope: ActivityScope;
   q: string | null;
   limit: number;
   cursor: string | null;
+  systemPreset?: SystemPreset;
 }) {
   const { userId } = params;
-
   const limit = Math.max(1, Math.min(100, params.limit));
   const q = (params.q || "").trim();
   const cursor = parseCursor(params.cursor);
   const systemPreset: SystemPreset = params.systemPreset ?? "important";
 
-  const from = params.from ?? null;
-  const to = params.to ?? null;
-
   // Pull a bit extra from each source so merge/sort has enough
   const perSourceTake = Math.min(200, limit * 4);
 
-  const includeAudit = !!params.includeMyActivity;
-  const includeAura = !!params.includeTradeDecisions;
-  const includeSystem = !!params.includeAccountSystem;
+  const includeAura = params.scope === "user+aura" || params.scope === "all";
+  const includeSystem = params.scope === "all";
 
-  const auditPromise = includeAudit
-    ? prisma.auditLog.findMany({
-        where: {
-          userId,
-          ...(cursorWhere(cursor) as any),
-          ...(rangeWhere({ from, to }) as any),
-          ...(q
-            ? {
-                OR: [{ action: { contains: q, mode: "insensitive" } }],
-              }
-            : {}),
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: perSourceTake,
-      })
-    : Promise.resolve([]);
+  const auditPromise = prisma.auditLog.findMany({
+    where: {
+      userId,
+      ...(cursorWhere(cursor) as any),
+      ...(q
+        ? {
+            OR: [{ action: { contains: q, mode: "insensitive" } }],
+          }
+        : {}),
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: perSourceTake,
+  });
 
   const signalsPromise = includeAura
     ? prisma.strategySignal.findMany({
         where: {
           userId,
           ...(cursorWhere(cursor) as any),
-          ...(rangeWhere({ from, to }) as any),
           ...(q
             ? {
                 OR: [
@@ -234,7 +182,6 @@ export async function fetchActivity(params: {
         where: {
           userId,
           ...(cursorWhere(cursor) as any),
-          ...(rangeWhere({ from, to }) as any),
           ...(q
             ? {
                 OR: [
@@ -250,45 +197,9 @@ export async function fetchActivity(params: {
       })
     : Promise.resolve([]);
 
-  const summaryPromise: Promise<ActivitySummary> = (async () => {
-    // Trade decision summary (StrategySignal)
-    const [tradeOpportunities, tradesEntered, skipped] = includeAura
-      ? await Promise.all([
-          prisma.strategySignal.count({
-            where: { userId, ...(rangeWhere({ from, to }) as any) },
-          }),
-          prisma.strategySignal.count({
-            where: { userId, status: "TAKEN", ...(rangeWhere({ from, to }) as any) },
-          }),
-          prisma.strategySignal.count({
-            where: { userId, status: "BLOCKED", ...(rangeWhere({ from, to }) as any) },
-          }),
-        ])
-      : [0, 0, 0];
+  const [audit, signals, systemRaw] = await Promise.all([auditPromise, signalsPromise, systemPromise]);
 
-    // System issues (EventLog warn/error, excluding noise)
-    const systemIssues = includeSystem
-      ? await prisma.eventLog.count({
-          where: {
-            userId,
-            ...(rangeWhere({ from, to }) as any),
-            level: { in: ["warn", "error"] },
-            NOT: [{ type: "market.quote" }, { type: "worker_heartbeat" }],
-          },
-        })
-      : 0;
-
-    return { tradeOpportunities, tradesEntered, skipped, systemIssues };
-  })();
-
-  const [audit, signals, systemRaw, summary] = await Promise.all([
-    auditPromise,
-    signalsPromise,
-    systemPromise,
-    summaryPromise,
-  ]);
-
-  const auditItems: ActivityItem[] = (audit as any[]).map((a) => ({
+  const auditItems: ActivityItem[] = audit.map((a) => ({
     kind: "user_action",
     id: a.id,
     createdAt: a.createdAt.toISOString(),
@@ -298,35 +209,30 @@ export async function fetchActivity(params: {
   }));
 
   const signalItems: ActivityItem[] = (signals as any[]).map((s) => {
-    const status = String(s.status) as "DETECTED" | "BLOCKED" | "TAKEN";
+    const status = String(s.status) as AuraDecisionStatus;
     const br = s.blockReason ? String(s.blockReason) : null;
 
-    const entered = status === "TAKEN";
-    const skipped = status === "BLOCKED";
-
-    const decisionLabel = entered ? "Entered" : skipped ? "Skipped" : "Detected";
-    const reason = skipped ? labelBlockReason(br) : "";
-
-    const title = `Trade opportunity – ${s.symbol}`;
-    const summaryText =
-      skipped && reason
-        ? `${decisionLabel} - ${reason}`
-        : entered
-          ? `${decisionLabel} - ${s.side} • ${s.contracts ?? "—"} contracts`
-          : `${decisionLabel} - ${s.side}`;
+    const title = tradingDecisionTitle(String(s.symbol));
+    const summary = tradingDecisionSummary({
+      status,
+      side: String(s.side) as AuraSide,
+      contracts: s.contracts ?? null,
+      blockReason: br,
+    });
 
     return {
-      kind: "trade_decision",
+      kind: "aura_eval",
       id: s.id,
       createdAt: s.createdAt.toISOString(),
       title,
-      summary: truncate(summaryText, 180),
+      summary: truncate(summary, 180),
       details: {
         strategy: s.strategy,
         symbol: s.symbol,
         side: s.side,
         status,
         blockReason: br,
+        blockReasonLabel: br ? blockReasonLabel(br) : "",
         entryTime: s.entryTime,
         fvgTime: s.fvgTime,
         entryPrice: s.entryPrice,
@@ -358,7 +264,7 @@ export async function fetchActivity(params: {
       createdAt: e.createdAt.toISOString(),
       level: String(e.level ?? "info"),
       type: String(e.type ?? ""),
-      title: `Account & system • ${String(e.type ?? "")}`,
+      title: `System • ${String(e.type ?? "")}`,
       summary: truncate(String(e.message ?? "").trim(), 180),
       details: e.data ?? null,
     }));
@@ -376,7 +282,7 @@ export async function fetchActivity(params: {
 
   const nextCursor = hasMore ? `${page[page.length - 1].createdAt}|${page[page.length - 1].id}` : null;
 
-  return { items: page, nextCursor, summary };
+  return { items: page, nextCursor };
 }
 
 function csvEscape(v: any) {
@@ -389,7 +295,7 @@ export function toCsv(items: ActivityItem[]) {
   const headers = ["timestamp", "kind", "title", "summary", "type", "level", "details_json"];
 
   const rows = items.map((it) => {
-    const type = it.kind === "system_event" ? it.type : it.kind === "trade_decision" ? "strategy.signal" : "";
+    const type = it.kind === "system_event" ? it.type : it.kind === "aura_eval" ? "strategy.signal" : "";
     const level = it.kind === "system_event" ? it.level : "";
     const detailsJson = it.details ? safeJson(it.details) : "";
 
