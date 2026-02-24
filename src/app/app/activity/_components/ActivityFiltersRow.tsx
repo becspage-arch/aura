@@ -11,6 +11,9 @@ import {
 export type ActivityScope = "user" | "user+aura" | "all";
 export type SystemPreset = "important" | "errors" | "settings" | "all";
 
+// Used by page.tsx to build from/to timestamps
+export type TimePreset = "today" | "yesterday" | "this_week" | "last_7_days" | "this_month" | "custom";
+
 function clampScope(params: { showDecisions: boolean; showSystem: boolean }): ActivityScope {
   if (params.showSystem) return "all";
   if (params.showDecisions) return "user+aura";
