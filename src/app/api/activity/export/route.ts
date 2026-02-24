@@ -17,7 +17,9 @@ export async function GET(req: Request) {
   const scope = (url.searchParams.get("scope") || "user") as ActivityScope;
   const q = (url.searchParams.get("q") || "").trim() || null;
 
-  const systemPreset = (url.searchParams.get("systemPreset") || "important") as SystemPreset;
+  const presetRaw = (url.searchParams.get("systemPreset") || "important") as SystemPreset;
+  const systemPreset: SystemPreset =
+    presetRaw === "all" || presetRaw === "errors" || presetRaw === "settings" ? presetRaw : "important";
 
   const profile = await ensureUserProfile({
     clerkUserId,
@@ -28,30 +30,19 @@ export async function GET(req: Request) {
   const safeScope: ActivityScope =
     scope === "all" ? "all" : scope === "user+aura" ? "user+aura" : "user";
 
-  const safePreset: SystemPreset =
-    systemPreset === "all"
-      ? "all"
-      : systemPreset === "errors"
-        ? "errors"
-        : systemPreset === "settings"
-          ? "settings"
-          : "important";
-
-  // Export a larger batch. Keep a sane cap.
   const { items } = await fetchActivity({
     userId: profile.id,
     scope: safeScope,
     q,
     limit: 1000,
     cursor: null,
-    systemPreset: safePreset,
+    systemPreset,
   });
 
   const csv = toCsv(items);
 
   const now = new Date();
   const yyyy = now.getUTCFullYear();
-  
   const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(now.getUTCDate()).padStart(2, "0");
   const filename = `aura-activity-${yyyy}-${mm}-${dd}.csv`;

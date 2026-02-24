@@ -2,12 +2,11 @@
 "use client";
 
 export type ActivityScope = "user" | "user+aura" | "all";
-
 export type SystemPreset = "important" | "errors" | "settings" | "all";
 
 export function ActivityFiltersRow(props: {
-  scope: "user" | "user+aura" | "all";
-  onScopeChange: (v: "user" | "user+aura" | "all") => void;
+  scope: ActivityScope;
+  onScopeChange: (v: ActivityScope) => void;
 
   systemPreset: SystemPreset;
   onSystemPresetChange: (v: SystemPreset) => void;
@@ -18,7 +17,16 @@ export function ActivityFiltersRow(props: {
   onExport: () => void;
   loading?: boolean;
 }) {
-  const { scope, onScopeChange, q, onQueryChange, onExport, loading } = props;
+  const {
+    scope,
+    onScopeChange,
+    systemPreset,
+    onSystemPresetChange,
+    q,
+    onQueryChange,
+    onExport,
+    loading,
+  } = props;
 
   return (
     <div className="aura-row-between">
@@ -52,6 +60,52 @@ export function ActivityFiltersRow(props: {
           <span className="aura-pill-indicator" />
           Include system (no noise)
         </button>
+
+        {scope === "all" ? (
+          <>
+            <span className="aura-muted aura-text-xs">|</span>
+
+            <button
+              type="button"
+              className="aura-pill-toggle"
+              aria-pressed={systemPreset === "important"}
+              onClick={() => onSystemPresetChange("important")}
+            >
+              <span className="aura-pill-indicator" />
+              Important
+            </button>
+
+            <button
+              type="button"
+              className="aura-pill-toggle"
+              aria-pressed={systemPreset === "errors"}
+              onClick={() => onSystemPresetChange("errors")}
+            >
+              <span className="aura-pill-indicator" />
+              Errors only
+            </button>
+
+            <button
+              type="button"
+              className="aura-pill-toggle"
+              aria-pressed={systemPreset === "settings"}
+              onClick={() => onSystemPresetChange("settings")}
+            >
+              <span className="aura-pill-indicator" />
+              Settings
+            </button>
+
+            <button
+              type="button"
+              className="aura-pill-toggle"
+              aria-pressed={systemPreset === "all"}
+              onClick={() => onSystemPresetChange("all")}
+            >
+              <span className="aura-pill-indicator" />
+              All
+            </button>
+          </>
+        ) : null}
       </div>
 
       <div className="aura-control-right">

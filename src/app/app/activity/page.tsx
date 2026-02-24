@@ -1,4 +1,4 @@
-// src/app/app/activity/page.tsx
+//src/app/app/activity/page.tsx
 "use client";
 
 export const dynamic = "force-dynamic";
@@ -23,21 +23,17 @@ function buildUrl(params: {
   const sp = new URLSearchParams();
   sp.set("scope", params.scope);
   sp.set("limit", String(params.limit));
+  sp.set("systemPreset", params.systemPreset);
   if (params.q.trim()) sp.set("q", params.q.trim());
   if (params.cursor) sp.set("cursor", params.cursor);
-
-  if (params.scope === "all") sp.set("systemPreset", params.systemPreset);
-
   return `/api/activity?${sp.toString()}`;
 }
 
 function buildExportUrl(params: { scope: ActivityScope; systemPreset: SystemPreset; q: string }) {
   const sp = new URLSearchParams();
   sp.set("scope", params.scope);
+  sp.set("systemPreset", params.systemPreset);
   if (params.q.trim()) sp.set("q", params.q.trim());
-
-  if (params.scope === "all") sp.set("systemPreset", params.systemPreset);
-
   return `/api/activity/export?${sp.toString()}`;
 }
 
@@ -121,10 +117,7 @@ export default function ActivityPage() {
       <div className="aura-page">
         <ActivityFeedCard
           scope={scope}
-          onScopeChange={(v) => {
-            setScope(v);
-            if (v !== "all") setSystemPreset("important");
-          }}
+          onScopeChange={setScope}
           systemPreset={systemPreset}
           onSystemPresetChange={setSystemPreset}
           q={q}

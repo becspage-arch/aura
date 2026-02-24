@@ -19,7 +19,9 @@ export async function GET(req: Request) {
   const limit = Number(url.searchParams.get("limit") || 35);
   const cursor = url.searchParams.get("cursor");
 
-  const systemPreset = (url.searchParams.get("systemPreset") || "important") as SystemPreset;
+  const presetRaw = (url.searchParams.get("systemPreset") || "important") as SystemPreset;
+  const systemPreset: SystemPreset =
+    presetRaw === "all" || presetRaw === "errors" || presetRaw === "settings" ? presetRaw : "important";
 
   const profile = await ensureUserProfile({
     clerkUserId,
@@ -30,22 +32,13 @@ export async function GET(req: Request) {
   const safeScope: ActivityScope =
     scope === "all" ? "all" : scope === "user+aura" ? "user+aura" : "user";
 
-  const safePreset: SystemPreset =
-    systemPreset === "all"
-      ? "all"
-      : systemPreset === "errors"
-        ? "errors"
-        : systemPreset === "settings"
-          ? "settings"
-          : "important";
-
   const { items, nextCursor } = await fetchActivity({
     userId: profile.id,
     scope: safeScope,
     q,
     limit,
     cursor,
-    systemPreset: safePreset,
+    systemPreset,
   });
 
   return NextResponse.json({ ok: true, items, nextCursor });
