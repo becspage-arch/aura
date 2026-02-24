@@ -103,7 +103,18 @@ export function ActivityFeedCard(props: {
             ) : null}
           </div>
         </div>
-        <div className="aura-muted aura-text-xs">{loading ? "Updating…" : " "}</div>
+        <div className="aura-row" style={{ gap: 10, alignItems: "center" }}>
+          <div className="aura-muted aura-text-xs">{loading ? "Updating…" : " "}</div>
+
+          <button
+            type="button"
+            className="aura-btn aura-btn-subtle"
+            onClick={onExport}
+            disabled={!!loading}
+          >
+            Export CSV
+          </button>
+        </div>
       </div>
 
       {summary ? (
@@ -132,8 +143,8 @@ export function ActivityFeedCard(props: {
 
       <div className="aura-mt-12 aura-grid-gap-12">
         {/* Row 1: checkboxes + time preset + search + export */}
-        <div className="aura-row-between">
-          <div className="aura-row" style={{ gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="aura-row-between" style={{ gap: 16, alignItems: "center" }}>
+          <div className="aura-row" style={{ gap: 18, alignItems: "center", flexWrap: "wrap" }}>
             <label className="aura-row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -165,7 +176,7 @@ export function ActivityFeedCard(props: {
             </label>
           </div>
 
-          <div className="aura-control-right" style={{ flexWrap: "wrap" }}>
+          <div className="aura-control-right" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <select
               className="aura-input"
               value={timePreset}
@@ -187,9 +198,6 @@ export function ActivityFeedCard(props: {
               disabled={!!loading}
             />
 
-            <button type="button" className="aura-btn aura-btn-subtle" onClick={onExport} disabled={!!loading}>
-              Export CSV
-            </button>
           </div>
         </div>
 

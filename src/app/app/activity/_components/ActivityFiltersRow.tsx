@@ -1,119 +1,161 @@
 // src/app/app/activity/_components/ActivityFiltersRow.tsx
 "use client";
 
-import {
-  ACTIVITY_SCOPE_COPY,
-  SYSTEM_PRESET_COPY,
-  type ActivityScopeCopyKey,
-  type SystemPresetCopyKey,
-} from "@/lib/auraCopy";
+import { SYSTEM_PRESET_COPY, type SystemPresetCopyKey } from "@/lib/auraCopy";
 
-export type ActivityScope = "user" | "user+aura" | "all";
 export type SystemPreset = "important" | "errors" | "settings" | "all";
 
 // Used by page.tsx to build from/to timestamps
 export type TimePreset = "today" | "yesterday" | "last7" | "last30" | "custom";
 
-function clampScope(params: { showDecisions: boolean; showSystem: boolean }): ActivityScope {
-  if (params.showSystem) return "all";
-  if (params.showDecisions) return "user+aura";
-  return "user";
-}
-
 export function ActivityFiltersRow(props: {
-  scope: ActivityScope;
-  onScopeChange: (v: ActivityScope) => void;
+  // checkboxes
+  includeMyActivity: boolean;
+  onIncludeMyActivityChange: (v: boolean) => void;
 
+  includeTradeDecisions: boolean;
+  onIncludeTradeDecisionsChange: (v: boolean) => void;
+
+  includeAccountSystem: boolean;
+  onIncludeAccountSystemChange: (v: boolean) => void;
+
+  // system preset
   systemPreset: SystemPreset;
   onSystemPresetChange: (v: SystemPreset) => void;
 
+  // time
+  timePreset: TimePreset;
+  onTimePresetChange: (v: TimePreset) => void;
+
+  customFrom: string;
+  onCustomFromChange: (v: string) => void;
+
+  customTo: string;
+  onCustomToChange: (v: string) => void;
+
+  // search
   q: string;
   onQueryChange: (v: string) => void;
 
-  onExport: () => void;
   loading?: boolean;
 }) {
   const {
-    scope,
-    onScopeChange,
+    includeMyActivity,
+    onIncludeMyActivityChange,
+    includeTradeDecisions,
+    onIncludeTradeDecisionsChange,
+    includeAccountSystem,
+    onIncludeAccountSystemChange,
+
     systemPreset,
     onSystemPresetChange,
+
+    timePreset,
+    onTimePresetChange,
+    customFrom,
+    onCustomFromChange,
+    customTo,
+    onCustomToChange,
+
     q,
     onQueryChange,
-    onExport,
+
     loading,
   } = props;
 
-  const showDecisions = scope === "user+aura" || scope === "all";
-  const showSystem = scope === "all";
-
-  const scopeKey: ActivityScopeCopyKey = scope as ActivityScopeCopyKey;
   const presetKey: SystemPresetCopyKey = systemPreset as SystemPresetCopyKey;
 
   return (
     <div className="aura-grid-gap-12">
-      <div className="aura-row-between">
-        <div className="aura-grid-gap-10">
-          <div className="aura-row" style={{ gap: 14, alignItems: "center" }}>
-            <label className="aura-row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={showDecisions}
-                disabled={!!loading}
-                onChange={(e) => {
-                  const next = clampScope({ showDecisions: e.target.checked, showSystem });
-                  onScopeChange(next);
-                }}
-              />
-              <span>{ACTIVITY_SCOPE_COPY["user+aura"].label}</span>
-            </label>
+      {/* Row 1: left = checkboxes, right = time preset + search */}
+      <div className="aura-row-between" style={{ gap: 16, alignItems: "center" }}>
+        <div className="aura-row" style={{ gap: 18, flexWrap: "wrap" }}>
+          <label className="aura-row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={includeMyActivity}
+              disabled={!!loading}
+              onChange={(e) => onIncludeMyActivityChange(e.target.checked)}
+            />
+            <span>My activity</span>
+          </label>
 
-            <label className="aura-row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={showSystem}
-                disabled={!!loading}
-                onChange={(e) => {
-                  const next = clampScope({ showDecisions, showSystem: e.target.checked });
-                  onScopeChange(next);
-                }}
-              />
-              <span>{ACTIVITY_SCOPE_COPY["all"].label}</span>
-            </label>
-          </div>
+          <label className="aura-row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={includeTradeDecisions}
+              disabled={!!loading}
+              onChange={(e) => onIncludeTradeDecisionsChange(e.target.checked)}
+            />
+            <span>Trade decisions</span>
+          </label>
 
-          <div className="aura-muted aura-text-xs">
-            {ACTIVITY_SCOPE_COPY[scopeKey]?.helper || ""}
-            {showSystem ? (
-              <>
-                {" "}
-                • <span>{SYSTEM_PRESET_COPY[presetKey]?.helper || ""}</span>
-              </>
-            ) : null}
-          </div>
+          <label className="aura-row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={includeAccountSystem}
+              disabled={!!loading}
+              onChange={(e) => onIncludeAccountSystemChange(e.target.checked)}
+            />
+            <span>Account &amp; system</span>
+          </label>
         </div>
 
-        <div className="aura-control-right">
+        <div className="aura-control-right" style={{ gap: 12 }}>
+          <select
+            className="aura-input"
+            value={timePreset}
+            disabled={!!loading}
+            onChange={(e) => onTimePresetChange(e.target.value as TimePreset)}
+            style={{ width: 170 }}
+          >
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last7">Last 7 days</option>
+            <option value="last30">Last 30 days</option>
+            <option value="custom">Custom range</option>
+          </select>
+
           <input
             className="aura-input aura-control-right--lg"
             placeholder="Search activity…"
             value={q}
             onChange={(e) => onQueryChange(e.target.value)}
             disabled={!!loading}
+            style={{ width: 320 }}
           />
-
-          <button
-            type="button"
-            className="aura-btn aura-btn-subtle"
-            onClick={onExport}
-            disabled={!!loading}
-          >
-            Export CSV
-          </button>
         </div>
       </div>
 
-      {showSystem ? (
+      {/* Row 2: custom range inputs */}
+      {timePreset === "custom" ? (
+        <div className="aura-row" style={{ gap: 14, flexWrap: "wrap" }}>
+          <div className="aura-grid-gap-6">
+            <div className="aura-muted aura-text-xs">From</div>
+            <input
+              type="datetime-local"
+              className="aura-input"
+              value={customFrom}
+              disabled={!!loading}
+              onChange={(e) => onCustomFromChange(e.target.value)}
+            />
+          </div>
+
+          <div className="aura-grid-gap-6">
+            <div className="aura-muted aura-text-xs">To</div>
+            <input
+              type="datetime-local"
+              className="aura-input"
+              value={customTo}
+              disabled={!!loading}
+              onChange={(e) => onCustomToChange(e.target.value)}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/* Row 3: system preset pills (only when account & system enabled) */}
+      {includeAccountSystem ? (
         <div className="aura-pill-group">
           <button
             type="button"
@@ -156,6 +198,17 @@ export function ActivityFiltersRow(props: {
           </button>
         </div>
       ) : null}
+
+      {/* Helper line */}
+      <div className="aura-muted aura-text-xs">
+        Shows every trade Aura considered - entered or skipped, with the reason.
+        {includeAccountSystem ? (
+          <>
+            {" "}
+            • <span>{SYSTEM_PRESET_COPY[presetKey]?.helper || ""}</span>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
