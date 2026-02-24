@@ -2,9 +2,21 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { ensureUserProfile } from "@/lib/user-profile";
-import { fetchActivity, toCsv, type ActivityScope, type SystemPreset } from "../_lib/activity";
+import { fetchActivity, toCsv, type SystemPreset } from "../_lib/activity";
 
 export const dynamic = "force-dynamic";
+
+function parseBool(v: string | null, fallback: boolean) {
+  if (v == null) return fallback;
+  return v === "1" || v.toLowerCase() === "true";
+}
+
+function parseDateIso(v: string | null) {
+  if (!v) return null;
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d;
+}
 
 export async function GET(req: Request) {
   const { userId: clerkUserId } = await auth();
@@ -14,12 +26,16 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
 
-  const scope = (url.searchParams.get("scope") || "user") as ActivityScope;
   const q = (url.searchParams.get("q") || "").trim() || null;
 
-  const presetRaw = (url.searchParams.get("systemPreset") || "important") as SystemPreset;
-  const systemPreset: SystemPreset =
-    presetRaw === "all" || presetRaw === "errors" || presetRaw === "settings" ? presetRaw : "important";
+  const includeMyActivity = parseBool(url.searchParams.get("my"), true);
+  const includeTradeDecisions = parseBool(url.searchParams.get("decisions"), true);
+  const includeAccountSystem = parseBool(url.searchParams.get("system"), false);
+
+  const systemPreset = (url.searchParams.get("systemPreset") || "important") as SystemPreset;
+
+  const from = parseDateIso(url.searchParams.get("from"));
+  const to = parseDateIso(url.searchParams.get("to"));
 
   const profile = await ensureUserProfile({
     clerkUserId,
@@ -27,16 +43,21 @@ export async function GET(req: Request) {
     displayName: null,
   });
 
-  const safeScope: ActivityScope =
-    scope === "all" ? "all" : scope === "user+aura" ? "user+aura" : "user";
-
   const { items } = await fetchActivity({
     userId: profile.id,
-    scope: safeScope,
+
+    includeMyActivity,
+    includeTradeDecisions,
+    includeAccountSystem,
+
+    systemPreset,
+
+    from,
+    to,
+
     q,
     limit: 1000,
     cursor: null,
-    systemPreset,
   });
 
   const csv = toCsv(items);
