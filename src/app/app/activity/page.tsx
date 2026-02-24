@@ -299,7 +299,7 @@ export default function ActivityPage() {
           onLoadMore={loadMore}
           canLoadMore={canLoadMore}
           onExport={onExport}
-          summary={summary}
+          summary={summary ?? null}
         />
       </div>
     </div>
