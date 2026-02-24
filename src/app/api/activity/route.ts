@@ -8,14 +8,17 @@ export const dynamic = "force-dynamic";
 
 function parseBool(v: string | null, fallback: boolean) {
   if (v == null) return fallback;
-  return v === "1" || v.toLowerCase() === "true";
+  const s = String(v).toLowerCase().trim();
+  if (s === "1" || s === "true" || s === "yes" || s === "on") return true;
+  if (s === "0" || s === "false" || s === "no" || s === "off") return false;
+  return fallback;
 }
 
-function parseDateIso(v: string | null) {
+function parseIsoOrNull(v: string | null) {
   if (!v) return null;
   const d = new Date(v);
   if (!Number.isFinite(d.getTime())) return null;
-  return d;
+  return d.toISOString();
 }
 
 export async function GET(req: Request) {
@@ -38,9 +41,9 @@ export async function GET(req: Request) {
   // System preset (only matters if includeAccountSystem === true)
   const systemPreset = (url.searchParams.get("systemPreset") || "important") as SystemPreset;
 
-  // Time range
-  const from = parseDateIso(url.searchParams.get("from"));
-  const to = parseDateIso(url.searchParams.get("to"));
+  // Time range (ISO strings)
+  const from = parseIsoOrNull(url.searchParams.get("from"));
+  const to = parseIsoOrNull(url.searchParams.get("to"));
 
   const profile = await ensureUserProfile({
     clerkUserId,
