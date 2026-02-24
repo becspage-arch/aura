@@ -1,3 +1,4 @@
+// src/app/components/ManualOrderButton.tsx
 "use client";
 
 import { useState } from "react";
@@ -12,8 +13,11 @@ export function ManualOrderButton() {
       setStatus("sending");
       setMsg("");
 
-      // Keep deterministic defaults (same as the dev route used)
+      // Self-contained deterministic defaults (same idea as the dev route used)
       const order = {
+        brokerName: "projectx",
+        brokerAccountId: "cmlv7u7jh04in01qzqbg58kog", // your selectedBrokerAccountId from Neon
+
         contractId: "CON.F.US.MGC.J26",
         side: "buy" as const,
         size: 1,
