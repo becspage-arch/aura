@@ -90,6 +90,7 @@ export function ActivityFeedCard(props: {
 
   return (
     <section className="aura-card">
+      {/* Header */}
       <div className="aura-row-between">
         <div>
           <div className="aura-card-title">Activity</div>
@@ -103,25 +104,19 @@ export function ActivityFeedCard(props: {
             ) : null}
           </div>
         </div>
+
         <div className="aura-row" style={{ gap: 10, alignItems: "center" }}>
           <div className="aura-muted aura-text-xs">{loading ? "Updating…" : " "}</div>
 
-          <button
-            type="button"
-            className="aura-btn aura-btn-subtle"
-            onClick={onExport}
-            disabled={!!loading}
-          >
+          <button type="button" className="aura-btn aura-btn-subtle" onClick={onExport} disabled={!!loading}>
             Export CSV
           </button>
         </div>
       </div>
 
+      {/* Summary cards */}
       {summary ? (
-        <div
-          className="aura-mt-12 aura-grid-gap-10"
-          style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}
-        >
+        <div className="aura-mt-12 aura-grid-gap-10" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
           <div className="aura-card" style={{ padding: 12 }}>
             <div className="aura-muted aura-text-xs">Opportunities</div>
             <div className="aura-card-title">{summary.tradeOpportunities}</div>
@@ -141,11 +136,16 @@ export function ActivityFeedCard(props: {
         </div>
       ) : null}
 
+      {/* Filters */}
       <div className="aura-mt-12 aura-grid-gap-12">
-        {/* Row 1: checkboxes + time preset + search + export */}
-        <div className="aura-row-between" style={{ gap: 16, alignItems: "center" }}>
+        {/* Row 1: checkboxes (left) + time preset + search (right) */}
+        <div className="aura-row-between" style={{ gap: 18, alignItems: "center" }}>
+          {/* LEFT */}
           <div className="aura-row" style={{ gap: 18, alignItems: "center", flexWrap: "wrap" }}>
-            <label className="aura-row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
+            <label
+              className="aura-row"
+              style={{ gap: 8, alignItems: "center", cursor: "pointer", padding: "6px 0" }}
+            >
               <input
                 type="checkbox"
                 checked={includeMyActivity}
@@ -155,7 +155,10 @@ export function ActivityFeedCard(props: {
               <span>My activity</span>
             </label>
 
-            <label className="aura-row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
+            <label
+              className="aura-row"
+              style={{ gap: 8, alignItems: "center", cursor: "pointer", padding: "6px 0" }}
+            >
               <input
                 type="checkbox"
                 checked={includeTradeDecisions}
@@ -165,7 +168,10 @@ export function ActivityFeedCard(props: {
               <span>Trade decisions</span>
             </label>
 
-            <label className="aura-row" style={{ gap: 8, alignItems: "center", cursor: "pointer" }}>
+            <label
+              className="aura-row"
+              style={{ gap: 8, alignItems: "center", cursor: "pointer", padding: "6px 0" }}
+            >
               <input
                 type="checkbox"
                 checked={includeAccountSystem}
@@ -176,12 +182,23 @@ export function ActivityFeedCard(props: {
             </label>
           </div>
 
-          <div className="aura-control-right" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          {/* RIGHT */}
+          <div
+            className="aura-row"
+            style={{
+              gap: 12,
+              alignItems: "center",
+              justifyContent: "flex-end",
+              flexWrap: "nowrap",
+              minWidth: 0,
+            }}
+          >
             <select
               className="aura-input"
               value={timePreset}
               disabled={!!loading}
               onChange={(e) => onTimePresetChange(e.target.value as TimePreset)}
+              style={{ width: 180 }}
             >
               <option value="today">Today</option>
               <option value="yesterday">Yesterday</option>
@@ -191,13 +208,13 @@ export function ActivityFeedCard(props: {
             </select>
 
             <input
-              className="aura-input aura-control-right--lg"
+              className="aura-input"
               placeholder="Search activity…"
               value={q}
               onChange={(e) => onQueryChange(e.target.value)}
               disabled={!!loading}
+              style={{ width: 360, minWidth: 220 }}
             />
-
           </div>
         </div>
 
@@ -276,10 +293,14 @@ export function ActivityFeedCard(props: {
 
       <div className="aura-divider" />
 
+      {/* Errors / empty */}
       {error ? <div className="aura-muted aura-text-xs">Error: {error}</div> : null}
 
-      {!loading && !items?.length ? <div className="aura-muted aura-text-xs">Nothing yet for this filter range.</div> : null}
+      {!loading && !items?.length ? (
+        <div className="aura-muted aura-text-xs">Nothing yet for this filter range.</div>
+      ) : null}
 
+      {/* Items */}
       {items?.length ? (
         <div className="aura-grid-gap-10">
           {items.map((item) => (
@@ -289,7 +310,12 @@ export function ActivityFeedCard(props: {
       ) : null}
 
       <div className="aura-mt-12">
-        <button type="button" className="aura-btn aura-btn-subtle" onClick={onLoadMore} disabled={!canLoadMore || loading}>
+        <button
+          type="button"
+          className="aura-btn aura-btn-subtle"
+          onClick={onLoadMore}
+          disabled={!canLoadMore || loading}
+        >
           {canLoadMore ? "Load more" : "No more"}
         </button>
       </div>
