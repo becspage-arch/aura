@@ -2,7 +2,7 @@
 "use client";
 
 import { ActivityFiltersRow, type ActivityScope, type SystemPreset } from "./ActivityFiltersRow";
-import { ActivityItemRow } from "./ActivityItemRow";
+import ActivityItemRow from "./ActivityItemRow";
 
 export function ActivityFeedCard(props: {
   scope: ActivityScope;
