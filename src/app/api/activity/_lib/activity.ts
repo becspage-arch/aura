@@ -1,14 +1,8 @@
 // src/app/api/activity/_lib/activity.ts
 import { prisma } from "@/lib/prisma";
-import {
-  blockReasonLabel,
-  tradingDecisionTitle,
-  tradingDecisionSummary,
-  type AuraDecisionStatus,
-  type AuraSide,
-} from "@/lib/auraCopy";
 
-export type ActivityScope = "user" | "user+aura" | "all";
+export type SystemPreset = "important" | "errors" | "settings" | "all";
+
 export type ActivityItem =
   | {
       kind: "user_action";
@@ -41,6 +35,13 @@ export type ActivityItem =
       type: string;
     };
 
+export type ActivitySummary = {
+  tradeOpportunities: number;
+  tradesEntered: number;
+  skipped: number;
+  systemIssues: number;
+};
+
 function truncate(s: string, n: number) {
   if (!s) return "";
   if (s.length <= n) return s;
@@ -56,12 +57,29 @@ function safeJson(v: any) {
   }
 }
 
-export type SystemPreset = "important" | "errors" | "settings" | "all";
+const BLOCK_REASON_LABEL: Record<string, string> = {
+  IN_TRADE: "Already in a trade",
+  PAUSED: "Paused",
+  KILL_SWITCH: "Kill switch on",
+  NOT_LIVE_CANDLE: "Not a live candle",
+  INVALID_BRACKET: "Invalid bracket",
+  EXECUTION_FAILED: "Execution failed",
+  OUTSIDE_TRADING_WINDOWS: "Outside trading hours",
 
-function isHeartbeatLike(type: string, message: string | null | undefined) {
-  const t = (type || "").toLowerCase();
-  const m = (message || "").toLowerCase();
-  return t.includes("heartbeat") || m.includes("heartbeat");
+  NO_ACTIVE_FVG: "No active FVG",
+  FVG_INVALID: "FVG invalidated",
+  FVG_ALREADY_TRADED: "Already traded",
+  NOT_RETESTED: "No retest",
+  DIRECTION_MISMATCH: "Direction mismatch",
+  NO_EXPANSION_PATTERN: "No expansion pattern",
+  STOP_INVALID: "Stop invalid",
+  STOP_TOO_BIG: "Stop too big",
+  CONTRACTS_ZERO: "Contracts = 0",
+};
+
+function labelBlockReason(r: string | null | undefined) {
+  if (!r) return "";
+  return BLOCK_REASON_LABEL[r] ?? r;
 }
 
 function isNoisySystemType(type: string) {
@@ -120,48 +138,90 @@ function cursorWhere(cursor: Cursor) {
 
   // createdAt desc, id desc
   return {
-    OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }],
+    OR: [
+      { createdAt: { lt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+    ],
   };
+}
+
+function parseDateOrNull(v: string | null) {
+  if (!v) return null;
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d;
+}
+
+function createdAtRangeWhere(params: { from?: string | null; to?: string | null }) {
+  const fromD = parseDateOrNull(params.from ?? null);
+  const toD = parseDateOrNull(params.to ?? null);
+
+  if (!fromD && !toD) return undefined;
+
+  const w: any = {};
+  if (fromD) w.gte = fromD;
+  if (toD) w.lte = toD;
+  return { createdAt: w };
 }
 
 export async function fetchActivity(params: {
   userId: string;
-  scope: ActivityScope;
+
   q: string | null;
   limit: number;
   cursor: string | null;
+
+  // checkboxes
+  includeMyActivity: boolean;
+  includeTradeDecisions: boolean;
+  includeAccountSystem: boolean;
+
+  // system filter (only used if includeAccountSystem === true)
   systemPreset?: SystemPreset;
+
+  // date range (ISO)
+  from?: string | null;
+  to?: string | null;
 }) {
   const { userId } = params;
+
   const limit = Math.max(1, Math.min(100, params.limit));
   const q = (params.q || "").trim();
   const cursor = parseCursor(params.cursor);
+
+  const includeMyActivity = !!params.includeMyActivity;
+  const includeTradeDecisions = !!params.includeTradeDecisions;
+  const includeAccountSystem = !!params.includeAccountSystem;
+
   const systemPreset: SystemPreset = params.systemPreset ?? "important";
 
-  // Pull a bit extra from each source so merge/sort has enough
-  const perSourceTake = Math.min(200, limit * 4);
+  // Pull extra per source so merge/sort has enough
+  const perSourceTake = Math.min(250, limit * 5);
 
-  const includeAura = params.scope === "user+aura" || params.scope === "all";
-  const includeSystem = params.scope === "all";
+  const createdAtWhere = createdAtRangeWhere({ from: params.from ?? null, to: params.to ?? null });
 
-  const auditPromise = prisma.auditLog.findMany({
-    where: {
-      userId,
-      ...(cursorWhere(cursor) as any),
-      ...(q
-        ? {
-            OR: [{ action: { contains: q, mode: "insensitive" } }],
-          }
-        : {}),
-    },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: perSourceTake,
-  });
+  const auditPromise = includeMyActivity
+    ? prisma.auditLog.findMany({
+        where: {
+          userId,
+          ...(createdAtWhere as any),
+          ...(cursorWhere(cursor) as any),
+          ...(q
+            ? {
+                OR: [{ action: { contains: q, mode: "insensitive" } }],
+              }
+            : {}),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: perSourceTake,
+      })
+    : Promise.resolve([]);
 
-  const signalsPromise = includeAura
+  const signalsPromise = includeTradeDecisions
     ? prisma.strategySignal.findMany({
         where: {
           userId,
+          ...(createdAtWhere as any),
           ...(cursorWhere(cursor) as any),
           ...(q
             ? {
@@ -177,10 +237,11 @@ export async function fetchActivity(params: {
       })
     : Promise.resolve([]);
 
-  const systemPromise = includeSystem
+  const systemPromise = includeAccountSystem
     ? prisma.eventLog.findMany({
         where: {
           userId,
+          ...(createdAtWhere as any),
           ...(cursorWhere(cursor) as any),
           ...(q
             ? {
@@ -199,7 +260,7 @@ export async function fetchActivity(params: {
 
   const [audit, signals, systemRaw] = await Promise.all([auditPromise, signalsPromise, systemPromise]);
 
-  const auditItems: ActivityItem[] = audit.map((a) => ({
+  const auditItems: ActivityItem[] = (audit as any[]).map((a) => ({
     kind: "user_action",
     id: a.id,
     createdAt: a.createdAt.toISOString(),
@@ -209,16 +270,22 @@ export async function fetchActivity(params: {
   }));
 
   const signalItems: ActivityItem[] = (signals as any[]).map((s) => {
-    const status = String(s.status) as AuraDecisionStatus;
+    const status = String(s.status) as "DETECTED" | "BLOCKED" | "TAKEN";
     const br = s.blockReason ? String(s.blockReason) : null;
 
-    const title = tradingDecisionTitle(String(s.symbol));
-    const summary = tradingDecisionSummary({
-      status,
-      side: String(s.side) as AuraSide,
-      contracts: s.contracts ?? null,
-      blockReason: br,
-    });
+    const entered = status === "TAKEN";
+    const skipped = status === "BLOCKED";
+
+    const decisionLabel = entered ? "Trade entered" : skipped ? "Skipped" : "Opportunity found";
+    const reason = skipped ? labelBlockReason(br) : "";
+
+    const title = `Trade decision • ${s.symbol}`;
+    const summary =
+      skipped && reason
+        ? `${decisionLabel} - ${reason}`
+        : entered
+          ? `${decisionLabel} - ${s.side} • ${s.contracts ?? "—"} contracts`
+          : `${decisionLabel} - ${s.side}`;
 
     return {
       kind: "aura_eval",
@@ -232,7 +299,6 @@ export async function fetchActivity(params: {
         side: s.side,
         status,
         blockReason: br,
-        blockReasonLabel: br ? blockReasonLabel(br) : "",
         entryTime: s.entryTime,
         fvgTime: s.fvgTime,
         entryPrice: s.entryPrice,
@@ -256,7 +322,6 @@ export async function fetchActivity(params: {
 
   const systemItems: ActivityItem[] = (systemRaw as any[])
     .filter((e) => !isNoisySystemType(String(e.type)))
-    .filter((e) => !isHeartbeatLike(String(e.type), e.message))
     .filter((e) => keepByPreset({ type: String(e.type), level: String(e.level), preset: systemPreset }))
     .map((e) => ({
       kind: "system_event",
@@ -264,7 +329,7 @@ export async function fetchActivity(params: {
       createdAt: e.createdAt.toISOString(),
       level: String(e.level ?? "info"),
       type: String(e.type ?? ""),
-      title: `System • ${String(e.type ?? "")}`,
+      title: `Account & system • ${String(e.type ?? "")}`,
       summary: truncate(String(e.message ?? "").trim(), 180),
       details: e.data ?? null,
     }));
@@ -282,7 +347,39 @@ export async function fetchActivity(params: {
 
   const nextCursor = hasMore ? `${page[page.length - 1].createdAt}|${page[page.length - 1].id}` : null;
 
-  return { items: page, nextCursor };
+  // Summary cards (based on the same filters / date range, but independent of pagination)
+  const summaryWhereSignals: any = {
+    userId,
+    ...(createdAtWhere as any),
+  };
+
+  const summaryWhereSystem: any = {
+    userId,
+    ...(createdAtWhere as any),
+    // only count non-noisy system issues
+    NOT: [
+      { type: "market.quote" },
+      { type: "worker_heartbeat" },
+      { type: { startsWith: "candle_" } },
+    ],
+    level: { in: ["warn", "error"] },
+  };
+
+  const [tradeOpportunities, tradesEntered, skipped, systemIssues] = await Promise.all([
+    includeTradeDecisions ? prisma.strategySignal.count({ where: summaryWhereSignals }) : Promise.resolve(0),
+    includeTradeDecisions ? prisma.strategySignal.count({ where: { ...summaryWhereSignals, status: "TAKEN" } as any }) : Promise.resolve(0),
+    includeTradeDecisions ? prisma.strategySignal.count({ where: { ...summaryWhereSignals, status: "BLOCKED" } as any }) : Promise.resolve(0),
+    includeAccountSystem ? prisma.eventLog.count({ where: summaryWhereSystem }) : Promise.resolve(0),
+  ]);
+
+  const summary: ActivitySummary = {
+    tradeOpportunities,
+    tradesEntered,
+    skipped,
+    systemIssues,
+  };
+
+  return { items: page, nextCursor, summary };
 }
 
 function csvEscape(v: any) {

@@ -3,7 +3,6 @@
 import { env, DRY_RUN } from "./env.js";
 import { db, checkDb } from "./db.js";
 import { createAblyRealtime } from "./ably.js";
-import { acquireLock, refreshLock, releaseLock } from "./locks.js";
 import { randomUUID } from "crypto";
 import { startBrokerFeed } from "./broker/startBrokerFeed.js";
 import { startDailyScheduler } from "./notifications/dailyScheduler.js";
@@ -26,33 +25,6 @@ async function main() {
   // 1) DB bootstrap check
   await checkDb();
   console.log(`[${env.WORKER_NAME}] DB connected`);
-
-  // 2) Acquire worker lock (single active worker process by WORKER_NAME)
-  const lockKey = `workerLock:${env.WORKER_NAME}`;
-  const lockTtlMs = 60_000;
-  const lockOwnerId = randomUUID();
-
-  const ok = await acquireLock(lockKey, lockTtlMs, lockOwnerId);
-  if (!ok) {
-    console.log(`[${env.WORKER_NAME}] lock already held, exiting`);
-    process.exit(0);
-  }
-
-  const refreshEveryMs = Math.floor(lockTtlMs / 2);
-  const lockInterval = setInterval(() => {
-    void refreshLock(lockKey, lockTtlMs, lockOwnerId).catch((e) => {
-      console.warn(`[${env.WORKER_NAME}] lock refresh failed`, e);
-    });
-  }, refreshEveryMs);
-
-  const cleanupLock = async () => {
-    clearInterval(lockInterval);
-    try {
-      await releaseLock(lockKey, lockOwnerId);
-    } catch (e) {
-      console.warn(`[${env.WORKER_NAME}] lock release failed`, e);
-    }
-  };
 
   // 3) Resolve HARD worker scope (source of truth)
   const scope = await getWorkerScope({
@@ -83,9 +55,6 @@ async function main() {
   async function shutdown(code: number) {
     try {
       await markLeaseStoppedSafe();
-    } catch {}
-    try {
-      await cleanupLock();
     } catch {}
     process.exit(code);
   }
