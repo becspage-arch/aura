@@ -1,3 +1,4 @@
+// src/app/api/ably/token/route.ts
 import Ably from "ably";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";

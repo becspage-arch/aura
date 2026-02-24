@@ -195,7 +195,7 @@ export function ActivityFiltersRow(props: {
             disabled={!!loading}
           >
             <span className="aura-pill-indicator" />
-            All (clean)
+            ALL
           </button>
         </div>
       ) : null}

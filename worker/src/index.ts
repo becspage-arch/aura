@@ -255,11 +255,52 @@ async function main() {
     brokerAccountId: scope.brokerAccountId,
     log: (msg, extra) => console.log(msg, extra ?? ""),
     placeManualBracket: async (p) => {
-      if (!brokerRef) {
-        throw new Error("Broker not ready yet (brokerRef is null)");
+      // 1) PROVE Ably delivery by writing to EventLog immediately
+      try {
+        await db.eventLog.create({
+          data: {
+            type: "exec.manual_received",
+            level: "info",
+            message: "Manual order received from Ably",
+            data: {
+              brokerName: scope.brokerName,
+              brokerAccountId: scope.brokerAccountId,
+              contractId: p.contractId,
+              side: p.side,
+              size: p.size,
+              stopLossTicks: p.stopLossTicks,
+              takeProfitTicks: p.takeProfitTicks,
+            },
+            userId: scope.userId,
+            brokerAccountId: scope.brokerAccountId,
+          },
+          select: { id: true },
+        });
+      } catch (e) {
+        console.warn(`[${env.WORKER_NAME}] failed to write exec.manual_received`, {
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
 
-      // include account identity to avoid collisions across accounts
+      // 2) If broker not ready, record it and stop (no order attempt)
+      if (!brokerRef) {
+        try {
+          await db.eventLog.create({
+            data: {
+              type: "exec.manual_ignored",
+              level: "warn",
+              message: "Manual order ignored: broker not ready yet",
+              data: { reason: "brokerRef_null" },
+              userId: scope.userId,
+              brokerAccountId: scope.brokerAccountId,
+            },
+            select: { id: true },
+          });
+        } catch {}
+        return;
+      }
+
+      // 3) Normal path (will emit exec.% via executeBracket)
       const execKey = `manual:${scope.clerkUserId}:${scope.brokerName}:${scope.brokerAccountId}:${Date.now()}`;
 
       await executeBracket({
@@ -268,7 +309,7 @@ async function main() {
         input: {
           execKey,
           userId: scope.userId,
-          brokerAccountId: scope.brokerAccountId, // ✅ ADD THIS
+          brokerAccountId: scope.brokerAccountId,
           brokerName: (brokerRef as any)?.name ?? scope.brokerName,
           contractId: p.contractId,
           side: p.side,
