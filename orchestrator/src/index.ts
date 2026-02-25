@@ -12,8 +12,19 @@ type DesiredAccount = {
   clerkUserId: string;
 };
 
-function envForWorker(a: DesiredAccount) {
-  // Must be unique to avoid your global lock colliding across accounts
+async function envForWorker(a: DesiredAccount) {
+  const acct = await db.brokerAccount.findUnique({
+    where: { id: a.brokerAccountId },
+    select: { encryptedCredentials: true },
+  });
+
+  if (!acct?.encryptedCredentials) {
+    throw new Error(`Missing encryptedCredentials for ${a.brokerAccountId}`);
+  }
+
+  const crypto = await import("../../src/lib/crypto.js");
+  const creds = crypto.decryptJson(acct.encryptedCredentials);
+
   const workerName = `worker-${a.brokerAccountId}`;
   const instanceId = `ecs:${a.brokerAccountId}:${randomUUID()}`;
 
@@ -23,6 +34,10 @@ function envForWorker(a: DesiredAccount) {
     { name: "BROKER", value: a.brokerName },
     { name: "WORKER_NAME", value: workerName },
     { name: "WORKER_INSTANCE_ID", value: instanceId },
+
+    // Inject decrypted creds into runtime
+    { name: "PROJECTX_USERNAME", value: creds.username },
+    { name: "PROJECTX_PASSWORD", value: creds.password },
   ];
 }
 
@@ -95,7 +110,7 @@ async function runWorker(a: DesiredAccount) {
         containerOverrides: [
           {
             name: env.WORKER_CONTAINER_NAME,
-            environment: envForWorker(a),
+            environment: await envForWorker(a),
           },
         ],
       },
