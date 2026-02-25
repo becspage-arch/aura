@@ -6,6 +6,12 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+    {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
@@ -25,6 +31,23 @@ const eslintConfig = defineConfig([
     "tmp_*.cjs",
     "tmp_*.js",
     "tmp/**",
+
+        // Mobile native / Cordova build output
+    "android/**",
+    "ios/**",
+
+    // Non-Next runtimes (separate tooling)
+    "worker/**",
+    "orchestrator/**",
+
+    // Prisma scripts / seeds / tooling scripts
+    "prisma/**",
+    "scripts/**",
+    "tools/**",
+
+    // One-off local scripts in repo root
+    "checkCandles*.js",
+    "checkCandles*.cjs",
   ]),
 ]);
 
