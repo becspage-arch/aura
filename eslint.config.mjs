@@ -1,3 +1,4 @@
+// eslint.config.mjs
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
@@ -12,6 +13,18 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+
+    // Added (Aura): deps + generated + build outputs
+    "node_modules/**",
+    "dist/**",
+    "worker/dist/**",
+    "src/generated/**",
+
+    // Temp / scripts (optional, but stops noise)
+    "**/*.cjs",
+    "tmp_*.cjs",
+    "tmp_*.js",
+    "tmp/**",
   ]),
 ]);
 
