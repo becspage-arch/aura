@@ -4,14 +4,15 @@ import crypto from "crypto";
 const ALGO = "aes-256-gcm";
 
 function getKey(): Buffer {
-  const raw = (process.env.AURA_MASTER_KEY || "").trim();
-  if (!raw) throw new Error("Missing AURA_MASTER_KEY (required to decrypt credentials)");
-  // MUST match src/lib/crypto.ts exactly
-  return crypto.createHash("sha256").update(raw, "utf8").digest(); // 32 bytes
+  const hex = (process.env.AURA_MASTER_KEY || "").trim();
+  if (!hex) throw new Error("Missing AURA_MASTER_KEY (required to decrypt credentials)");
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+    throw new Error("AURA_MASTER_KEY must be 64 hex chars (32 bytes)");
+  }
+  return Buffer.from(hex, "hex"); // MUST match src/lib/crypto.ts
 }
 
 export function decryptJson(payload: any): any {
-  // Accept either a JSON string or an object (Prisma Json can be either depending on history)
   const p = typeof payload === "string" ? JSON.parse(payload) : payload;
 
   if (!p?.iv || !p?.tag || !p?.data) {
