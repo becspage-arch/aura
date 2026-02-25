@@ -411,6 +411,7 @@ export async function startBrokerFeed(params: {
     const { strategy } = await bootstrapStrategy({
       env,
       getPrisma,
+      clerkUserId: scope.clerkUserId,
       status,
       getStrategySettingsForWorker,
     });

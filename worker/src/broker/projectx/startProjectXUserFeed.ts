@@ -271,27 +271,17 @@ export async function startProjectXUserFeed(params: {
           acctExternalId,
         });
 
-        const brokerAccount = await db.brokerAccount.upsert({
-          where: {
-            brokerName_externalId: {
-              brokerName: "projectx",
-              externalId: acctExternalId,
-            },
-          },
-          create: {
-            userId: ident.userId,
-            brokerName: "projectx",
-            externalId: acctExternalId,
-            accountLabel: null,
-            lastHeartbeatAt: new Date(),
-          },
-          update: {
-            userId: ident.userId,
-            lastHeartbeatAt: new Date(),
-          },
+        const brokerAccount = await db.brokerAccount.findUnique({
+          where: { id: scope.brokerAccountId },
           select: { id: true },
         });
 
+        if (!brokerAccount) {
+          console.error("[worker] BrokerAccount missing for scoped worker", {
+            brokerAccountId: scope.brokerAccountId,
+          });
+          return;
+        }
           const symbol =
             toStr(payload?.symbol) ??
             toStr(payload?.contractId) ??

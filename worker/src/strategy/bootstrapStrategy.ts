@@ -5,6 +5,7 @@ import {
   type Candle15s as StratCandle15s,
 } from "./coreplus315Engine.js";
 import { buildBracketFromIntent } from "../trading/buildBracket.js";
+import Ably from "ably";
 
 function numOrNull(v: unknown): number | null {
   const n = typeof v === "number" ? v : Number(v);
@@ -73,6 +74,8 @@ export async function bootstrapStrategy(params: {
   env: { WORKER_NAME: string };
   getPrisma: () => PrismaClient;
 
+  clerkUserId: string;
+
   status: any;
 
   getStrategySettingsForWorker: () => Promise<{
@@ -80,6 +83,7 @@ export async function bootstrapStrategy(params: {
     rr: number;
     maxStopTicks: number;
     entryType: "market" | "limit";
+    sessions?: { asia: boolean; london: boolean; ny: boolean };
   }>;
 }) {
   const tickSize = numOrNull(params.status?.tickSize);
@@ -118,42 +122,78 @@ export async function bootstrapStrategy(params: {
     cfg: strategy.getConfig(),
   });
 
-  // Hot-reload per-user risk settings (every few seconds)
-  setInterval(() => {
-    void (async () => {
+  // Hot-apply via Ably: user:<clerkUserId> event: strategy_settings_update
+  const ablyKey = (process.env.ABLY_API_KEY || "").trim();
+
+  if (!ablyKey) {
+    console.warn(
+      `[${params.env.WORKER_NAME}] Ably disabled (ABLY_API_KEY missing) - strategy settings hot-apply will not run`
+    );
+  } else if (!params.clerkUserId?.trim()) {
+    console.warn(
+      `[${params.env.WORKER_NAME}] Ably subscribe skipped (clerkUserId missing)`
+    );
+  } else {
+    const channelName = `user:${params.clerkUserId.trim()}`;
+
+    const realtime = new Ably.Realtime({ key: ablyKey });
+
+    realtime.connection.on("connected", () => {
+      console.log(`[${params.env.WORKER_NAME}] Ably connected`, { channelName });
+    });
+
+    realtime.connection.on("failed", (st) => {
+      console.warn(`[${params.env.WORKER_NAME}] Ably connection failed`, {
+        reason: st?.reason?.message ?? null,
+      });
+    });
+
+    const ch = realtime.channels.get(channelName);
+
+    ch.subscribe("strategy_settings_update", (msg) => {
       try {
-        const ss2 = await params.getStrategySettingsForWorker();
-        const current = strategy.getConfig();
+        const payload: any = msg?.data ?? null;
+        const ss = payload?.strategySettings ?? payload ?? null;
 
-        const changed =
-          current.riskUsd !== ss2.riskUsd ||
-          current.rr !== ss2.rr ||
-          current.maxStopTicks !== ss2.maxStopTicks ||
-          current.entryType !== ss2.entryType;
-
-        if (changed) {
-          strategy.setConfig({
-            riskUsd: ss2.riskUsd,
-            rr: ss2.rr,
-            maxStopTicks: ss2.maxStopTicks,
-            entryType: ss2.entryType,
-          });
-
-          console.log(`[${params.env.WORKER_NAME}] strategySettings applied (risk)`, {
-            riskUsd: ss2.riskUsd,
-            rr: ss2.rr,
-            maxStopTicks: ss2.maxStopTicks,
-            entryType: ss2.entryType,
-          });
+        if (!ss) {
+          console.warn(`[${params.env.WORKER_NAME}] strategy_settings_update ignored (no payload)`);
+          return;
         }
+
+        const next = {
+          riskUsd: Number(ss?.riskUsd ?? strategy.getConfig().riskUsd),
+          rr: Number(ss?.rr ?? strategy.getConfig().rr),
+          maxStopTicks: Number(ss?.maxStopTicks ?? strategy.getConfig().maxStopTicks),
+          entryType: (ss?.entryType === "limit" ? "limit" : "market") as "market" | "limit",
+        };
+
+        strategy.setConfig(next);
+
+        console.log(`[${params.env.WORKER_NAME}] strategySettings applied (Ably)`, {
+          ...next,
+          sessions: ss?.sessions ?? null,
+        });
       } catch (e) {
-        console.warn(
-          `[${params.env.WORKER_NAME}] strategySettings hot-reload failed`,
-          e
-        );
+        console.warn(`[${params.env.WORKER_NAME}] strategy_settings_update handler failed`, e);
       }
-    })();
-  }, 5_000);
+    });
+
+    process.once("SIGINT", () => {
+      try {
+        realtime.close();
+      } catch {}
+    });
+    process.once("SIGTERM", () => {
+      try {
+        realtime.close();
+      } catch {}
+    });
+
+    console.log(`[${params.env.WORKER_NAME}] Ably strategy settings subscription active`, {
+      channelName,
+      event: "strategy_settings_update",
+    });
+  }
 
   // Replay is ONLY for weekends / debugging.
   const enableReplay = process.env.STRATEGY_REPLAY === "1";
