@@ -4,9 +4,12 @@ import crypto from "crypto";
 const ALGO = "aes-256-gcm";
 
 function getKey(): Buffer {
-  const raw = (process.env.AURA_MASTER_KEY || "").trim();
-  if (!raw) throw new Error("AURA_MASTER_KEY missing");
-  return crypto.createHash("sha256").update(raw).digest();
+  const hex = (process.env.AURA_MASTER_KEY || "").trim();
+  if (!hex) throw new Error("AURA_MASTER_KEY missing");
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+    throw new Error("AURA_MASTER_KEY must be 64 hex chars (32 bytes)");
+  }
+  return Buffer.from(hex, "hex");
 }
 
 export function encryptJson(obj: any) {

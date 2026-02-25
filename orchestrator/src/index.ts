@@ -36,8 +36,12 @@ async function envForWorker(a: DesiredAccount) {
     { name: "WORKER_INSTANCE_ID", value: instanceId },
 
     // Inject decrypted creds into runtime
-    { name: "PROJECTX_USERNAME", value: creds.username },
-    { name: "PROJECTX_API_KEY", value: creds.apiKey },
+    { name: "PROJECTX_USERNAME", value: String(creds.username || "") },
+    { name: "PROJECTX_API_KEY", value: String(creds.apiKey || "") },
+    { name: "PROJECTX_CONTRACT_ID", value: String(creds.contractId || "CON.F.US.MGC.J26") },
+    ...(creds.externalAccountId
+      ? [{ name: "PROJECTX_ACCOUNT_ID", value: String(creds.externalAccountId) }]
+      : []),
   ];
 }
 
