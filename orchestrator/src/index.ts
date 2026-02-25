@@ -37,7 +37,7 @@ async function envForWorker(a: DesiredAccount) {
 
     // Inject decrypted creds into runtime
     { name: "PROJECTX_USERNAME", value: creds.username },
-    { name: "PROJECTX_PASSWORD", value: creds.password },
+    { name: "PROJECTX_API_KEY", value: creds.apiKey },
   ];
 }
 
