@@ -53,6 +53,8 @@ model BrokerAccount {
   // Per-account overrides (risk, symbols, strategy params etc)
   config Json?
 
+  encryptedCredentials Json?
+
   // Worker health / orchestrator signals
   lastHeartbeatAt DateTime?
 
