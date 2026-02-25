@@ -190,6 +190,7 @@ export function BrokerConnectionsCard() {
                     </button>
                   </div>
                 </div>
+              </div>
 
             <div className="aura-control-row">
               <div className="aura-control-meta">
