@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { ECSClient, ListTasksCommand, DescribeTasksCommand, RunTaskCommand, StopTaskCommand } from "@aws-sdk/client-ecs";
 import { db, checkDb } from "./db.js";
 import { env, POLL_MS, SUBNETS, SECURITY_GROUPS } from "./env.js";
+import { decryptJson } from "./crypto";
 
 const ecs = new ECSClient({ region: env.AWS_REGION });
 
@@ -22,8 +23,7 @@ async function envForWorker(a: DesiredAccount) {
     throw new Error(`Missing encryptedCredentials for ${a.brokerAccountId}`);
   }
 
-  const crypto = await import("../../src/lib/crypto.js");
-  const creds = crypto.decryptJson(acct.encryptedCredentials);
+  const creds = decryptJson(acct.encryptedCredentials as any);
 
   const workerName = `worker-${a.brokerAccountId}`;
   const instanceId = `ecs:${a.brokerAccountId}:${randomUUID()}`;

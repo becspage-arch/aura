@@ -1,0 +1,88 @@
+﻿{
+    "family":  "aura-orchestrator",
+    "taskRoleArn":  "arn:aws:iam::074184607195:role/aura-orchestrator-task-role",
+    "executionRoleArn":  "arn:aws:iam::074184607195:role/ecsTaskExecutionRole",
+    "networkMode":  "awsvpc",
+    "containerDefinitions":  [
+                                 {
+                                     "name":  "aura-orchestrator",
+                                     "image":  "074184607195.dkr.ecr.eu-west-2.amazonaws.com/aura-orchestrator:latest",
+                                     "cpu":  0,
+                                     "portMappings":  [
+
+                                                      ],
+                                     "essential":  true,
+                                     "environment":  [
+                                                         {
+                                                             "name":  "AWS_REGION",
+                                                             "value":  "eu-west-2"
+                                                         },
+                                                         {
+                                                             "name":  "POLL_MS",
+                                                             "value":  "20000"
+                                                         },
+                                                         {
+                                                             "name":  "ECS_CLUSTER",
+                                                             "value":  "aura"
+                                                         },
+                                                         {
+                                                             "name":  "WORKER_TASK_DEFINITION",
+                                                             "value":  "aura-worker:37"
+                                                         },
+                                                         {
+                                                             "name":  "ECS_SUBNETS",
+                                                             "value":  "subnet-04721116ce07807e4,subnet-0c098e9241004e440"
+                                                         },
+                                                         {
+                                                             "name":  "ECS_SECURITY_GROUPS",
+                                                             "value":  "sg-08f51c26a10fa23ea"
+                                                         },
+                                                         {
+                                                             "name":  "WORKER_CONTAINER_NAME",
+                                                             "value":  "aura-worker"
+                                                         },
+                                                         {
+                                                             "name":  "DIRECT_URL",
+                                                             "value":  "postgresql://neondb_owner:npg_9WvkzQ5YZpbj@ep-billowing-butterfly-abv4rzo7.eu-west-2.aws.neon.tech/neondb?sslmode=require\u0026channel_binding=require"
+                                                         },
+                                                         {
+                                                             "name":  "ECS_ASSIGN_PUBLIC_IP",
+                                                             "value":  "ENABLED"
+                                                         },
+                                                         {
+                                                             "name":  "AURA_MASTER_KEY",
+                                                             "value":  "437394092a7a54fe0e73ec8b1515b8e6c7fa4fd37ec4316a7a14b35e4e18b7c7"
+                                                         }
+                                                     ],
+                                     "mountPoints":  [
+
+                                                     ],
+                                     "volumesFrom":  [
+
+                                                     ],
+                                     "logConfiguration":  {
+                                                              "logDriver":  "awslogs",
+                                                              "options":  {
+                                                                              "awslogs-group":  "/aura/orchestrator",
+                                                                              "awslogs-region":  "eu-west-2",
+                                                                              "awslogs-stream-prefix":  "ecs"
+                                                                          }
+                                                          },
+                                     "systemControls":  [
+
+                                                        ]
+                                 }
+                             ],
+    "volumes":  [
+
+                ],
+    "placementConstraints":  [
+
+                             ],
+    "requiresCompatibilities":  [
+                                    "FARGATE"
+                                ],
+    "cpu":  "256",
+    "memory":  "512",
+    "runtimePlatform":  null
+}
