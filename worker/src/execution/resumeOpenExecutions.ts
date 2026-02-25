@@ -17,31 +17,37 @@ export async function resumeOpenExecutions(params: {
   prisma: PrismaClient;
   broker: IBrokerAdapter;
   userId: string;
+  brokerAccountId: string;
 }) {
-  const { prisma, broker, userId } = params;
+  const { prisma, broker, userId, brokerAccountId } = params;
 
-  console.log("[resume] scanning for open executions");
+  console.log("[resume] scanning for open executions", {
+    brokerAccountId,
+  });
 
   const executions = await prisma.execution.findMany({
     where: {
       userId,
+      brokerAccountId,
       status: { in: RESUMABLE_STATUSES as any },
     },
     orderBy: { updatedAt: "asc" },
   });
 
   if (!executions.length) {
-    console.log("[resume] nothing to resume");
+    console.log("[resume] nothing to resume", { brokerAccountId });
     return;
   }
 
   console.log("[resume] found executions", {
+    brokerAccountId,
     count: executions.length,
   });
 
   for (const exec of executions) {
     try {
       console.log("[resume] checking", {
+        brokerAccountId,
         id: exec.id,
         execKey: exec.execKey,
         status: exec.status,
@@ -70,6 +76,7 @@ export async function resumeOpenExecutions(params: {
         });
 
         console.log("[resume] marked closed", {
+          brokerAccountId,
           execKey: exec.execKey,
         });
 
@@ -85,12 +92,14 @@ export async function resumeOpenExecutions(params: {
       });
 
       console.log("[resume] marked open", {
+        brokerAccountId,
         execKey: exec.execKey,
         positionSize,
       });
 
     } catch (e: any) {
       console.error("[resume] failed for execution", {
+        brokerAccountId,
         execKey: exec.execKey,
         err: e?.message ?? String(e),
       });

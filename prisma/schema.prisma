@@ -56,6 +56,9 @@ model BrokerAccount {
   // Worker health / orchestrator signals
   lastHeartbeatAt DateTime?
 
+  trades          Trade[]
+  strategySignals StrategySignal[]
+
   workerLease WorkerLease?
 
   @@unique([brokerName, externalId])
@@ -379,9 +382,12 @@ model Trade {
   createdAt DateTime @default(now())
 
   // Ownership
-  clerkUserId String
+  clerkUserId    String
+  brokerAccountId String
 
-  // Idempotency (prevents duplicate rows on reconnects)
+  brokerAccount BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+
+  // Idempotency
   execKey String @unique
 
   // Instrument
@@ -410,12 +416,12 @@ model Trade {
   realizedPnlUsd   Decimal
   rrAchieved       Decimal?
 
-  // Outcome / reason
-  exitReason String // "TP" | "SL" | "MANUAL" | "KILL_SWITCH" | "SESSION_END" | "FLATTEN" | "UNKNOWN"
-  outcome    String // "WIN" | "LOSS" | "BREAKEVEN"
+  // Outcome
+  exitReason String
+  outcome    String
 
-  @@index([clerkUserId, closedAt])
-  @@index([clerkUserId, openedAt])
+  @@index([brokerAccountId, closedAt])
+  @@index([brokerAccountId, openedAt])
 }
 
 enum CandleTimeframe {
@@ -449,47 +455,44 @@ model StrategySignal {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Who / what
-  userId     String
-  strategy   String // e.g. "coreplus315"
-  brokerName String? // optional, but useful for later
+  // Ownership
+  userId          String
+  brokerAccountId String
+
+  brokerAccount BrokerAccount @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+
+  strategy   String
+  brokerName String?
   symbol     String
   contractId String?
 
   side OrderSide
 
-  // Times (epoch seconds)
   entryTime Int
   fvgTime   Int
 
-  // Planned prices (optional but handy for chart overlays)
   entryPrice      Decimal?
   stopPrice       Decimal?
   takeProfitPrice Decimal?
 
-  // Risk math
   stopTicks      Decimal?
   tpTicks        Decimal?
   rr             Decimal?
   contracts      Int?
   riskUsdPlanned Decimal?
 
-  // Outcome
   status      StrategySignalStatus @default(DETECTED)
   blockReason StrategyBlockReason?
 
-  // Link to execution when TAKEN
   execKey     String?
   executionId String?
 
-  // extra context (FVG top/bottom, retested, debug, bracket etc)
   meta Json?
 
-  // Deterministic idempotency key for “same signal”
   signalKey String @unique
 
-  @@index([userId, createdAt])
-  @@index([userId, strategy, createdAt])
+  @@index([brokerAccountId, createdAt])
+  @@index([brokerAccountId, strategy, createdAt])
   @@index([symbol, entryTime])
   @@index([executionId])
 }

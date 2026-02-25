@@ -309,6 +309,7 @@ async function main() {
           prisma: db,
           broker: b,
           userId: scope.userId,
+          brokerAccountId: scope.brokerAccountId,
         });
       },
       emitSafe: async (event) => {
