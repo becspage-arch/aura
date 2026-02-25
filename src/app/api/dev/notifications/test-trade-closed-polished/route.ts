@@ -1,4 +1,4 @@
-// src/app/api/dev/notifications/test-trade-closed-polisehd/route.ts
+// src/app/api/dev/notifications/test-trade-closed-polished/route.ts
 import { NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
@@ -21,9 +21,17 @@ export async function POST() {
     // Ensure we have email saved
     const toEmail =
       user.emailAddresses?.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ||
-      user.emailAddresses?.[0]?.emailAddress;
+      user.emailAddresses?.[0]?.emailAddress ||
+      null;
 
-        const profile = await prisma.userProfile.findUnique({
+    if (!toEmail) {
+      return NextResponse.json(
+        { ok: false, error: "No email found on Clerk user" },
+        { status: 400 }
+      );
+    }
+
+    const profile = await prisma.userProfile.findUnique({
       where: { clerkUserId },
       select: { id: true },
     });
@@ -33,7 +41,7 @@ export async function POST() {
     }
 
     const brokerAccount = await prisma.brokerAccount.findFirst({
-      where: { userProfileId: profile.id },
+      where: { userId: profile.id },
       select: { id: true },
       orderBy: { createdAt: "asc" },
     });
@@ -45,10 +53,13 @@ export async function POST() {
       );
     }
 
-    if (!toEmail) { const trade = await prisma.trade.create({
+    const now = new Date();
+    const openedAt = new Date(now.getTime() - 240_000); // 4 minutes ago
+
+    const trade = await prisma.trade.create({
       data: {
         clerkUserId,
-        brokerAccount: { connect: { id: brokerAccount.id } },
+        brokerAccountId: brokerAccount.id,
 
         execKey: `dev:polished:${clerkUserId}:${Date.now()}`,
 
