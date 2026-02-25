@@ -50,64 +50,6 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* Copy Trading */}
-      <section className="aura-card">
-        <div className="aura-row-between">
-          <div className="aura-card-title">Copy Trading</div>
-          <div className="aura-muted aura-text-xs">Multi-account routing</div>
-        </div>
-
-        <div className="aura-mt-12 aura-grid-gap-12">
-          <div className="aura-card-muted aura-control-row aura-disabled">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Master account</div>
-              <div className="aura-control-help">
-                Trades originate here and are copied to followers.
-              </div>
-            </div>
-            <span className="aura-select-pill">â€”</span>
-          </div>
-
-          <div className="aura-card-muted aura-control-row aura-disabled">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Follower accounts</div>
-              <div className="aura-control-help">
-                Accounts that receive copied trades.
-              </div>
-            </div>
-            <span className="aura-select-pill">0 connected</span>
-          </div>
-
-          <div className="aura-card-muted aura-control-row aura-disabled">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Allocation mode</div>
-              <div className="aura-control-help">
-                How position sizing is copied per follower.
-              </div>
-            </div>
-            <span className="aura-select-pill">1:1 contracts</span>
-          </div>
-
-          <div className="aura-divider" />
-
-          <div className="aura-card-muted aura-control-row">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Manage copy trading</div>
-              <div className="aura-control-help">
-                Connect followers, set allocation, and monitor health.
-              </div>
-            </div>
-            <Link href="/app/copy-trading" className="aura-btn">
-              Open Copy Trading
-            </Link>
-          </div>
-        </div>
-
-        <p className="aura-muted aura-text-xs aura-mt-10">
-          Copy trading controls which accounts receive executions. Strategy logic remains unchanged.
-        </p>
-      </section>
-
       {/* Account Defaults */}
       <section className="aura-card">
         <div className="aura-row-between">
@@ -216,36 +158,6 @@ export default function SettingsPage() {
                 <TestEmailButton />
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Safety Caps */}
-      <section className="aura-card">
-        <div className="aura-row-between">
-          <div className="aura-card-title">Daily Limits</div>
-          <div className="aura-muted aura-text-xs">Hard overrides</div>
-        </div>
-
-        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
-          <div className="aura-card-muted aura-control-row">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Max daily loss</div>
-              <div className="aura-control-help">
-                Aura pauses automatically if reached.
-              </div>
-            </div>
-            <span className="aura-select-pill">â€”</span>
-          </div>
-
-          <div className="aura-card-muted aura-control-row">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Max daily profit</div>
-              <div className="aura-control-help">
-                Aura pauses automatically if reached.
-              </div>
-            </div>
-            <span className="aura-select-pill">â€”</span>
           </div>
         </div>
       </section>

@@ -10,32 +10,48 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "unauthenticated" }, { status: 401 });
   }
 
-  // Ensure we have a UserProfile row (DB may be empty after reset)
   const user = await ensureUserProfile({
     clerkUserId,
     email: null,
     displayName: null,
   });
 
-  const accounts = await prisma.brokerAccount.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      brokerName: true,
-      accountLabel: true,
-      externalId: true,
-      isEnabled: true,
-      isPaused: true,
-      pausedAt: true,
-      isKillSwitched: true,
-      killSwitchedAt: true,
-      lastHeartbeatAt: true,
-      config: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  const [accounts, state] = await Promise.all([
+    prisma.brokerAccount.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        brokerName: true,
+        accountLabel: true,
+        externalId: true,
+        isEnabled: true,
+        isPaused: true,
+        pausedAt: true,
+        isKillSwitched: true,
+        killSwitchedAt: true,
+        lastHeartbeatAt: true,
+        config: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.userTradingState.findUnique({
+      where: { userId: user.id },
+      select: { selectedBrokerAccountId: true },
+    }),
+  ]);
 
-  return NextResponse.json({ ok: true, accounts });
+  const selectedBrokerAccountId = state?.selectedBrokerAccountId ?? null;
+  const selectedAccount =
+    selectedBrokerAccountId != null
+      ? accounts.find((a) => a.id === selectedBrokerAccountId) ?? null
+      : null;
+
+  return NextResponse.json({
+    ok: true,
+    accounts,
+    selectedBrokerAccountId,
+    selectedAccount,
+  });
 }
