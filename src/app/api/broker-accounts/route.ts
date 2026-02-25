@@ -80,8 +80,6 @@ export async function POST(req: Request) {
     externalAccountId: externalAccountId || null,
   });
 
-  const encryptedCredentials = JSON.stringify(encryptedPayload);
-
   // We keep it simple: 1 broker account per user per brokerName (for now).
   const existing = await db.brokerAccount.findFirst({
     where: { userId: user.id, brokerName },
@@ -92,14 +90,14 @@ export async function POST(req: Request) {
   const acct = existing
     ? await db.brokerAccount.update({
         where: { id: existing.id },
-        data: { encryptedCredentials, isEnabled: enable },
+        data: { encryptedCredentials: encryptedPayload, isEnabled: enable },
         select: { id: true, brokerName: true, isEnabled: true },
       })
     : await db.brokerAccount.create({
         data: {
           userId: user.id,
           brokerName,
-          encryptedCredentials,
+          encryptedCredentials: encryptedPayload,
           isEnabled: enable,
         },
         select: { id: true, brokerName: true, isEnabled: true },

@@ -33,8 +33,8 @@ export function BrokerConnectionsCard() {
   // Form state (ProjectX v1)
   const [username, setUsername] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [contractId, setContractId] = useState("CON.F.US.MGC.J26");
-  const [externalAccountId, setExternalAccountId] = useState("");
   const [enableAfterSave, setEnableAfterSave] = useState(true);
 
   const projectX = useMemo(
@@ -73,7 +73,6 @@ export function BrokerConnectionsCard() {
           username,
           apiKey,
           contractId,
-          externalAccountId,
           enable: enableAfterSave,
         }),
       });
@@ -126,6 +125,12 @@ export function BrokerConnectionsCard() {
         : "Saved (disabled)"
       : "Not connected";
 
+  const canSave =
+    username.trim().length > 0 &&
+    apiKey.trim().length > 0 &&
+    !saving &&
+    !loading;
+
   return (
     <section className="aura-card">
       <div className="aura-row-between">
@@ -166,16 +171,25 @@ export function BrokerConnectionsCard() {
             <div className="aura-control-row">
               <div className="aura-control-meta">
                 <div className="aura-control-title">API Key</div>
-                <div className="aura-control-help">ProjectX API key. (We clear it after saving.)</div>
-              </div>
-              <input
-                className="aura-input"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="paste api key"
-                autoComplete="off"
-              />
-            </div>
+                <div className="aura-control-help">ProjectX API key.</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      className="aura-input"
+                      type={showKey ? "text" : "password"}
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="ProjectX API key"
+                      autoComplete="off"
+                    />
+                    <button
+                      className="aura-btn"
+                      type="button"
+                      onClick={() => setShowKey((v) => !v)}
+                    >
+                      {showKey ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
 
             <div className="aura-control-row">
               <div className="aura-control-meta">
@@ -187,19 +201,6 @@ export function BrokerConnectionsCard() {
                 value={contractId}
                 onChange={(e) => setContractId(e.target.value)}
                 placeholder="CON.F.US.MGC.J26"
-              />
-            </div>
-
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">External Account ID (optional)</div>
-                <div className="aura-control-help">If you want to pin the worker to a specific broker account.</div>
-              </div>
-              <input
-                className="aura-input"
-                value={externalAccountId}
-                onChange={(e) => setExternalAccountId(e.target.value)}
-                placeholder="e.g. 17054380"
               />
             </div>
 
@@ -226,7 +227,7 @@ export function BrokerConnectionsCard() {
               </div>
 
               <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
-                <button className="aura-btn" onClick={onSave} disabled={saving || loading}>
+                <button className="aura-btn" onClick={onSave} disabled={!canSave}>
                   {saving ? "Saving…" : "Save"}
                 </button>
 
