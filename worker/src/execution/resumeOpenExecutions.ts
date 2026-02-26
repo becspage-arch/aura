@@ -87,13 +87,14 @@ export async function resumeOpenExecutions(params: {
 
       // 1) Broker position
       let positionSize = 0;
+      let brokerPos: any = null;
 
       if (typeof (broker as any).getPosition === "function") {
-        const pos = await (broker as any).getPosition({
+        brokerPos = await (broker as any).getPosition({
           contractId: exec.contractId,
           symbol: exec.symbol ?? exec.contractId,
         });
-        positionSize = Number(pos?.size ?? 0);
+        positionSize = Number(brokerPos?.size ?? 0);
       }
 
       // 2) Fetch broker orders by IDs (if available)
@@ -223,23 +224,23 @@ export async function resumeOpenExecutions(params: {
           ? (broker as any).placeBracketsAfterEntry.bind(broker)
           : null;
 
-      // Get avg price from getPosition() return if available
-      let avgPrice: number | null = null;
-      try {
-        if (typeof (broker as any).getPosition === "function") {
-          const pos = await (broker as any).getPosition({
-            contractId: exec.contractId,
-            symbol: exec.symbol ?? exec.contractId,
-          });
+        // Get avg price from earlier brokerPos if available
+        let avgPrice: number | null = null;
 
-          const first = Array.isArray(pos?.positions) ? pos.positions[0] : null;
+        try {
+          const first = Array.isArray(brokerPos?.positions)
+            ? brokerPos.positions[0]
+            : null;
+
           const ap = first?.averagePrice ?? null;
           const apNum = ap == null ? null : Number(ap);
-          if (apNum != null && Number.isFinite(apNum) && apNum > 0) avgPrice = apNum;
+
+          if (apNum != null && Number.isFinite(apNum) && apNum > 0) {
+            avgPrice = apNum;
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore - we can still proceed without avgPrice, but adapter will fallback to bars
-      }
 
       let createdStop: string | null = null;
       let createdTp: string | null = null;
@@ -249,6 +250,17 @@ export async function resumeOpenExecutions(params: {
         exec.takeProfitTicks != null && Number.isFinite(Number(exec.takeProfitTicks)) && Number(exec.takeProfitTicks) > 0;
 
       const hasSafeRef = Boolean(avgPrice) || Boolean(exec.entryOrderId);
+
+      if ((missingSL || missingTP) && !hasSafeRef) {
+        console.warn("[resume] missing exits but no safe ref - NOT recreating", {
+          brokerAccountId,
+          execKey: exec.execKey,
+          missingSL,
+          missingTP,
+          entryOrderId: exec.entryOrderId ?? null,
+          avgPrice,
+        });
+      }
 
       if ((missingSL || missingTP) && hasSafeRef && placeBracketsAfterEntry && (wantsSL || wantsTP)) {
         console.log("[resume] missing exits detected - recreating brackets", {
