@@ -50,7 +50,7 @@ function accountLine(a: {
   const broker = brokerLabel(String(a.brokerName || "projectx"));
   const name = (a.accountLabel ?? "").trim();
   const id = (a.externalId ?? "").trim();
-  const bal = fmtMoney(a.balanceUsd);
+  const bal = fmtMoney(a.balanceUsd) ?? "—";
 
   return [broker, name || "Account", id || null, bal || null].filter(Boolean).join(" | ");
 }
