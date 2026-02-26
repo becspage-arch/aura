@@ -3,23 +3,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-type SavedBrokerAccountRow = {
+type BrokerAccountRow = {
   id: string;
   brokerName: string;
   isEnabled: boolean;
-  accountLabel: string | null;
-  externalId: string | null;
   createdAt: string;
   updatedAt: string;
-};
 
-type DiscoveredAccount = {
-  externalId: string;    // ProjectX account id (string)
-  accountName: string;   // ProjectX name (Topstep display)
-  balance: number;
-  canTrade: boolean;
-  simulated: boolean;
-  isVisible: boolean;
+  // Optional display fields (safe if your API doesn’t return them yet)
+  accountLabel?: string | null;
+  externalId?: string | null;
+  balanceUsd?: number | string | null;
 };
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -30,63 +24,55 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data?.error || `Request failed: ${res.status}`);
+    throw new Error((data as any)?.error || `Request failed: ${res.status}`);
   }
   return data as T;
 }
 
-function fmtUsd(n: number) {
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 2,
-    }).format(n);
-  } catch {
-    return `$${Number(n ?? 0).toFixed(2)}`;
-  }
+function fmtMoney(v: unknown) {
+  const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
+  if (!Number.isFinite(n)) return null;
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function displayAccountLine(a: BrokerAccountRow) {
+  const name = (a.accountLabel ?? "").trim();
+  const id = (a.externalId ?? "").trim();
+  const bal = fmtMoney(a.balanceUsd);
+
+  // Your preferred: Name | AccountNumber | Balance
+  // If some parts are missing, it gracefully collapses.
+  const parts = [name || null, id || null, bal || null].filter(Boolean) as string[];
+  return parts.length ? parts.join(" | ") : "Account";
 }
 
 export function BrokerConnectionsCard() {
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Saved rows in DB (one per broker account)
-  const [saved, setSaved] = useState<SavedBrokerAccountRow[]>([]);
+  const [accounts, setAccounts] = useState<BrokerAccountRow[]>([]);
 
-  // Credentials input (only used for discovery + saving)
+  // Credentials inputs (never loaded from API; only what the user types)
   const [username, setUsername] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
 
-  // Discovered broker accounts (live from ProjectX)
-  const [found, setFound] = useState<DiscoveredAccount[] | null>(null);
-
-  const projectxSaved = useMemo(
-    () => saved.filter((a) => a.brokerName === "projectx"),
-    [saved]
+  const projectXAccounts = useMemo(
+    () => accounts.filter((a) => a.brokerName === "projectx"),
+    [accounts]
   );
 
-  const connected = projectxSaved.length > 0;
+  const anyProjectXConnected = projectXAccounts.length > 0;
 
-  const statusPill = loading
-    ? "Loading…"
-    : connected
-      ? projectxSaved.some((a) => a.isEnabled)
-        ? "Connected - trading enabled"
-        : "Connected - trading disabled"
-      : "Not connected";
-
-  async function refresh() {
+  async function refreshConnections() {
     setError(null);
     setLoading(true);
     try {
-      const data = await fetchJSON<{ ok: true; accounts: SavedBrokerAccountRow[] }>(
-        "/api/broker-accounts",
-        { method: "GET" }
-      );
-      setSaved(data.accounts ?? []);
+      const data = await fetchJSON<{ ok: true; accounts: BrokerAccountRow[] }>("/api/broker-accounts", {
+        method: "GET",
+      });
+      setAccounts(data.accounts ?? []);
     } catch (e: any) {
       setError(e?.message || "Failed to load broker accounts");
     } finally {
@@ -94,80 +80,104 @@ export function BrokerConnectionsCard() {
     }
   }
 
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  async function onDiscover() {
-    setError(null);
-    setBusy(true);
-    setFound(null);
-    try {
-      const data = await fetchJSON<{ ok: true; accounts: DiscoveredAccount[] }>(
-        "/api/broker-accounts/projectx/discover",
-        {
-          method: "POST",
-          body: JSON.stringify({ username, apiKey }),
-        }
-      );
-      setFound(data.accounts ?? []);
-    } catch (e: any) {
-      setError(e?.message || "Could not connect to ProjectX");
-    } finally {
-      setBusy(false);
-    }
+  async function discoverProjectXAccounts() {
+    // This should create/update BrokerAccount rows in DB (your discover route),
+    // then we refresh the list from /api/broker-accounts.
+    await fetchJSON("/api/broker-accounts/projectx/discover", { method: "POST" });
+    await refreshConnections();
   }
 
-  async function onToggleAccount(a: DiscoveredAccount, next: boolean) {
+  useEffect(() => {
+    (async () => {
+      await refreshConnections();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // On refresh/page load: if ProjectX is already connected, auto-discover so the Accounts list is always populated.
+  useEffect(() => {
+    if (!loading && anyProjectXConnected) {
+      // fire and forget (but still show errors if any)
+      (async () => {
+        try {
+          await discoverProjectXAccounts();
+        } catch (e: any) {
+          setError(e?.message || "Failed to load ProjectX accounts");
+        }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  async function onConnect() {
     setError(null);
-    setBusy(true);
+    setSaving(true);
     try {
-      // Persist this specific broker account row (upsert), with enable flag
+      // 1) Save credentials
       await fetchJSON("/api/broker-accounts", {
         method: "POST",
         body: JSON.stringify({
           brokerName: "projectx",
           username,
           apiKey,
+          // If your POST requires these, keep them. If not, harmless.
           contractId: "CON.F.US.MGC.J26",
-          externalId: a.externalId,
-          accountLabel: a.accountName,
-          enable: next,
+          enable: true,
         }),
       });
 
-      await refresh();
+      // 2) Clear secret field immediately
+      setApiKey("");
+      setShowKey(false);
+
+      // 3) Discover accounts + refresh list
+      await discoverProjectXAccounts();
+    } catch (e: any) {
+      setError(e?.message || "Connect failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onToggleEnabled(accountId: string, next: boolean) {
+    setError(null);
+    setSaving(true);
+    try {
+      await fetchJSON(`/api/broker-accounts/${accountId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isEnabled: next }),
+      });
+      await refreshConnections();
     } catch (e: any) {
       setError(e?.message || "Update failed");
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
 
-  async function onDeleteSavedRow(rowId: string) {
+  async function onDeleteAccount(accountId: string) {
     setError(null);
-    setBusy(true);
+    setSaving(true);
     try {
-      await fetchJSON(`/api/broker-accounts/${rowId}`, { method: "DELETE" });
-      await refresh();
+      await fetchJSON(`/api/broker-accounts/${accountId}`, { method: "DELETE" });
+      await refreshConnections();
     } catch (e: any) {
       setError(e?.message || "Delete failed");
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
 
-  function isEnabledSaved(externalId: string) {
-    const row = projectxSaved.find((r) => r.externalId === externalId);
-    return Boolean(row?.isEnabled);
-  }
+  const statusPill = loading
+    ? "Loading…"
+    : anyProjectXConnected
+      ? projectXAccounts.some((a) => a.isEnabled)
+        ? "Connected - trading enabled"
+        : "Connected - trading disabled"
+      : "Not connected";
 
-  function savedRowId(externalId: string) {
-    const row = projectxSaved.find((r) => r.externalId === externalId);
-    return row?.id ?? null;
-  }
-
-  const canDiscover = username.trim().length > 0 && apiKey.trim().length > 0 && !busy && !loading;
+  const canConnect = username.trim().length > 0 && apiKey.trim().length > 0 && !saving && !loading;
+  const disabled = saving || loading;
 
   return (
     <section className="aura-card">
@@ -178,20 +188,15 @@ export function BrokerConnectionsCard() {
 
       <div className="aura-mt-12 aura-grid-gap-12">
         {error ? (
-          <div
-            className="aura-card-muted aura-text-sm"
-            style={{ borderColor: "rgba(255,0,0,0.35)" }}
-          >
+          <div className="aura-card-muted aura-text-sm" style={{ borderColor: "rgba(255,0,0,0.35)" }}>
             {error}
           </div>
         ) : null}
 
-        {/* Minimal connect form */}
         <div className="aura-card-muted aura-grid-gap-12">
-          <div className="aura-control-meta">
-            <div className="aura-control-title">ProjectX</div>
-          </div>
+          <div className="aura-control-title">ProjectX</div>
 
+          {/* Connect row (always visible) */}
           <div className="aura-grid-gap-12">
             <div className="aura-control-row">
               <div className="aura-control-meta">
@@ -202,8 +207,8 @@ export function BrokerConnectionsCard() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="you@email.com"
-                autoComplete="username"
-                disabled={busy || loading}
+                autoComplete="off"
+                name="aura_projectx_username"
               />
             </div>
 
@@ -219,85 +224,63 @@ export function BrokerConnectionsCard() {
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="••••••••••••••••"
-                  autoComplete="off"
+                  autoComplete="new-password"
+                  name="aura_projectx_apikey"
                   style={{ flex: 1 }}
-                  disabled={busy || loading}
                 />
-                <button
-                  className="aura-btn"
-                  type="button"
-                  onClick={() => setShowKey((v) => !v)}
-                  disabled={busy || loading}
-                >
+                <button className="aura-btn" type="button" onClick={() => setShowKey((v) => !v)} disabled={disabled}>
                   {showKey ? "Hide" : "Show"}
                 </button>
-              </div>
-            </div>
-
-            <div className="aura-control-row">
-              <div className="aura-control-meta" />
-              <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
-                <button className="aura-btn" type="button" onClick={onDiscover} disabled={!canDiscover}>
-                  {busy ? "Connecting…" : "Connect"}
+                <button className="aura-btn" type="button" onClick={onConnect} disabled={!canConnect}>
+                  {saving ? "Connecting…" : "Connect"}
                 </button>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Accounts list (only appears after Connect succeeds) */}
-        {found ? (
-          <div className="aura-card-muted aura-grid-gap-12">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Accounts</div>
-            </div>
+          {/* Accounts list (no extra gap) */}
+          <div className="aura-card-muted aura-grid-gap-12" style={{ marginTop: 0 }}>
+            <div className="aura-control-title">Accounts</div>
 
-            <div className="aura-grid-gap-12">
-              {found.length === 0 ? (
-                <div className="aura-muted aura-text-sm">No active accounts found.</div>
-              ) : (
-                found.map((a) => {
-                  const enabled = isEnabledSaved(a.externalId);
-                  const rowId = savedRowId(a.externalId);
-
-                  const display = `${a.accountName} | ${a.externalId} | ${fmtUsd(a.balance)}`;
-
-                  return (
-                    <div key={a.externalId} className="aura-control-row">
-                      <div className="aura-control-meta">
-                        <div className="aura-control-title">{display}</div>
-                      </div>
-
-                      <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
-                        <button
-                          className="aura-btn"
-                          type="button"
-                          disabled={busy || loading}
-                          onClick={() => onToggleAccount(a, !enabled)}
-                          title={enabled ? "Disable trading on this account" : "Enable trading on this account"}
-                        >
-                          {enabled ? "Enabled" : "Disabled"}
-                        </button>
-
-                        {rowId ? (
-                          <button
-                            className="aura-btn"
-                            type="button"
-                            disabled={busy || loading}
-                            onClick={() => onDeleteSavedRow(rowId)}
-                            title="Remove this account from Aura"
-                          >
-                            Delete
-                          </button>
-                        ) : null}
-                      </div>
+            {projectXAccounts.length === 0 ? (
+              <div className="aura-muted aura-text-xs">
+                Connect to ProjectX to load your accounts.
+              </div>
+            ) : (
+              <div className="aura-grid-gap-12">
+                {projectXAccounts.map((a) => (
+                  <div key={a.id} className="aura-control-row">
+                    <div className="aura-control-meta">
+                      <div className="aura-control-title">{displayAccountLine(a)}</div>
                     </div>
-                  );
-                })
-              )}
-            </div>
+
+                    <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
+                      <button
+                        className="aura-btn"
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => onToggleEnabled(a.id, !a.isEnabled)}
+                        title={a.isEnabled ? "Disable trading" : "Enable trading"}
+                      >
+                        {a.isEnabled ? "Enabled" : "Disabled"}
+                      </button>
+
+                      <button
+                        className="aura-btn"
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => onDeleteAccount(a.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        ) : null}
+
+        </div>
       </div>
     </section>
   );
