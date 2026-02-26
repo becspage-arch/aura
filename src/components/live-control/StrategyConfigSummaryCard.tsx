@@ -1,4 +1,5 @@
-﻿"use client";
+﻿// src/components/live-control/StrategyConfigSummaryCard.tsx
+"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";

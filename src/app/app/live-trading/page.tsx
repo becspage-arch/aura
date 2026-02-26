@@ -5,7 +5,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { ensureUserProfile } from "@/lib/user-profile";
 import { LiveControlSwitches } from "@/components/live-control/LiveControlSwitches";
 import { StrategyConfigSummaryCard } from "@/components/live-control/StrategyConfigSummaryCard";
-import { SelectBrokerAccountButton } from "@/components/live-control/SelectBrokerAccountButton";
+import { AccountSelectorCard } from "@/components/live-control/AccountSelectorCard";
 
 export default async function LiveControlPage() {
   const user = await currentUser();
@@ -52,9 +52,9 @@ export default async function LiveControlPage() {
           Charts and trade review live in the Charts and Reports tabs.
         </p>
       </div>
-
-      <SelectBrokerAccountButton brokerAccountId="cmlv7u7jh04in01qzqbg58kog" />
       
+      <AccountSelectorCard />
+
       {/* Controls FIRST */}
       <LiveControlSwitches />
 

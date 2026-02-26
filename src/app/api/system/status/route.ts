@@ -19,29 +19,67 @@ export async function GET() {
     return Response.json({ ok: false, error: "user not found" }, { status: 404 });
   }
 
-  const accounts = await prisma.brokerAccount.findMany({
+    const accounts = await prisma.brokerAccount.findMany({
     where: { userId: user.id },
     select: {
-      id: true,
-      brokerName: true,
-      isEnabled: true,
-      isPaused: true,
-      isKillSwitched: true,
-      lastHeartbeatAt: true,
-      workerLease: {
+        id: true,
+        brokerName: true,
+        isEnabled: true,
+        isPaused: true,
+        isKillSwitched: true,
+        lastHeartbeatAt: true,
+        accountLabel: true,
+        externalId: true,
+        workerLease: {
         select: {
-          status: true,
-          lastSeenAt: true,
-          instanceId: true,
+            status: true,
+            lastSeenAt: true,
+            instanceId: true,
         },
-      },
+        },
     },
     orderBy: { createdAt: "desc" },
-  });
+    });
 
-  const now = Date.now();
+    if (accounts.length === 0) {
+    return Response.json({ ok: true, accounts: [] });
+    }
 
-  const result = accounts.map((a) => {
+    const recentErrors = await prisma.eventLog.findMany({
+    where: {
+        brokerAccountId: { in: accounts.map((a) => a.id) },
+        level: { in: ["error", "warn"] },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    select: {
+        brokerAccountId: true,
+        createdAt: true,
+        type: true,
+        level: true,
+        message: true,
+    },
+    });
+
+    const latestErrorByAccount = new Map<
+    string,
+    { createdAt: string; type: string; level: string; message: string }
+    >();
+
+    for (const e of recentErrors) {
+    if (!e.brokerAccountId) continue;
+    if (latestErrorByAccount.has(e.brokerAccountId)) continue;
+    latestErrorByAccount.set(e.brokerAccountId, {
+        createdAt: e.createdAt.toISOString(),
+        type: e.type,
+        level: e.level,
+        message: e.message,
+    });
+    }
+
+    const now = Date.now();
+
+    const result = accounts.map((a) => {
     const hbMs = a.lastHeartbeatAt?.getTime() ?? null;
     const heartbeatHealthy =
       hbMs != null && now - hbMs <= HEARTBEAT_OK_MS;
@@ -67,6 +105,9 @@ export async function GET() {
       workerHealthy,
       systemRunning,
       lastHeartbeatAt: a.lastHeartbeatAt?.toISOString() ?? null,
+      accountLabel: a.accountLabel ?? null,
+      externalId: a.externalId ?? null,
+      latestError: latestErrorByAccount.get(a.id) ?? null
     };
   });
 

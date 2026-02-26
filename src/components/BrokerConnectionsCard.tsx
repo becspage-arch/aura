@@ -42,6 +42,9 @@ export function BrokerConnectionsCard() {
     [accounts]
   );
 
+  const allEnabled =
+  accounts.length > 0 && accounts.every((a) => a.isEnabled);
+
   async function refresh() {
     setError(null);
     setLoading(true);
@@ -117,6 +120,33 @@ export function BrokerConnectionsCard() {
     }
   }
 
+  async function onRunAllToggle() {
+    if (accounts.length === 0) return;
+
+    const next = !allEnabled;
+
+    const ok = window.confirm(
+      next
+        ? "Enable all broker accounts?\n\nAura will allow workers to run for every connected account."
+        : "Disable all broker accounts?\n\nAura will stop workers for every account."
+    );
+    if (!ok) return;
+
+    setError(null);
+    setSaving(true);
+    try {
+      await fetchJSON("/api/broker-accounts/bulk-enable", {
+        method: "POST",
+        body: JSON.stringify({ isEnabled: next }),
+      });
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || "Bulk update failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const statusPill = loading
     ? "Loading…"
     : projectX
@@ -136,6 +166,24 @@ export function BrokerConnectionsCard() {
       <div className="aura-row-between">
         <div className="aura-card-title">Broker Connections</div>
         <div className="aura-muted aura-text-xs">{statusPill}</div>
+      </div>
+
+      <div className="aura-mt-12 aura-card-muted aura-control-row">
+        <div className="aura-control-meta">
+          <div className="aura-control-title">Run all accounts</div>
+          <div className="aura-control-help">
+            Enable or disable workers for every connected broker account.
+          </div>
+        </div>
+
+        <button
+          className="aura-btn"
+          type="button"
+          onClick={onRunAllToggle}
+          disabled={saving || loading || accounts.length === 0}
+        >
+          {accounts.length === 0 ? "—" : allEnabled ? "On" : "Off"}
+        </button>
       </div>
 
       <div className="aura-mt-12 aura-grid-gap-12">
