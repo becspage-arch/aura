@@ -11,6 +11,7 @@ import { StrategySummaryStrip } from "./_components/StrategySummaryStrip";
 import { StrategyTopCardsRow } from "./_components/StrategyTopCardsRow";
 import { TradingSessionsCard } from "./_components/TradingSessionsCard";
 import { RiskConfigurationCard } from "./_components/RiskConfigurationCard";
+import { BrokersStatusCard } from "@/components/strategy/BrokersStatusCard";
 
 export const dynamic = "force-dynamic";
 
@@ -132,6 +133,8 @@ export default function StrategyPage() {
         {/* Core */}
         <div className="aura-section-stack">
           <StrategyTopCardsRow current={current} />
+          
+          <BrokersStatusCard />
 
           <TradingSessionsCard
             current={current}
