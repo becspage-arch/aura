@@ -3,17 +3,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-type BrokerAccountRow = {
+type SavedBrokerAccountRow = {
   id: string;
   brokerName: string;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
-
-  // Optional display fields (safe if your API doesn’t return them yet)
   accountLabel?: string | null;
   externalId?: string | null;
-  balanceUsd?: number | string | null;
+};
+
+type DiscoveredAccountRow = {
+  externalId: string; // required for saving
+  accountLabel: string; // required for saving
+  balanceUsd?: number | string | null; // optional display
 };
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -23,9 +26,7 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error((data as any)?.error || `Request failed: ${res.status}`);
-  }
+  if (!res.ok) throw new Error((data as any)?.error || `Request failed: ${res.status}`);
   return data as T;
 }
 
@@ -35,44 +36,49 @@ function fmtMoney(v: unknown) {
   return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function displayAccountLine(a: BrokerAccountRow) {
+function accountLine(a: { accountLabel?: string | null; externalId?: string | null; balanceUsd?: unknown }) {
   const name = (a.accountLabel ?? "").trim();
   const id = (a.externalId ?? "").trim();
-  const bal = fmtMoney(a.balanceUsd);
+  const bal = fmtMoney((a as any).balanceUsd);
 
-  // Your preferred: Name | AccountNumber | Balance
-  // If some parts are missing, it gracefully collapses.
   const parts = [name || null, id || null, bal || null].filter(Boolean) as string[];
   return parts.length ? parts.join(" | ") : "Account";
 }
 
 export function BrokerConnectionsCard() {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [accounts, setAccounts] = useState<BrokerAccountRow[]>([]);
+  // Saved rows from DB
+  const [saved, setSaved] = useState<SavedBrokerAccountRow[]>([]);
 
-  // Credentials inputs (never loaded from API; only what the user types)
+  // Discovered accounts from ProjectX (not saved yet)
+  const [discovered, setDiscovered] = useState<DiscoveredAccountRow[]>([]);
+
+  // Credentials input (only what the user types)
   const [username, setUsername] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
 
-  const projectXAccounts = useMemo(
-    () => accounts.filter((a) => a.brokerName === "projectx"),
-    [accounts]
+  // When user wants to add more accounts / refresh list
+  const [showConnect, setShowConnect] = useState(false);
+
+  const savedProjectX = useMemo(
+    () => saved.filter((a) => a.brokerName === "projectx"),
+    [saved]
   );
 
-  const anyProjectXConnected = projectXAccounts.length > 0;
+  const hasSavedProjectX = savedProjectX.length > 0;
 
-  async function refreshConnections() {
+  async function refreshSaved() {
     setError(null);
     setLoading(true);
     try {
-      const data = await fetchJSON<{ ok: true; accounts: BrokerAccountRow[] }>("/api/broker-accounts", {
+      const data = await fetchJSON<{ ok: true; accounts: SavedBrokerAccountRow[] }>("/api/broker-accounts", {
         method: "GET",
       });
-      setAccounts(data.accounts ?? []);
+      setSaved(data.accounts ?? []);
     } catch (e: any) {
       setError(e?.message || "Failed to load broker accounts");
     } finally {
@@ -80,104 +86,164 @@ export function BrokerConnectionsCard() {
     }
   }
 
-  async function discoverProjectXAccounts() {
-    // This should create/update BrokerAccount rows in DB (your discover route),
-    // then we refresh the list from /api/broker-accounts.
-    await fetchJSON("/api/broker-accounts/projectx/discover", { method: "POST" });
-    await refreshConnections();
-  }
-
   useEffect(() => {
-    (async () => {
-      await refreshConnections();
-    })();
+    void refreshSaved();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // On refresh/page load: if ProjectX is already connected, auto-discover so the Accounts list is always populated.
-  useEffect(() => {
-    if (!loading && anyProjectXConnected) {
-      // fire and forget (but still show errors if any)
-      (async () => {
-        try {
-          await discoverProjectXAccounts();
-        } catch (e: any) {
-          setError(e?.message || "Failed to load ProjectX accounts");
-        }
-      })();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  async function discoverFromProjectX() {
+    // Loads the account list from ProjectX using the entered credentials.
+    // This does NOT save anything by itself (it just populates the list).
+    const data = await fetchJSON<{ ok: true; accounts: DiscoveredAccountRow[] }>(
+      "/api/broker-accounts/projectx/discover",
+      {
+        method: "POST",
+        body: JSON.stringify({ username, apiKey }),
+      }
+    );
+
+    const rows = Array.isArray(data.accounts) ? data.accounts : [];
+    // Hard guard so the UI can never show broken rows
+    const cleaned = rows
+      .map((a) => ({
+        externalId: String(a.externalId ?? "").trim(),
+        accountLabel: String(a.accountLabel ?? "").trim(),
+        balanceUsd: a.balanceUsd ?? null,
+      }))
+      .filter((a) => a.externalId && a.accountLabel);
+
+    setDiscovered(cleaned);
+  }
 
   async function onConnect() {
     setError(null);
-    setSaving(true);
+
+    if (!username.trim() || !apiKey.trim()) {
+      // Friendly, UI-level validation (no scary API error)
+      setError("Enter your ProjectX username and API key to continue.");
+      return;
+    }
+
+    setBusy(true);
     try {
-      // 1) Save credentials
+      await discoverFromProjectX();
+      // Once we have the list, we keep credentials in-memory for enabling accounts,
+      // but we do NOT show them again unless user clicks "Add / refresh".
+      setShowConnect(false);
+    } catch (e: any) {
+      setError(e?.message || "Couldn’t connect to ProjectX. Check your username / API key.");
+      setDiscovered([]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onEnableSaved(accountId: string, next: boolean) {
+    setError(null);
+    setBusy(true);
+    try {
+      await fetchJSON(`/api/broker-accounts/${accountId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isEnabled: next }),
+      });
+      await refreshSaved();
+    } catch (e: any) {
+      setError(e?.message || "Update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onEnableDiscovered(a: DiscoveredAccountRow, next: boolean) {
+    // If enabling a discovered account, we must SAVE it (create brokerAccount row).
+    // If disabling a discovered account that isn't saved yet, it's just a UI toggle (no DB).
+    if (!next) return;
+
+    setError(null);
+
+    if (!username.trim() || !apiKey.trim()) {
+      setError("To enable an account, enter your ProjectX username and API key first.");
+      return;
+    }
+
+    setBusy(true);
+    try {
       await fetchJSON("/api/broker-accounts", {
         method: "POST",
         body: JSON.stringify({
           brokerName: "projectx",
           username,
           apiKey,
-          // If your POST requires these, keep them. If not, harmless.
           contractId: "CON.F.US.MGC.J26",
+          externalId: a.externalId,
+          accountLabel: a.accountLabel,
           enable: true,
         }),
       });
 
-      // 2) Clear secret field immediately
+      await refreshSaved();
+
+      // Optional: once they successfully save at least one account,
+      // clear the apiKey from UI memory (safer).
       setApiKey("");
       setShowKey(false);
-
-      // 3) Discover accounts + refresh list
-      await discoverProjectXAccounts();
     } catch (e: any) {
-      setError(e?.message || "Connect failed");
+      setError(e?.message || "Couldn’t enable that account");
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
-  async function onToggleEnabled(accountId: string, next: boolean) {
+  async function onDeleteProjectXCredentials() {
     setError(null);
-    setSaving(true);
-    try {
-      await fetchJSON(`/api/broker-accounts/${accountId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ isEnabled: next }),
-      });
-      await refreshConnections();
-    } catch (e: any) {
-      setError(e?.message || "Update failed");
-    } finally {
-      setSaving(false);
-    }
-  }
+    if (savedProjectX.length === 0) return;
 
-  async function onDeleteAccount(accountId: string) {
-    setError(null);
-    setSaving(true);
+    const ok = window.confirm(
+      "Delete ProjectX broker credentials?\n\nThis will remove all saved ProjectX accounts from Aura."
+    );
+    if (!ok) return;
+
+    setBusy(true);
     try {
-      await fetchJSON(`/api/broker-accounts/${accountId}`, { method: "DELETE" });
-      await refreshConnections();
+      // Delete every saved ProjectX brokerAccount row (no per-account delete UI)
+      for (const row of savedProjectX) {
+        await fetchJSON(`/api/broker-accounts/${row.id}`, { method: "DELETE" });
+      }
+
+      // Reset UI
+      setDiscovered([]);
+      setUsername("");
+      setApiKey("");
+      setShowKey(false);
+      setShowConnect(false);
+
+      await refreshSaved();
     } catch (e: any) {
       setError(e?.message || "Delete failed");
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
+  // Saved lookup by externalId so we can show discovered rows as enabled/disabled accurately
+  const savedByExternalId = useMemo(() => {
+    const m = new Map<string, SavedBrokerAccountRow>();
+    for (const s of savedProjectX) {
+      const k = (s.externalId ?? "").trim();
+      if (k) m.set(k, s);
+    }
+    return m;
+  }, [savedProjectX]);
+
   const statusPill = loading
     ? "Loading…"
-    : anyProjectXConnected
-      ? projectXAccounts.some((a) => a.isEnabled)
-        ? "Connected - trading enabled"
-        : "Connected - trading disabled"
+    : hasSavedProjectX
+      ? savedProjectX.some((a) => a.isEnabled)
+        ? "Connected"
+        : "Connected"
       : "Not connected";
 
-  const canConnect = username.trim().length > 0 && apiKey.trim().length > 0 && !saving && !loading;
-  const disabled = saving || loading;
+  const disabled = busy || loading;
 
   return (
     <section className="aura-card">
@@ -188,70 +254,115 @@ export function BrokerConnectionsCard() {
 
       <div className="aura-mt-12 aura-grid-gap-12">
         {error ? (
-          <div className="aura-card-muted aura-text-sm" style={{ borderColor: "rgba(255,0,0,0.35)" }}>
+          <div
+            className="aura-card-muted aura-text-sm"
+            style={{ borderColor: "rgba(255,0,0,0.35)" }}
+          >
             {error}
           </div>
         ) : null}
 
         <div className="aura-card-muted aura-grid-gap-12">
-          <div className="aura-control-title">ProjectX</div>
-
-          {/* Connect row (always visible) */}
-          <div className="aura-grid-gap-12">
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">Username</div>
-              </div>
-              <input
-                className="aura-input"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="you@email.com"
-                autoComplete="off"
-                name="aura_projectx_username"
-              />
+          {/* Header row */}
+          <div className="aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">ProjectX</div>
             </div>
 
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">API key</div>
-              </div>
+            <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
+              {hasSavedProjectX ? (
+                <>
+                  <button
+                    className="aura-btn"
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setShowConnect((v) => !v)}
+                  >
+                    {showConnect ? "Hide" : "Add / refresh"}
+                  </button>
 
-              <div style={{ display: "flex", gap: 8, width: "100%" }}>
-                <input
-                  className="aura-input"
-                  type={showKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="••••••••••••••••"
-                  autoComplete="new-password"
-                  name="aura_projectx_apikey"
-                  style={{ flex: 1 }}
-                />
-                <button className="aura-btn" type="button" onClick={() => setShowKey((v) => !v)} disabled={disabled}>
-                  {showKey ? "Hide" : "Show"}
-                </button>
-                <button className="aura-btn" type="button" onClick={onConnect} disabled={!canConnect}>
-                  {saving ? "Connecting…" : "Connect"}
-                </button>
-              </div>
+                  <button
+                    className="aura-btn"
+                    type="button"
+                    disabled={disabled}
+                    onClick={onDeleteProjectXCredentials}
+                    title="Delete saved ProjectX credentials and accounts from Aura"
+                  >
+                    Delete ProjectX broker credentials
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
 
-          {/* Accounts list (no extra gap) */}
-          <div className="aura-card-muted aura-grid-gap-12" style={{ marginTop: 0 }}>
+          {/* CONNECT (only when not connected OR when user chooses Add/refresh) */}
+          {!hasSavedProjectX || showConnect ? (
+            <div className="aura-grid-gap-12">
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Username</div>
+                </div>
+                <input
+                  className="aura-input"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="you@email.com"
+                  autoComplete="off"
+                  name="aura_projectx_username"
+                />
+              </div>
+
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">API key</div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, width: "100%" }}>
+                  <input
+                    className="aura-input"
+                    type={showKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="••••••••••••••••"
+                    autoComplete="new-password"
+                    name="aura_projectx_apikey"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="aura-btn"
+                    type="button"
+                    onClick={() => setShowKey((v) => !v)}
+                    disabled={disabled}
+                  >
+                    {showKey ? "Hide" : "Show"}
+                  </button>
+                  <button
+                    className="aura-btn"
+                    type="button"
+                    onClick={onConnect}
+                    disabled={disabled}
+                    title="Load your ProjectX accounts"
+                  >
+                    {busy ? "Connecting…" : "Connect"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ACCOUNTS (no gap) */}
+          <div className="aura-grid-gap-12" style={{ marginTop: 0 }}>
             <div className="aura-control-title">Accounts</div>
 
-            {projectXAccounts.length === 0 ? (
-              <div className="aura-muted aura-text-xs">
-                Connect to ProjectX to load your accounts.
-              </div>
-            ) : (
+            {/* If we have saved accounts, show them. */}
+            {savedProjectX.length > 0 ? (
               <div className="aura-grid-gap-12">
-                {projectXAccounts.map((a) => (
+                {savedProjectX.map((a) => (
                   <div key={a.id} className="aura-control-row">
                     <div className="aura-control-meta">
-                      <div className="aura-control-title">{displayAccountLine(a)}</div>
+                      <div className="aura-control-title">
+                        {accountLine({ accountLabel: a.accountLabel, externalId: a.externalId })}
+                      </div>
                     </div>
 
                     <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
@@ -259,27 +370,65 @@ export function BrokerConnectionsCard() {
                         className="aura-btn"
                         type="button"
                         disabled={disabled}
-                        onClick={() => onToggleEnabled(a.id, !a.isEnabled)}
-                        title={a.isEnabled ? "Disable trading" : "Enable trading"}
+                        onClick={() => onEnableSaved(a.id, !a.isEnabled)}
                       >
                         {a.isEnabled ? "Enabled" : "Disabled"}
-                      </button>
-
-                      <button
-                        className="aura-btn"
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => onDeleteAccount(a.id)}
-                      >
-                        Delete
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
+
+            {/* If not connected and not discovered yet, show a single helpful line (no scary errors). */}
+            {savedProjectX.length === 0 && discovered.length === 0 ? (
+              <div className="aura-muted aura-text-xs">Connect to ProjectX to load your accounts.</div>
+            ) : null}
+
+            {/* Discovered list (for enabling additional accounts) */}
+            {discovered.length > 0 ? (
+              <div className="aura-grid-gap-12">
+                {discovered.map((a) => {
+                  const savedRow = savedByExternalId.get(a.externalId) ?? null;
+                  const enabled = savedRow ? savedRow.isEnabled : false;
+
+                  return (
+                    <div key={a.externalId} className="aura-control-row">
+                      <div className="aura-control-meta">
+                        <div className="aura-control-title">
+                          {accountLine({
+                            accountLabel: a.accountLabel,
+                            externalId: a.externalId,
+                            balanceUsd: a.balanceUsd ?? null,
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
+                        <button
+                          className="aura-btn"
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => {
+                            if (savedRow) {
+                              void onEnableSaved(savedRow.id, !savedRow.isEnabled);
+                            } else {
+                              void onEnableDiscovered(a, true);
+                            }
+                          }}
+                          title={enabled ? "Disable trading" : "Enable trading"}
+                        >
+                          {enabled ? "Enabled" : "Disabled"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
+          {/* If connected but user hasn’t clicked add/refresh, keep UI clean */}
         </div>
       </div>
     </section>
