@@ -2,7 +2,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { ensureUserProfile } from "@/lib/user-profile";
-import { encryptJson } from "@/lib/crypto";
+import { decryptJson, encryptJson } from "@/lib/crypto";
 
 type BrokerName = "projectx";
 
@@ -51,6 +51,53 @@ async function loginAndFetchAccounts(username: string, apiKey: string) {
   }));
 }
 
+async function loginAndFetchAccountBalancesFromEncrypted(encryptedCredentials: any) {
+  const creds = decryptJson(encryptedCredentials);
+  const username = String(creds?.username || "").trim();
+  const apiKey = String(creds?.apiKey || "").trim();
+
+  if (!username || !apiKey) throw new Error("Missing broker credentials");
+
+  const loginRes = await fetch("https://api.topstepx.com/api/Auth/loginKey", {
+    method: "POST",
+    headers: { accept: "text/plain", "Content-Type": "application/json" },
+    body: JSON.stringify({ userName: username, apiKey }),
+  });
+
+  const loginText = await loginRes.text();
+  const loginJson = loginText ? JSON.parse(loginText) : null;
+  const token = loginJson?.token;
+
+  if (!loginRes.ok || !token) {
+    throw new Error(loginJson?.errorMessage || "ProjectX login failed");
+  }
+
+  const acctRes = await fetch("https://api.topstepx.com/api/Account/search", {
+    method: "POST",
+    headers: {
+      accept: "text/plain",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ onlyActiveAccounts: true }),
+  });
+
+  const acctText = await acctRes.text();
+  const acctJson = acctText ? JSON.parse(acctText) : null;
+
+  if (!acctRes.ok) {
+    throw new Error(acctJson?.errorMessage || "ProjectX account search failed");
+  }
+
+  const m = new Map<string, number>();
+  for (const a of acctJson?.accounts ?? []) {
+    const externalId = String(a?.id ?? "").trim();
+    const bal = Number(a?.balance ?? 0);
+    if (externalId) m.set(externalId, bal);
+  }
+  return m;
+}
+
 export async function GET() {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
@@ -71,11 +118,40 @@ export async function GET() {
       externalId: true,
       createdAt: true,
       updatedAt: true,
+      encryptedCredentials: true,
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return Response.json({ ok: true, accounts });
+  // Live balances (ProjectX only). Never fail the page if broker is down.
+  let balanceByExternalId: Map<string, number> | null = null;
+
+  try {
+    const anyProjectX = accounts.find((a) => a.brokerName === "projectx" && a.encryptedCredentials);
+    if (anyProjectX?.encryptedCredentials) {
+      balanceByExternalId = await loginAndFetchAccountBalancesFromEncrypted(anyProjectX.encryptedCredentials);
+    }
+  } catch {
+    balanceByExternalId = null;
+  }
+
+  const shaped = accounts.map((a) => {
+    const externalId = (a.externalId ?? "").trim();
+    const bal = balanceByExternalId?.get(externalId);
+
+    return {
+      id: a.id,
+      brokerName: a.brokerName,
+      isEnabled: a.isEnabled,
+      accountLabel: a.accountLabel,
+      externalId: a.externalId,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      balanceUsd: typeof bal === "number" && Number.isFinite(bal) ? bal : null,
+    };
+  });
+
+  return Response.json({ ok: true, accounts: shaped });
 }
 
 export async function POST(req: Request) {
