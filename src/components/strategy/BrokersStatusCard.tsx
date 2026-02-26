@@ -59,7 +59,8 @@ export function BrokersStatusCard(props: {
 
   useEffect(() => {
     void refresh();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onEnabledCountChange]);
 
   const enabledCount = useMemo(
     () => accounts.filter((a) => a.isEnabled).length,

@@ -32,8 +32,6 @@ export default function StrategyPage() {
   const [enabledAccountsCount, setEnabledAccountsCount] = useState<number>(0);
 
   // collapsed by default (we’ll persist per-user in the NEXT step)
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-
   const refreshRuntime = useCallback(async () => {
     try {
       const res = await fetchJSON<RuntimeRes>("/api/trading-state/runtime");
