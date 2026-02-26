@@ -30,6 +30,9 @@ export function BrokerConnectionsCard() {
 
   const [accounts, setAccounts] = useState<BrokerAccountRow[]>([]);
 
+  // UI mode
+  const [editing, setEditing] = useState(false);
+
   // Form state (ProjectX v1)
   const [username, setUsername] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -42,9 +45,6 @@ export function BrokerConnectionsCard() {
     [accounts]
   );
 
-  const allEnabled =
-  accounts.length > 0 && accounts.every((a) => a.isEnabled);
-
   async function refresh() {
     setError(null);
     setLoading(true);
@@ -53,7 +53,13 @@ export function BrokerConnectionsCard() {
         "/api/broker-accounts",
         { method: "GET" }
       );
-      setAccounts(data.accounts ?? []);
+      const rows = data.accounts ?? [];
+      setAccounts(rows);
+
+      // If they already have a ProjectX saved, default to collapsed view.
+      if (rows.some((a) => a.brokerName === "projectx")) {
+        setEditing(false);
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to load broker accounts");
     } finally {
@@ -79,9 +85,13 @@ export function BrokerConnectionsCard() {
           enable: enableAfterSave,
         }),
       });
+
       // Clear secrets from UI after save
       setApiKey("");
+      setShowKey(false);
+
       await refresh();
+      setEditing(false);
     } catch (e: any) {
       setError(e?.message || "Save failed");
     } finally {
@@ -108,40 +118,26 @@ export function BrokerConnectionsCard() {
 
   async function onDelete() {
     if (!projectX) return;
-    setError(null);
-    setSaving(true);
-    try {
-      await fetchJSON(`/api/broker-accounts/${projectX.id}`, { method: "DELETE" });
-      await refresh();
-    } catch (e: any) {
-      setError(e?.message || "Delete failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onRunAllToggle() {
-    if (accounts.length === 0) return;
-
-    const next = !allEnabled;
-
     const ok = window.confirm(
-      next
-        ? "Enable all broker accounts?\n\nAura will allow workers to run for every connected account."
-        : "Disable all broker accounts?\n\nAura will stop workers for every account."
+      "Delete ProjectX connection?\n\nThis removes the saved broker credentials from Aura."
     );
     if (!ok) return;
 
     setError(null);
     setSaving(true);
     try {
-      await fetchJSON("/api/broker-accounts/bulk-enable", {
-        method: "POST",
-        body: JSON.stringify({ isEnabled: next }),
-      });
+      await fetchJSON(`/api/broker-accounts/${projectX.id}`, { method: "DELETE" });
+      // Clear UI fields
+      setUsername("");
+      setApiKey("");
+      setShowKey(false);
+      setContractId("CON.F.US.MGC.J26");
+      setEnableAfterSave(true);
+      setEditing(false);
+
       await refresh();
     } catch (e: any) {
-      setError(e?.message || "Bulk update failed");
+      setError(e?.message || "Delete failed");
     } finally {
       setSaving(false);
     }
@@ -151,8 +147,8 @@ export function BrokerConnectionsCard() {
     ? "Loading…"
     : projectX
       ? projectX.isEnabled
-        ? "Connected (enabled)"
-        : "Saved (disabled)"
+        ? "Connected - trading enabled"
+        : "Connected - trading disabled"
       : "Not connected";
 
   const canSave =
@@ -161,6 +157,8 @@ export function BrokerConnectionsCard() {
     !saving &&
     !loading;
 
+  const disabled = saving || loading;
+
   return (
     <section className="aura-card">
       <div className="aura-row-between">
@@ -168,27 +166,12 @@ export function BrokerConnectionsCard() {
         <div className="aura-muted aura-text-xs">{statusPill}</div>
       </div>
 
-      <div className="aura-mt-12 aura-card-muted aura-control-row">
-        <div className="aura-control-meta">
-          <div className="aura-control-title">Run all accounts</div>
-          <div className="aura-control-help">
-            Enable or disable workers for every connected broker account.
-          </div>
-        </div>
-
-        <button
-          className="aura-btn"
-          type="button"
-          onClick={onRunAllToggle}
-          disabled={saving || loading || accounts.length === 0}
-        >
-          {accounts.length === 0 ? "—" : allEnabled ? "On" : "Off"}
-        </button>
-      </div>
-
       <div className="aura-mt-12 aura-grid-gap-12">
         {error ? (
-          <div className="aura-card-muted aura-text-sm" style={{ borderColor: "rgba(255,0,0,0.35)" }}>
+          <div
+            className="aura-card-muted aura-text-sm"
+            style={{ borderColor: "rgba(255,0,0,0.35)" }}
+          >
             {error}
           </div>
         ) : null}
@@ -197,107 +180,178 @@ export function BrokerConnectionsCard() {
           <div className="aura-control-meta">
             <div className="aura-control-title">ProjectX</div>
             <div className="aura-control-help">
-              Save your credentials (encrypted). Enable to let the orchestrator launch the worker.
+              Connect your broker so Aura can trade on your account.
             </div>
           </div>
 
-          <div className="aura-grid-gap-12">
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">Username (email)</div>
-                <div className="aura-control-help">Your ProjectX login username.</div>
-              </div>
-              <input
-                className="aura-input"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="you@email.com"
-                autoComplete="username"
-              />
-            </div>
+          {/* COLLAPSED (connected) VIEW */}
+          {projectX && !editing ? (
+            <div className="aura-grid-gap-12">
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Trading enabled</div>
+                  <div className="aura-control-help">
+                    If off, Aura will not run this broker account even when you press RUN.
+                  </div>
+                </div>
 
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">API Key</div>
-                <div className="aura-control-help">ProjectX API key.</div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input
-                      className="aura-input"
-                      type={showKey ? "text" : "password"}
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="ProjectX API key"
-                      autoComplete="off"
-                    />
+                <button
+                  className="aura-btn"
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onToggleEnabled(!projectX.isEnabled)}
+                  title={projectX.isEnabled ? "Disable trading" : "Enable trading"}
+                >
+                  {projectX.isEnabled ? "On" : "Off"}
+                </button>
+              </div>
+
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Credentials</div>
+                  <div className="aura-control-help">
+                    Saved securely. You can edit them any time.
+                  </div>
+                </div>
+
+                <div
+                  className="aura-control-right"
+                  style={{ display: "flex", gap: 8 }}
+                >
+                  <button
+                    className="aura-btn"
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setEditing(true)}
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    className="aura-btn"
+                    type="button"
+                    disabled={disabled}
+                    onClick={onDelete}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* EDIT / CONNECT VIEW */
+            <div className="aura-grid-gap-12">
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Username (email)</div>
+                  <div className="aura-control-help">Your ProjectX login username.</div>
+                </div>
+                <input
+                  className="aura-input"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="you@email.com"
+                  autoComplete="username"
+                />
+              </div>
+
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">API Key</div>
+                  <div className="aura-control-help">Your ProjectX API key.</div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, width: "100%" }}>
+                  <input
+                    className="aura-input"
+                    type={showKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="ProjectX API key"
+                    autoComplete="off"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="aura-btn"
+                    type="button"
+                    onClick={() => setShowKey((v) => !v)}
+                    disabled={disabled}
+                  >
+                    {showKey ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Contract ID</div>
+                  <div className="aura-control-help">
+                    Default contract id for the worker (e.g. MGC).
+                  </div>
+                </div>
+                <input
+                  className="aura-input"
+                  value={contractId}
+                  onChange={(e) => setContractId(e.target.value)}
+                  placeholder="CON.F.US.MGC.J26"
+                />
+              </div>
+
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Trading enabled after save</div>
+                  <div className="aura-control-help">
+                    If enabled, Aura can run this account when you press RUN.
+                  </div>
+                </div>
+                <button
+                  className="aura-btn"
+                  onClick={() => setEnableAfterSave((v) => !v)}
+                  type="button"
+                  disabled={disabled}
+                >
+                  {enableAfterSave ? "On" : "Off"}
+                </button>
+              </div>
+
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Actions</div>
+                  <div className="aura-control-help">
+                    Save credentials to connect your broker.
+                  </div>
+                </div>
+
+                <div
+                  className="aura-control-right"
+                  style={{ display: "flex", gap: 8 }}
+                >
+                  <button
+                    className="aura-btn"
+                    onClick={onSave}
+                    disabled={!canSave}
+                  >
+                    {saving ? "Saving…" : projectX ? "Save" : "Save & connect"}
+                  </button>
+
+                  {projectX ? (
                     <button
                       className="aura-btn"
                       type="button"
-                      onClick={() => setShowKey((v) => !v)}
+                      disabled={disabled}
+                      onClick={() => {
+                        setApiKey("");
+                        setShowKey(false);
+                        setEditing(false);
+                      }}
                     >
-                      {showKey ? "Hide" : "Show"}
+                      Cancel
                     </button>
-                  </div>
+                  ) : null}
                 </div>
               </div>
-
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">Contract ID</div>
-                <div className="aura-control-help">Default MGC contract id for the worker.</div>
-              </div>
-              <input
-                className="aura-input"
-                value={contractId}
-                onChange={(e) => setContractId(e.target.value)}
-                placeholder="CON.F.US.MGC.J26"
-              />
             </div>
-
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">Enable after save</div>
-                <div className="aura-control-help">If enabled, orchestrator will treat this account as runnable.</div>
-              </div>
-              <button
-                className="aura-btn"
-                onClick={() => setEnableAfterSave((v) => !v)}
-                type="button"
-              >
-                {enableAfterSave ? "On" : "Off"}
-              </button>
-            </div>
-
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">Actions</div>
-                <div className="aura-control-help">
-                  Save updates credentials. Enable/Disable controls whether workers should run.
-                </div>
-              </div>
-
-              <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
-                <button className="aura-btn" onClick={onSave} disabled={!canSave}>
-                  {saving ? "Saving…" : "Save"}
-                </button>
-
-                {projectX ? (
-                  <>
-                    <button
-                      className="aura-btn"
-                      onClick={() => onToggleEnabled(!projectX.isEnabled)}
-                      disabled={saving || loading}
-                    >
-                      {projectX.isEnabled ? "Disable" : "Enable"}
-                    </button>
-
-                    <button className="aura-btn" onClick={onDelete} disabled={saving || loading}>
-                      Delete
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </section>
