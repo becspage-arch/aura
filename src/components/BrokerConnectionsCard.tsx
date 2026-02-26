@@ -179,22 +179,19 @@ export function BrokerConnectionsCard() {
         <div className="aura-card-muted aura-grid-gap-12">
           <div className="aura-control-meta">
             <div className="aura-control-title">ProjectX</div>
-            <div className="aura-control-help">
-              Connect your broker so Aura can trade on your account.
-            </div>
           </div>
 
           {/* COLLAPSED (connected) VIEW */}
           {projectX && !editing ? (
-            <div className="aura-grid-gap-12">
-              <div className="aura-control-row">
-                <div className="aura-control-meta">
-                  <div className="aura-control-title">Trading enabled</div>
-                  <div className="aura-control-help">
-                    If off, Aura will not run this broker account even when you press RUN.
-                  </div>
+            <div className="aura-control-row">
+              <div className="aura-control-meta">
+                <div className="aura-control-title">ProjectX</div>
+                <div className="aura-control-help">
+                  {projectX.isEnabled ? "Trading enabled" : "Trading disabled"}
                 </div>
+              </div>
 
+              <div className="aura-control-right" style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button
                   className="aura-btn"
                   type="button"
@@ -202,40 +199,26 @@ export function BrokerConnectionsCard() {
                   onClick={() => onToggleEnabled(!projectX.isEnabled)}
                   title={projectX.isEnabled ? "Disable trading" : "Enable trading"}
                 >
-                  {projectX.isEnabled ? "On" : "Off"}
+                  {projectX.isEnabled ? "Enabled" : "Disabled"}
                 </button>
-              </div>
 
-              <div className="aura-control-row">
-                <div className="aura-control-meta">
-                  <div className="aura-control-title">Credentials</div>
-                  <div className="aura-control-help">
-                    Saved securely. You can edit them any time.
-                  </div>
-                </div>
-
-                <div
-                  className="aura-control-right"
-                  style={{ display: "flex", gap: 8 }}
+                <button
+                  className="aura-btn"
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setEditing(true)}
                 >
-                  <button
-                    className="aura-btn"
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => setEditing(true)}
-                  >
-                    Edit
-                  </button>
+                  Edit
+                </button>
 
-                  <button
-                    className="aura-btn"
-                    type="button"
-                    disabled={disabled}
-                    onClick={onDelete}
-                  >
-                    Delete
-                  </button>
-                </div>
+                <button
+                  className="aura-btn"
+                  type="button"
+                  disabled={disabled}
+                  onClick={onDelete}
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ) : (

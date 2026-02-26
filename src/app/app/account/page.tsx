@@ -14,32 +14,6 @@ export default function SettingsPage() {
       {/* Broker Connections (NOW REAL) */}
       <BrokerConnectionsCard />
 
-      {/* Account Defaults */}
-      <section className="aura-card">
-        <div className="aura-row-between">
-          <div className="aura-card-title">Account Defaults</div>
-          <div className="aura-muted aura-text-xs">Applies across Aura</div>
-        </div>
-
-        <div className="aura-mt-12 aura-grid-gap-12 aura-disabled">
-          <div className="aura-card-muted aura-control-row">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Default broker account</div>
-              <div className="aura-control-help">Used if Live Control hasn’t selected an account.</div>
-            </div>
-            <span className="aura-select-pill">—</span>
-          </div>
-
-          <div className="aura-card-muted aura-control-row">
-            <div className="aura-control-meta">
-              <div className="aura-control-title">Default symbol</div>
-              <div className="aura-control-help">Pre-selected for new sessions.</div>
-            </div>
-            <span className="aura-select-pill">MGC</span>
-          </div>
-        </div>
-      </section>
-
       {/* Notifications */}
       <section className="aura-card">
         <div className="aura-row-between">
@@ -125,7 +99,7 @@ export default function SettingsPage() {
           <div className="aura-card-muted aura-control-row">
             <div className="aura-control-meta">
               <div className="aura-control-title">Timezone</div>
-              <div className="aura-control-help">Used for sessions, charts, and reporting.</div>
+              <div className="aura-control-help">Defaults to Europe/London. Other timezones coming.</div>
             </div>
             <span className="aura-select-pill">Europe/London</span>
           </div>
@@ -133,7 +107,7 @@ export default function SettingsPage() {
           <div className="aura-card-muted aura-control-row">
             <div className="aura-control-meta">
               <div className="aura-control-title">Currency display</div>
-              <div className="aura-control-help">Profit and risk formatting.</div>
+              <div className="aura-control-help">Defaults to $ USD. Other currencies coming.</div>
             </div>
             <span className="aura-select-pill">USD</span>
           </div>
