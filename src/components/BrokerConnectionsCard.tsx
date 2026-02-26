@@ -177,9 +177,6 @@ export function BrokerConnectionsCard() {
         ) : null}
 
         <div className="aura-card-muted aura-grid-gap-12">
-          <div className="aura-control-meta">
-            <div className="aura-control-title">ProjectX</div>
-          </div>
 
           {/* COLLAPSED (connected) VIEW */}
           {projectX && !editing ? (
@@ -282,9 +279,9 @@ export function BrokerConnectionsCard() {
 
               <div className="aura-control-row">
                 <div className="aura-control-meta">
-                  <div className="aura-control-title">Trading enabled after save</div>
+                  <div className="aura-control-title">Enable Trading</div>
                   <div className="aura-control-help">
-                    If enabled, Aura can run this account when you press RUN.
+                    If enabled, Aura will run your trading strategy on this account when you press RUN.
                   </div>
                 </div>
                 <button
@@ -298,11 +295,7 @@ export function BrokerConnectionsCard() {
               </div>
 
               <div className="aura-control-row">
-                <div className="aura-control-meta">
-                  <div className="aura-control-title">Actions</div>
-                  <div className="aura-control-help">
-                    Save credentials to connect your broker.
-                  </div>
+                <div className="aura-control-meta">&bnsp;
                 </div>
 
                 <div
