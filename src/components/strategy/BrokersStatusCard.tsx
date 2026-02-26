@@ -9,6 +9,7 @@ type BrokerAccountRow = {
   isEnabled: boolean;
   accountLabel?: string | null;
   externalId?: string | null;
+  balanceUsd?: number | null;
 };
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -23,12 +24,23 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+function fmtMoney(v: unknown) {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  if (!Number.isFinite(n)) return null;
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function brokerLabel(brokerName: string) {
+  return brokerName === "projectx" ? "ProjectX" : brokerName;
+}
+
 function accountLine(a: BrokerAccountRow) {
+  const broker = brokerLabel(a.brokerName);
   const name = (a.accountLabel ?? "").trim();
   const id = (a.externalId ?? "").trim();
+  const bal = fmtMoney(a.balanceUsd);
 
-  const parts = [name || null, id || null].filter(Boolean) as string[];
-  return parts.length ? parts.join(" | ") : "Account";
+  return [broker, name || "Account", id || null, bal || null].filter(Boolean).join(" | ");
 }
 
 export function BrokersStatusCard(props: {
@@ -128,11 +140,6 @@ export function BrokersStatusCard(props: {
             <div className="aura-control-meta">
               <div className="aura-control-title">
                 {accountLine(a)}
-              </div>
-              <div className="aura-control-help">
-                {a.isEnabled
-                  ? "Strategy will run on this account"
-                  : "Strategy will not run on this account"}
               </div>
             </div>
 

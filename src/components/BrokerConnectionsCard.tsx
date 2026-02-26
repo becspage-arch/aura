@@ -11,6 +11,7 @@ type SavedBrokerAccountRow = {
   updatedAt: string;
   accountLabel?: string | null;
   externalId?: string | null;
+  balanceUsd?: number | null;
 };
 
 type DiscoveredAccountRow = {
@@ -30,19 +31,28 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+function brokerLabel(brokerName: string) {
+  return brokerName === "projectx" ? "ProjectX" : brokerName;
+}
+
 function fmtMoney(v: unknown) {
   const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
   if (!Number.isFinite(n)) return null;
   return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function accountLine(a: { accountLabel?: string | null; externalId?: string | null; balanceUsd?: unknown }) {
+function accountLine(a: {
+  brokerName?: string | null;
+  accountLabel?: string | null;
+  externalId?: string | null;
+  balanceUsd?: unknown;
+}) {
+  const broker = brokerLabel(String(a.brokerName || "projectx"));
   const name = (a.accountLabel ?? "").trim();
   const id = (a.externalId ?? "").trim();
-  const bal = fmtMoney((a as any).balanceUsd);
+  const bal = fmtMoney(a.balanceUsd);
 
-  const parts = [name || null, id || null, bal || null].filter(Boolean) as string[];
-  return parts.length ? parts.join(" | ") : "Account";
+  return [broker, name || "Account", id || null, bal || null].filter(Boolean).join(" | ");
 }
 
 export function BrokerConnectionsCard() {
@@ -361,7 +371,12 @@ export function BrokerConnectionsCard() {
                   <div key={a.id} className="aura-control-row">
                     <div className="aura-control-meta">
                       <div className="aura-control-title">
-                        {accountLine({ accountLabel: a.accountLabel, externalId: a.externalId })}
+                        {accountLine({
+                          brokerName: a.brokerName,
+                          accountLabel: a.accountLabel,
+                          externalId: a.externalId,
+                          balanceUsd: a.balanceUsd ?? null,
+                        })}
                       </div>
                     </div>
 
@@ -397,6 +412,7 @@ export function BrokerConnectionsCard() {
                       <div className="aura-control-meta">
                         <div className="aura-control-title">
                           {accountLine({
+                            brokerName: "projectx",
                             accountLabel: a.accountLabel,
                             externalId: a.externalId,
                             balanceUsd: a.balanceUsd ?? null,
