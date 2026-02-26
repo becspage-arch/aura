@@ -6,14 +6,12 @@ import { useEffect, useMemo, useState } from "react";
 type Prefs = {
   tradeClosedWins: boolean;
   tradeClosedLosses: boolean;
-  dailySummary: boolean;
   strategyStatus: boolean;
 };
 
 const DEFAULTS: Prefs = {
   tradeClosedWins: true,
   tradeClosedLosses: true,
-  dailySummary: false,
   strategyStatus: true,
 };
 
@@ -40,12 +38,6 @@ export function NotificationPreferences() {
         title: "Strategy status",
         sub: "Aura is now running / paused.",
       },
-      {
-        key: "dailySummary" as const,
-        title: "Daily summary",
-        sub: "End-of-day summary email (later).",
-        comingSoon: true, // we can keep this, but still let them toggle if you want
-      },
     ],
     []
   );
@@ -64,15 +56,13 @@ export function NotificationPreferences() {
           return;
         }
 
-        const p = data?.prefs as Prefs | undefined;
+        const p = data?.prefs as any;
         if (!cancelled && p) {
           setPrefs({
             tradeClosedWins: !!p.tradeClosedWins,
             tradeClosedLosses: !!p.tradeClosedLosses,
-            dailySummary: !!p.dailySummary,
             strategyStatus: !!p.strategyStatus,
           });
-          setLoaded(true);
         }
       } catch (e: any) {
         if (!cancelled) setMsg(e?.message ?? "Failed to load preferences");
@@ -112,12 +102,11 @@ export function NotificationPreferences() {
         return;
       }
 
-      const p = data?.prefs as Prefs | undefined;
+      const p = data?.prefs as any;
       if (p) {
         setPrefs({
           tradeClosedWins: !!p.tradeClosedWins,
           tradeClosedLosses: !!p.tradeClosedLosses,
-          dailySummary: !!p.dailySummary,
           strategyStatus: !!p.strategyStatus,
         });
       }
@@ -132,18 +121,11 @@ export function NotificationPreferences() {
 
   return (
     <div>
-      <div className="aura-control-title">What to notify you about</div>
-      <div className="aura-control-help">
-        Choose which events you want alerts for.
-      </div>
-
-      <div className="aura-mt-12 aura-pill-group">
+      <div className="aura-pill-group">
         {items.map((it) => {
           const pressed = !!prefs[it.key];
           const busy = savingKey === it.key;
-
-          // If you want daily summary truly disabled in UI:
-          const disabled = !loaded || busy || !!it.comingSoon;
+          const disabled = !loaded || busy;
 
           return (
             <button
@@ -152,14 +134,10 @@ export function NotificationPreferences() {
               className={`aura-pill-toggle ${disabled ? "aura-disabled" : ""}`}
               aria-pressed={pressed}
               onClick={() => (!disabled ? toggle(it.key) : null)}
-              title={it.comingSoon ? "Coming soon" : ""}
             >
               <span className="aura-pill-indicator" />
               <span className="aura-pill-toggle__stack">
-                <span>
-                  {it.title}
-                  {busy ? " - saving..." : it.comingSoon ? " - soon" : ""}
-                </span>
+                <span>{it.title}{busy ? " - saving..." : ""}</span>
                 <span className="aura-pill-toggle__sublabel">{it.sub}</span>
               </span>
             </button>

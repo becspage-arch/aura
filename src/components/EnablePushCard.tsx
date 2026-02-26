@@ -35,7 +35,6 @@ type OneSignalLiveInfo = {
   token?: string | null;
   optedIn?: boolean | null;
 
-  // extra internal reads (best-effort)
   rawUser?: any;
   rawPushSub?: any;
 };
@@ -79,7 +78,6 @@ type Diag = {
 
   permission: PermissionInfo;
 
-  // OneSignal (global + internal)
   oneSignalGlobalType: string;
   oneSignalHasUserModel: boolean;
   oneSignalOptedIn: string;
@@ -87,7 +85,6 @@ type Diag = {
   auraOneSignalInit?: any;
   auraPushSubLast?: any;
 
-  // service worker
   swSupported: boolean;
   swController: boolean;
   swRegistrations: { scope: string; scriptURL: string; state?: string }[];
@@ -99,25 +96,20 @@ type Diag = {
     error?: string;
   };
 
-  // fetch checks
   fetchWorker?: FetchDiag;
   fetchUpdaterWorker?: FetchDiag;
   fetchManifest?: FetchDiag;
   fetchIcon192?: FetchDiag;
 
-  // api probes
   pingApi?: { ok: boolean; status: number; error?: string };
   pingOneSignalCdn?: { ok: boolean; status: number; error?: string };
   pingOneSignalApi?: { ok: boolean; status: number; error?: string };
 
-  // storage/network
   storage: StorageInfo;
   network: NetworkInfo;
 
-  // OneSignal live snapshot
   oneSignalLive?: OneSignalLiveInfo;
 
-  // any errors we captured
   errors: string[];
 };
 
@@ -170,11 +162,8 @@ async function ping(url: string): Promise<{ ok: boolean; status: number; error?:
     const res = await fetch(url, {
       method: "GET",
       cache: "no-store",
-      // avoid CORS failures looking like "network down"
       mode: "no-cors" as RequestMode,
     });
-
-    // With no-cors, status may be 0 even if it succeeded. Still useful.
     return { ok: true, status: (res as any).status ?? 0 };
   } catch (e) {
     return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e) };
@@ -190,9 +179,7 @@ async function readPermissionsApi(): Promise<PermissionInfo> {
   };
 
   try {
-    if (typeof navigator === "undefined" || !(navigator as any).permissions?.query) {
-      return info;
-    }
+    if (typeof navigator === "undefined" || !(navigator as any).permissions?.query) return info;
     info.permissionsApi_supported = true;
 
     try {
@@ -202,7 +189,6 @@ async function readPermissionsApi(): Promise<PermissionInfo> {
       info.permissionsApi_notifications = null;
     }
 
-    // "push" is not consistently supported on iOS Permissions API
     try {
       const p = await (navigator as any).permissions.query({ name: "push" });
       info.permissionsApi_push = p?.state ?? null;
@@ -217,10 +203,7 @@ async function readPermissionsApi(): Promise<PermissionInfo> {
 }
 
 function readStorageInfo(): StorageInfo {
-  const out: StorageInfo = {
-    localStorage_ok: false,
-    sessionStorage_ok: false,
-  };
+  const out: StorageInfo = { localStorage_ok: false, sessionStorage_ok: false };
 
   try {
     if (typeof window !== "undefined" && window.localStorage) {
@@ -339,9 +322,7 @@ async function readOneSignalLive(): Promise<OneSignalLiveInfo> {
   }
 }
 
-async function collectDiagnostics(extra?: {
-  swRegisterAttempt?: Diag["swRegisterAttempt"];
-}): Promise<Diag> {
+async function collectDiagnostics(): Promise<Diag> {
   const errors: string[] = [];
 
   const pageUrl = typeof window !== "undefined" ? window.location.href : "unknown";
@@ -455,13 +436,14 @@ async function collectDiagnostics(extra?: {
     pingOneSignalApi,
     storage,
     network,
-    swRegisterAttempt: extra?.swRegisterAttempt,
     oneSignalLive,
     errors,
   };
 }
 
-export function EnablePushCard() {
+export function EnablePushCard(props: { compact?: boolean }) {
+  const compact = !!props.compact;
+
   const [loading, setLoading] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -473,6 +455,8 @@ export function EnablePushCard() {
   });
 
   const [diag, setDiag] = useState<Diag | null>(null);
+  const [showSteps, setShowSteps] = useState(!compact);
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
 
   async function refresh() {
     const s = await getPushStatus();
@@ -488,7 +472,6 @@ export function EnablePushCard() {
   }, []);
 
   async function enableOnThisDevice() {
-    // 🚫 Native app guard — disable web push inside Capacitor
     const isNative =
       typeof window !== "undefined" &&
       !!(window as any).Capacitor &&
@@ -502,22 +485,7 @@ export function EnablePushCard() {
     setLoading(true);
     setError(null);
 
-    let swAttempt: Diag["swRegisterAttempt"] | undefined;
-
     try {
-      // Only block web push inside *real* native apps.
-      // (Some builds accidentally expose a Capacitor stub on web.)
-      const cap: any = (window as any).Capacitor;
-      const isNativeReal =
-        !!cap &&
-        typeof cap.isNativePlatform === "function" &&
-        cap.isNativePlatform() === true;
-
-      if (isNativeReal) {
-        setError("Native push is not wired yet. Continue to Step 4.");
-        return;
-      }
-
       const res = await requestPushPermission();
 
       if (res.enabled && res.subscriptionId) {
@@ -538,15 +506,13 @@ export function EnablePushCard() {
         }
       } else if (res.enabled && !res.subscriptionId) {
         throw new Error(
-          "Permission granted, but no OneSignal subscription id was created. This means OneSignal never registered the device."
+          "Permission granted, but no OneSignal subscription id was created. OneSignal never registered the device."
         );
       }
 
       await refresh();
-      setDiag(await collectDiagnostics({ swRegisterAttempt: swAttempt }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      setDiag(await collectDiagnostics({ swRegisterAttempt: swAttempt }));
     } finally {
       setLoading(false);
     }
@@ -560,18 +526,13 @@ export function EnablePushCard() {
       const r = await fetch("/api/push/test", { method: "POST" });
       const txt = await r.text().catch(() => "");
       if (!r.ok) throw new Error(`Test push failed (${r.status}) ${txt}`);
-
-      setDiag(await collectDiagnostics());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      setDiag(await collectDiagnostics());
     } finally {
       setSendingTest(false);
     }
   }
 
-  const ios = isIOSDeviceUA();
-  const standalone = isStandalone();
   const isEnabled = status.permission === "granted" && !!status.subscriptionId;
 
   const diagText = useMemo(() => {
@@ -581,130 +542,132 @@ export function EnablePushCard() {
 
   return (
     <div className="aura-grid-gap-12">
-      <div className="aura-card-muted">
-        <div className="aura-control-title">Step 1 – Add Aura to your device</div>
-
-        <div className="aura-grid-gap-10 aura-text-xs aura-mt-10">
-          <div>
-            <div className="aura-font-semibold">iPhone (Safari)</div>
-            <ol className="aura-mt-6 aura-muted">
-              <li>a. Open Aura in Safari and log in</li>
-              <li>b. Tap Share → More → Add to Home Screen</li>
-              <li>c. Open Aura from the Home Screen icon</li>
-            </ol>
-
-            {ios ? (
-              <div className="aura-muted aura-text-xs aura-mt-6">
-                Detected: iPhone · {standalone ? "Installed" : "Not installed"}
-              </div>
-            ) : null}
+      {/* Minimal header */}
+      <div className="aura-card-muted aura-control-row">
+        <div className="aura-control-meta">
+          <div className="aura-control-title">This device</div>
+          <div className="aura-control-help">
+            Enable notifications for this device, then send a test.
           </div>
+        </div>
 
-          <div>
-            <div className="aura-font-semibold">Android (Chrome)</div>
-            <ol className="aura-mt-6 aura-muted">
-              <li>a. Open Aura in Chrome and log in</li>
-              <li>b. Install Aura when prompted</li>
-            </ol>
-          </div>
+        <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            className="aura-btn"
+            disabled={loading || isEnabled}
+            onClick={enableOnThisDevice}
+          >
+            {loading ? "Enabling…" : isEnabled ? "Enabled" : "Enable"}
+          </button>
+
+          <button
+            type="button"
+            className="aura-btn aura-btn-subtle"
+            disabled={sendingTest || !isEnabled}
+            onClick={sendTestPush}
+          >
+            {sendingTest ? "Sending…" : "Send test"}
+          </button>
         </div>
       </div>
 
-      <div className="aura-card-muted">
-        <div className="aura-control-title">Step 2 – Enable notifications</div>
+      {/* Optional setup steps (collapsed by default in compact mode) */}
+      <div className="aura-muted aura-text-xs">
+        <button
+          type="button"
+          className="aura-btn aura-btn-subtle"
+          onClick={() => setShowSteps((v) => !v)}
+        >
+          {showSteps ? "Hide install steps" : "Show install steps"}
+        </button>
+      </div>
 
-        <div className="aura-control-row aura-mt-10">
-          <div className="aura-control-meta">
-            <div className="aura-control-help">
-              Click Enable and allow notifications for this device.
+      {showSteps ? (
+        <div className="aura-card-muted">
+          <div className="aura-control-title">Install (required on iPhone)</div>
+
+          <div className="aura-grid-gap-10 aura-text-xs aura-mt-10">
+            <div>
+              <div className="aura-font-semibold">iPhone (Safari)</div>
+              <ol className="aura-mt-6 aura-muted">
+                <li>a. Open Aura in Safari and log in</li>
+                <li>b. Tap Share → Add to Home Screen</li>
+                <li>c. Open Aura from the Home Screen icon</li>
+              </ol>
             </div>
 
-            {status.subscriptionId ? (
-              <div className="aura-muted aura-text-xs aura-mt-6">Device registered</div>
-            ) : null}
-          </div>
-
-          <div className="aura-control-right">
-            <button
-              type="button"
-              className="aura-btn"
-              disabled={loading || isEnabled}
-              onClick={enableOnThisDevice}
-            >
-              {loading ? "Enabling…" : isEnabled ? "Enabled" : "Enable"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="aura-card-muted">
-        <div className="aura-control-title">Step 3 – Send a test notification</div>
-
-        <div className="aura-control-row aura-mt-10">
-          <div className="aura-control-meta">
-            <div className="aura-control-help">
-              Click the button below, then immediately lock your phone to see the notification.
+            <div>
+              <div className="aura-font-semibold">Android (Chrome)</div>
+              <ol className="aura-mt-6 aura-muted">
+                <li>a. Open Aura in Chrome and log in</li>
+                <li>b. Install Aura when prompted</li>
+              </ol>
             </div>
           </div>
-
-          <div className="aura-control-right">
-            <button
-              type="button"
-              className="aura-btn aura-btn-subtle"
-              disabled={sendingTest || !isEnabled}
-              onClick={sendTestPush}
-            >
-              {sendingTest ? "Sending…" : "Send test notification"}
-            </button>
-          </div>
         </div>
-      </div>
+      ) : null}
 
-      <div className="aura-card-muted">
-        <div className="aura-control-title">Diagnostics (copy + paste to me)</div>
-
-        <div className="aura-control-row aura-mt-10">
-          <div className="aura-control-meta">
-            <div className="aura-control-help">
-              Tap Collect after clicking Enable. Then Copy and paste the JSON into ChatGPT.
-            </div>
-          </div>
-
-          <div className="aura-control-right">
-            <button
-              type="button"
-              className="aura-btn aura-btn-subtle"
-              onClick={async () => setDiag(await collectDiagnostics())}
-            >
-              Collect
-            </button>
-
-            <button
-              type="button"
-              className="aura-btn aura-btn-subtle"
-              disabled={!diagText}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(diagText);
-                } catch {
-                  // ignore
-                }
-              }}
-            >
-              Copy
-            </button>
-          </div>
-        </div>
-
-        {diagText ? (
-          <pre className="aura-mt-12 aura-text-xs aura-muted">{diagText}</pre>
-        ) : null}
-      </div>
-
+      {/* Errors (small, non-scary) */}
       {error ? (
         <div className="aura-card-muted aura-error-block">
-          <div className="aura-control-title">Something went wrong</div>
+          <div className="aura-control-title">Couldn’t enable notifications</div>
           <div className="aura-control-help">{error}</div>
+        </div>
+      ) : null}
+
+      {/* Troubleshoot (hidden by default) */}
+      <div className="aura-muted aura-text-xs">
+        <button
+          type="button"
+          className="aura-btn aura-btn-subtle"
+          onClick={async () => {
+            const next = !showTroubleshoot;
+            setShowTroubleshoot(next);
+            if (next) setDiag(await collectDiagnostics());
+          }}
+        >
+          {showTroubleshoot ? "Hide troubleshoot" : "Troubleshoot"}
+        </button>
+      </div>
+
+      {showTroubleshoot ? (
+        <div className="aura-card-muted">
+          <div className="aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">Diagnostics</div>
+              <div className="aura-control-help">
+                Copy + paste this JSON into ChatGPT if push isn’t working.
+              </div>
+            </div>
+
+            <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="aura-btn aura-btn-subtle"
+                onClick={async () => setDiag(await collectDiagnostics())}
+              >
+                Refresh
+              </button>
+
+              <button
+                type="button"
+                className="aura-btn aura-btn-subtle"
+                disabled={!diagText}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(diagText);
+                  } catch {
+                    // ignore
+                  }
+                }}
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+
+          {diagText ? <pre className="aura-mt-12 aura-text-xs aura-muted">{diagText}</pre> : null}
         </div>
       ) : null}
     </div>
