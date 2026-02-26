@@ -467,8 +467,15 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     if (!this.token) throw new Error("fetchOrderById: no token");
     if (!this.accountId) throw new Error("fetchOrderById: no accountId");
 
+    const lookbackHours =
+      process.env.PROJECTX_ORDER_LOOKBACK_HOURS != null
+        ? Number(process.env.PROJECTX_ORDER_LOOKBACK_HOURS)
+        : 168; // 7 days default (safe)
+
+    const hours = Number.isFinite(lookbackHours) && lookbackHours > 0 ? lookbackHours : 168;
+
     const end = new Date();
-    const start = new Date(end.getTime() - 60 * 60 * 1000); // last 60 mins
+    const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
 
     const res = await fetch("https://api.topstepx.com/api/Order/search", {
       method: "POST",
@@ -492,6 +499,42 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     const found = orders.find((o: any) => Number(o?.id) === idNum) ?? null;
 
     return found;
+  }
+
+  async searchOrders(params?: { lookbackHours?: number }): Promise<any[]> {
+    if (!this.token) throw new Error("searchOrders: no token");
+    if (!this.accountId) throw new Error("searchOrders: no accountId");
+
+    const lookbackHours =
+      params?.lookbackHours ??
+      (process.env.PROJECTX_ORDER_LOOKBACK_HOURS != null
+        ? Number(process.env.PROJECTX_ORDER_LOOKBACK_HOURS)
+        : 168);
+
+    const hours = Number.isFinite(lookbackHours) && lookbackHours > 0 ? lookbackHours : 168;
+
+    const end = new Date();
+    const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
+
+    const res = await fetch("https://api.topstepx.com/api/Order/search", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({
+        accountId: this.accountId,
+        startTimestamp: start.toISOString(),
+        endTimestamp: end.toISOString(),
+      }),
+    });
+
+    const text = await res.text();
+    const json = parseJsonOrNull(text) as OrderSearchResponse | null;
+    const orders = Array.isArray(json?.orders) ? json!.orders : [];
+
+    return orders;
   }
 
   async cancelOrder(orderId: string, reason?: string): Promise<boolean> {
@@ -819,6 +862,9 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     stopPrice?: number | null;
     takeProfitPrice?: number | null;
 
+    // ✅ NEW: allow resume logic to supply a safe refPrice (avg position price)
+    refPriceOverride?: number | null;
+
     customTag?: string | null;
   }): Promise<{
     ok: boolean;
@@ -944,10 +990,19 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       tpTicks: tpAbs,
     });
 
-    // --- Get a reference price: prefer actual filledPrice from Order/search ---
+    // --- Get a reference price ---
     let refPrice: number | null = null;
 
-    if (input.entryOrderId) {
+    const override = input.refPriceOverride != null ? Number(input.refPriceOverride) : null;
+    if (override != null && Number.isFinite(override) && override > 0) {
+      refPrice = override;
+      console.log("[projectx-adapter] refPrice override", {
+        entryOrderId: input.entryOrderId ?? null,
+        refPrice,
+      });
+    }
+
+    if (refPrice == null && input.entryOrderId) {
       try {
         const end = new Date();
         const start = new Date(end.getTime() - 10 * 60 * 1000);
