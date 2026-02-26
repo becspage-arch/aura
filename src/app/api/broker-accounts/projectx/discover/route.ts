@@ -1,189 +1,124 @@
-// worker/src/broker/projectx/projectxUserHub.ts
-import {
-  HubConnectionBuilder,
-  HttpTransportType,
-  LogLevel,
-  type HubConnection,
-} from "@microsoft/signalr";
+// src/app/api/broker-accounts/projectx/discover/route.ts
+import { auth } from "@clerk/nextjs/server";
 
-type ProjectXUserHubOpts = {
-  token: string;
-  accountId?: number | null;
+function toStr(v: unknown) {
+  return typeof v === "string" ? v.trim() : "";
+}
 
-  onOrder?: (payload: any) => Promise<void> | void;
-  onTrade?: (payload: any) => Promise<void> | void;
-  onPosition?: (payload: any) => Promise<void> | void;
-
-  debugInvocations?: boolean;
-  rtcUrl?: string;
+type LoginKeyResponse = {
+  token?: string;
+  success?: boolean;
+  errorCode?: number;
+  errorMessage?: string | null;
 };
 
-export class ProjectXUserHub {
-  private conn: HubConnection | null = null;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
-  private lastEventAtMs = 0;
+type PXAccount = {
+  id: number;
+  name: string;
+  balance: number;
+  canTrade: boolean;
+  isVisible: boolean;
+  simulated: boolean;
+};
 
-  constructor(private opts: ProjectXUserHubOpts) {}
+type AccountSearchResponse = {
+  accounts?: PXAccount[];
+  success?: boolean;
+  errorCode?: number;
+  errorMessage?: string | null;
+};
 
-  private unwrap(payload: any): any {
-    const p = Array.isArray(payload) ? payload[0] : payload;
-    if (!p) return p;
-    if (p.data && typeof p.data === "object") return p.data;
-    if (p.payload && typeof p.payload === "object") return p.payload;
-    if (p.trade && typeof p.trade === "object") return p.trade;
-    if (p.order && typeof p.order === "object") return p.order;
-    if (p.position && typeof p.position === "object") return p.position;
-    return p;
+export async function POST(req: Request) {
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+
+  const body = await req.json().catch(() => ({} as any));
+  const userName = toStr(body.username);
+  const apiKey = toStr(body.apiKey);
+
+  if (!userName || !apiKey) {
+    return Response.json({ ok: false, error: "username and apiKey are required" }, { status: 400 });
   }
 
-  async start(): Promise<void> {
-    const {
-      token,
-      debugInvocations = false,
-      rtcUrl,
-      onOrder,
-      onTrade,
-      onPosition,
-      accountId,
-    } = this.opts;
+  // 1) loginKey -> token
+  const loginRes = await fetch("https://api.topstepx.com/api/Auth/loginKey", {
+    method: "POST",
+    headers: { accept: "text/plain", "Content-Type": "application/json" },
+    body: JSON.stringify({ userName, apiKey }),
+  });
 
-    const hubBase = (rtcUrl || process.env.PROJECTX_RTC_URL || "").trim();
-    const base = hubBase || "https://rtc.topstepx.com";
-    const url = `${base.replace(/\/$/, "")}/hubs/user?access_token=${encodeURIComponent(
-      token
-    )}`;
-
-    const conn = new HubConnectionBuilder()
-      .withUrl(url, {
-        skipNegotiation: true,
-        transport: HttpTransportType.WebSockets,
-      })
-      .withAutomaticReconnect()
-      .configureLogging(LogLevel.Information)
-      .build();
-
-    conn.keepAliveIntervalInMilliseconds = 15_000;
-    conn.serverTimeoutInMilliseconds = 120_000;
-
-    this.conn = conn;
-
-    console.log("[projectx-user] starting connection...", {
-      urlBase: base,
-      accountId: accountId ?? null,
-    });
-
-    await conn.start();
-
-    // -------------------------------------------------
-    // TEMP DEBUG — log *any* event the hub emits
-    // -------------------------------------------------
-    (conn as any).onclose((err: any) => {
-      console.warn("[projectx-user] connection closed", err);
-    });
-
-    (conn as any).on("*", (...args: any[]) => {
-      console.log("[projectx-user] RAW EVENT", {
-        at: new Date().toISOString(),
-        args,
-      });
-    });
-
-    // -------------------------------------------------
-    // Probe which subscribe methods actually exist
-    // -------------------------------------------------
-    if (accountId != null) {
-      const candidates: Array<{ name: string; args: any[] }> = [
-        { name: "SubscribeUserAccount", args: [accountId] },
-        { name: "SubscribeAccount", args: [accountId] },
-        { name: "Subscribe", args: [accountId] },
-        { name: "JoinAccount", args: [accountId] },
-        { name: "SubscribeUser", args: [accountId] },
-        { name: "SubscribeOrders", args: [accountId] },
-        { name: "SubscribeTrades", args: [accountId] },
-        { name: "SubscribePositions", args: [accountId] },
-      ];
-
-      for (const c of candidates) {
-        try {
-          const res = await conn.invoke(c.name as any, ...c.args);
-          console.log("[projectx-user] invoke ok", { method: c.name, res });
-        } catch (e) {
-          console.warn("[projectx-user] invoke failed", {
-            method: c.name,
-            err: e instanceof Error ? e.message : String(e),
-          });
-        }
-      }
-    }
-
-    console.log("[projectx-user] connected");
-
-    const wrap =
-      (
-        name: "GatewayUserOrder" | "GatewayUserTrade" | "GatewayUserPosition",
-        fn?: (p: any) => Promise<void> | void
-      ) =>
-      async (...args: any[]) => {
-        this.lastEventAtMs = Date.now();
-        const payload = args.length >= 1 ? args[args.length - 1] : null;
-        const unwrapped = this.unwrap(payload);
-
-        if (debugInvocations) {
-          console.log(`[projectx-user] ${name} recv`, {
-            at: new Date().toISOString(),
-            argsCount: args.length,
-            headTypes: args.slice(0, 3).map((a) => typeof a),
-            head: args.slice(0, 2),
-          });
-          console.log(
-            `[projectx-user] POS_PAYLOAD_JSON ${name} ${JSON.stringify(unwrapped)}`
-          );
-        }
-
-        if (!fn) return;
-
-        try {
-          await fn(unwrapped);
-        } catch (e) {
-          console.error(
-            `[projectx-user] ${name} handler failed (non-fatal)`,
-            e
-          );
-        }
-      };
-
-    // Known (but possibly unused) event names
-    conn.on("GatewayUserOrder", wrap("GatewayUserOrder", onOrder));
-    conn.on("gatewayuserorder", wrap("GatewayUserOrder", onOrder));
-
-    conn.on("GatewayUserTrade", wrap("GatewayUserTrade", onTrade));
-    conn.on("gatewayusertrade", wrap("GatewayUserTrade", onTrade));
-
-    conn.on("GatewayUserPosition", wrap("GatewayUserPosition", onPosition));
-    conn.on("gatewayuserposition", wrap("GatewayUserPosition", onPosition));
-
-    if (!this.heartbeatTimer) {
-      this.heartbeatTimer = setInterval(() => {
-        const ageMs = this.lastEventAtMs
-          ? Date.now() - this.lastEventAtMs
-          : null;
-        console.log("[projectx-user] heartbeat", { lastEventAgeMs: ageMs });
-      }, 10_000);
-    }
+  const loginText = await loginRes.text();
+  let loginJson: LoginKeyResponse | null = null;
+  try {
+    loginJson = loginText ? (JSON.parse(loginText) as LoginKeyResponse) : null;
+  } catch {
+    loginJson = null;
   }
 
-  async stop(): Promise<void> {
-    if (!this.conn) return;
-
-    try {
-      await this.conn.stop();
-    } finally {
-      this.conn = null;
-    }
-
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
+  const token = loginJson?.token ?? null;
+  if (!loginRes.ok || !token) {
+    return Response.json(
+      {
+        ok: false,
+        error:
+          loginJson?.errorMessage ||
+          `ProjectX login failed (HTTP ${loginRes.status})`,
+        errorCode: loginJson?.errorCode ?? null,
+      },
+      { status: 400 }
+    );
   }
+
+  // 2) account search
+  const acctRes = await fetch("https://api.topstepx.com/api/Account/search", {
+    method: "POST",
+    headers: {
+      accept: "text/plain",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ onlyActiveAccounts: true }),
+  });
+
+  const acctText = await acctRes.text();
+  let acctJson: AccountSearchResponse | null = null;
+  try {
+    acctJson = acctText ? (JSON.parse(acctText) as AccountSearchResponse) : null;
+  } catch {
+    acctJson = null;
+  }
+
+  if (!acctRes.ok) {
+    return Response.json(
+      {
+        ok: false,
+        error:
+          acctJson?.errorMessage ||
+          `ProjectX account search failed (HTTP ${acctRes.status})`,
+        errorCode: acctJson?.errorCode ?? null,
+      },
+      { status: 400 }
+    );
+  }
+
+  const accounts = (acctJson?.accounts ?? [])
+    .filter((a) => a && typeof a.id === "number")
+    .map((a) => ({
+      externalId: String(a.id),          // <- stable identifier
+      accountName: String(a.name || ""), // <- what Topstep shows
+      balance: Number(a.balance ?? 0),
+      canTrade: Boolean(a.canTrade),
+      simulated: Boolean(a.simulated),
+      isVisible: Boolean(a.isVisible),
+    }));
+
+  // Sort: visible + canTrade first, then highest balance
+  accounts.sort((a, b) => {
+    const aScore = (a.isVisible ? 2 : 0) + (a.canTrade ? 1 : 0);
+    const bScore = (b.isVisible ? 2 : 0) + (b.canTrade ? 1 : 0);
+    if (bScore !== aScore) return bScore - aScore;
+    return (b.balance ?? 0) - (a.balance ?? 0);
+  });
+
+  return Response.json({ ok: true, accounts });
 }
