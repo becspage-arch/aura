@@ -30,14 +30,19 @@ type AccountSearchResponse = {
 
 export async function POST(req: Request) {
   const { userId: clerkUserId } = await auth();
-  if (!clerkUserId) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  if (!clerkUserId) {
+    return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
 
   const body = await req.json().catch(() => ({} as any));
   const userName = toStr(body.username);
   const apiKey = toStr(body.apiKey);
 
   if (!userName || !apiKey) {
-    return Response.json({ ok: false, error: "username and apiKey are required" }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "username and apiKey are required" },
+      { status: 400 }
+    );
   }
 
   // 1) loginKey -> token
@@ -60,9 +65,7 @@ export async function POST(req: Request) {
     return Response.json(
       {
         ok: false,
-        error:
-          loginJson?.errorMessage ||
-          `ProjectX login failed (HTTP ${loginRes.status})`,
+        error: loginJson?.errorMessage || `ProjectX login failed (HTTP ${loginRes.status})`,
         errorCode: loginJson?.errorCode ?? null,
       },
       { status: 400 }
@@ -92,32 +95,34 @@ export async function POST(req: Request) {
     return Response.json(
       {
         ok: false,
-        error:
-          acctJson?.errorMessage ||
-          `ProjectX account search failed (HTTP ${acctRes.status})`,
+        error: acctJson?.errorMessage || `ProjectX account search failed (HTTP ${acctRes.status})`,
         errorCode: acctJson?.errorCode ?? null,
       },
       { status: 400 }
     );
   }
 
+  // IMPORTANT: Match the UI’s expected keys:
+  // - accountLabel (NOT accountName)
+  // - balanceUsd (NOT balance)
   const accounts = (acctJson?.accounts ?? [])
     .filter((a) => a && typeof a.id === "number")
     .map((a) => ({
-      externalId: String(a.id),          // <- stable identifier
-      accountName: String(a.name || ""), // <- what Topstep shows
-      balance: Number(a.balance ?? 0),
+      externalId: String(a.id),
+      accountLabel: String(a.name || "").trim(),
+      balanceUsd: Number(a.balance ?? 0),
       canTrade: Boolean(a.canTrade),
       simulated: Boolean(a.simulated),
       isVisible: Boolean(a.isVisible),
-    }));
+    }))
+    .filter((a) => a.externalId && a.accountLabel);
 
   // Sort: visible + canTrade first, then highest balance
   accounts.sort((a, b) => {
     const aScore = (a.isVisible ? 2 : 0) + (a.canTrade ? 1 : 0);
     const bScore = (b.isVisible ? 2 : 0) + (b.canTrade ? 1 : 0);
     if (bScore !== aScore) return bScore - aScore;
-    return (b.balance ?? 0) - (a.balance ?? 0);
+    return (b.balanceUsd ?? 0) - (a.balanceUsd ?? 0);
   });
 
   return Response.json({ ok: true, accounts });
