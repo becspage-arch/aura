@@ -11,14 +11,19 @@ type BrokerAccountRow = {
   updatedAt: string;
 };
 
+type GetResponse = { ok: true; accounts: BrokerAccountRow[] };
+type PostResponse = { ok: true; account: { id: string; brokerName: string; isEnabled: boolean } };
+
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    cache: "no-store",
   });
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data?.error || `Request failed: ${res.status}`);
+    throw new Error((data as any)?.error || `Request failed: ${res.status}`);
   }
   return data as T;
 }
@@ -38,25 +43,22 @@ export function BrokerConnectionsCard() {
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [contractId, setContractId] = useState("CON.F.US.MGC.J26");
+  const [externalAccountId, setExternalAccountId] = useState("");
   const [enableAfterSave, setEnableAfterSave] = useState(true);
 
-  const projectX = useMemo(
-    () => accounts.find((a) => a.brokerName === "projectx") ?? null,
-    [accounts]
-  );
+  const projectX = useMemo(() => {
+    return accounts.find((a) => a.brokerName === "projectx") ?? null;
+  }, [accounts]);
 
   async function refresh() {
     setError(null);
     setLoading(true);
     try {
-      const data = await fetchJSON<{ ok: true; accounts: BrokerAccountRow[] }>(
-        "/api/broker-accounts",
-        { method: "GET" }
-      );
+      const data = await fetchJSON<GetResponse>("/api/broker-accounts", { method: "GET" });
       const rows = data.accounts ?? [];
       setAccounts(rows);
 
-      // If they already have a ProjectX saved, default to collapsed view.
+      // If we already have a ProjectX account saved, default to collapsed view.
       if (rows.some((a) => a.brokerName === "projectx")) {
         setEditing(false);
       }
@@ -75,13 +77,14 @@ export function BrokerConnectionsCard() {
     setError(null);
     setSaving(true);
     try {
-      await fetchJSON("/api/broker-accounts", {
+      await fetchJSON<PostResponse>("/api/broker-accounts", {
         method: "POST",
         body: JSON.stringify({
           brokerName: "projectx",
           username,
           apiKey,
           contractId,
+          externalAccountId: externalAccountId || null,
           enable: enableAfterSave,
         }),
       });
@@ -99,56 +102,14 @@ export function BrokerConnectionsCard() {
     }
   }
 
-  async function onToggleEnabled(next: boolean) {
-    if (!projectX) return;
-    setError(null);
-    setSaving(true);
-    try {
-      await fetchJSON(`/api/broker-accounts/${projectX.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ isEnabled: next }),
-      });
-      await refresh();
-    } catch (e: any) {
-      setError(e?.message || "Update failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onDelete() {
-    if (!projectX) return;
-    const ok = window.confirm(
-      "Delete ProjectX connection?\n\nThis removes the saved broker credentials from Aura."
-    );
-    if (!ok) return;
-
-    setError(null);
-    setSaving(true);
-    try {
-      await fetchJSON(`/api/broker-accounts/${projectX.id}`, { method: "DELETE" });
-      // Clear UI fields
-      setUsername("");
-      setApiKey("");
-      setShowKey(false);
-      setContractId("CON.F.US.MGC.J26");
-      setEnableAfterSave(true);
-      setEditing(false);
-
-      await refresh();
-    } catch (e: any) {
-      setError(e?.message || "Delete failed");
-    } finally {
-      setSaving(false);
-    }
-  }
+  const disabled = saving || loading;
 
   const statusPill = loading
     ? "Loading…"
     : projectX
       ? projectX.isEnabled
-        ? "Connected - trading enabled"
-        : "Connected - trading disabled"
+        ? "Connected - Trading enabled"
+        : "Connected - Trading disabled"
       : "Not connected";
 
   const canSave =
@@ -156,8 +117,6 @@ export function BrokerConnectionsCard() {
     apiKey.trim().length > 0 &&
     !saving &&
     !loading;
-
-  const disabled = saving || loading;
 
   return (
     <section className="aura-card">
@@ -168,17 +127,13 @@ export function BrokerConnectionsCard() {
 
       <div className="aura-mt-12 aura-grid-gap-12">
         {error ? (
-          <div
-            className="aura-card-muted aura-text-sm"
-            style={{ borderColor: "rgba(255,0,0,0.35)" }}
-          >
+          <div className="aura-card-muted aura-text-sm" style={{ borderColor: "rgba(255,0,0,0.35)" }}>
             {error}
           </div>
         ) : null}
 
         <div className="aura-card-muted aura-grid-gap-12">
-
-          {/* COLLAPSED (connected) VIEW */}
+          {/* COLLAPSED VIEW */}
           {projectX && !editing ? (
             <div className="aura-control-row">
               <div className="aura-control-meta">
@@ -193,28 +148,9 @@ export function BrokerConnectionsCard() {
                   className="aura-btn"
                   type="button"
                   disabled={disabled}
-                  onClick={() => onToggleEnabled(!projectX.isEnabled)}
-                  title={projectX.isEnabled ? "Disable trading" : "Enable trading"}
-                >
-                  {projectX.isEnabled ? "Enabled" : "Disabled"}
-                </button>
-
-                <button
-                  className="aura-btn"
-                  type="button"
-                  disabled={disabled}
                   onClick={() => setEditing(true)}
                 >
                   Edit
-                </button>
-
-                <button
-                  className="aura-btn"
-                  type="button"
-                  disabled={disabled}
-                  onClick={onDelete}
-                >
-                  Delete
                 </button>
               </div>
             </div>
@@ -265,9 +201,7 @@ export function BrokerConnectionsCard() {
               <div className="aura-control-row">
                 <div className="aura-control-meta">
                   <div className="aura-control-title">Contract ID</div>
-                  <div className="aura-control-help">
-                    Default contract id for the worker (e.g. MGC).
-                  </div>
+                  <div className="aura-control-help">Default contract id for the worker (e.g. MGC).</div>
                 </div>
                 <input
                   className="aura-input"
@@ -279,9 +213,22 @@ export function BrokerConnectionsCard() {
 
               <div className="aura-control-row">
                 <div className="aura-control-meta">
-                  <div className="aura-control-title">Enable Trading</div>
+                  <div className="aura-control-title">Account ID</div>
+                  <div className="aura-control-help">Optional. If you have one, paste it here.</div>
+                </div>
+                <input
+                  className="aura-input"
+                  value={externalAccountId}
+                  onChange={(e) => setExternalAccountId(e.target.value)}
+                  placeholder="50IKTC-V2-..."
+                />
+              </div>
+
+              <div className="aura-control-row">
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Trading enabled</div>
                   <div className="aura-control-help">
-                    If enabled, Aura will run your trading strategy on this account when you press RUN.
+                    If off, Aura will not run this broker account even when you press RUN.
                   </div>
                 </div>
                 <button
@@ -295,18 +242,13 @@ export function BrokerConnectionsCard() {
               </div>
 
               <div className="aura-control-row">
-                <div className="aura-control-meta">&bnsp;
+                <div className="aura-control-meta">
+                  <div className="aura-control-title">Save</div>
+                  <div className="aura-control-help">Credentials are stored securely.</div>
                 </div>
 
-                <div
-                  className="aura-control-right"
-                  style={{ display: "flex", gap: 8 }}
-                >
-                  <button
-                    className="aura-btn"
-                    onClick={onSave}
-                    disabled={!canSave}
-                  >
+                <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
+                  <button className="aura-btn" onClick={onSave} disabled={!canSave}>
                     {saving ? "Saving…" : projectX ? "Save" : "Save & connect"}
                   </button>
 
