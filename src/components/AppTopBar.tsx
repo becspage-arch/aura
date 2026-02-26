@@ -68,17 +68,27 @@ export function AppTopBar() {
 
     async function tick() {
       try {
-        // Range doesn't matter for top bar; endpoint supports it.
-        const res = await fetchJSON<DashboardSummaryResponse>("/api/dashboard/summary?range=1Y");
+        const res = await fetchJSON<{
+          ok: true;
+          accounts: {
+            brokerAccountId: string;
+            systemRunning: boolean;
+          }[];
+        }>("/api/system/status");
+
         if (cancelled) return;
 
-        setIsPaused(res.status.strategy === "PAUSED");
-        setIsKillSwitched(res.status.trading === "STOPPED");
-        setBrokerConnected(!!res.status.brokerConnected);
+        const anyRunning = res.accounts.some((a) => a.systemRunning);
+
+        // Derive visual state from systemRunning
+        setIsPaused(!anyRunning);
+        setIsKillSwitched(false); // kill handled separately
+        setBrokerConnected(anyRunning);
+
       } catch {
-        // ignore
+        setBrokerConnected(false);
       } finally {
-        if (!cancelled) t = setTimeout(tick, 30_000);
+        if (!cancelled) t = setTimeout(tick, 15000);
       }
     }
 
