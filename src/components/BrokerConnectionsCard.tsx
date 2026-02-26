@@ -13,6 +13,8 @@ type BrokerAccountRow = {
 
 type GetResponse = { ok: true; accounts: BrokerAccountRow[] };
 type PostResponse = { ok: true; account: { id: string; brokerName: string; isEnabled: boolean } };
+type PatchResponse = { ok: true; account: { id: string; brokerName: string; isEnabled: boolean } };
+type DeleteResponse = { ok: true };
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -28,9 +30,15 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+function shortId(id: string) {
+  if (!id) return "—";
+  return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
 export function BrokerConnectionsCard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [accounts, setAccounts] = useState<BrokerAccountRow[]>([]);
@@ -46,9 +54,21 @@ export function BrokerConnectionsCard() {
   const [externalAccountId, setExternalAccountId] = useState("");
   const [enableAfterSave, setEnableAfterSave] = useState(true);
 
-  const projectX = useMemo(() => {
-    return accounts.find((a) => a.brokerName === "projectx") ?? null;
-  }, [accounts]);
+  const projectXAccounts = useMemo(
+    () => accounts.filter((a) => a.brokerName === "projectx"),
+    [accounts]
+  );
+
+  const anyConnected = projectXAccounts.length > 0;
+  const anyEnabled = projectXAccounts.some((a) => a.isEnabled);
+
+  const statusPill = loading
+    ? "Loading…"
+    : anyConnected
+      ? anyEnabled
+        ? "Connected - Trading enabled"
+        : "Connected - Trading disabled"
+      : "Not connected";
 
   async function refresh() {
     setError(null);
@@ -58,10 +78,8 @@ export function BrokerConnectionsCard() {
       const rows = data.accounts ?? [];
       setAccounts(rows);
 
-      // If we already have a ProjectX account saved, default to collapsed view.
-      if (rows.some((a) => a.brokerName === "projectx")) {
-        setEditing(false);
-      }
+      // If they already have ProjectX saved, default to collapsed view
+      if (rows.some((a) => a.brokerName === "projectx")) setEditing(false);
     } catch (e: any) {
       setError(e?.message || "Failed to load broker accounts");
     } finally {
@@ -84,7 +102,7 @@ export function BrokerConnectionsCard() {
           username,
           apiKey,
           contractId,
-          externalAccountId: externalAccountId || null,
+          externalAccountId: externalAccountId || "",
           enable: enableAfterSave,
         }),
       });
@@ -102,16 +120,43 @@ export function BrokerConnectionsCard() {
     }
   }
 
+  async function onToggleEnabled(accountId: string, next: boolean) {
+    setError(null);
+    setBusyId(accountId);
+    try {
+      await fetchJSON<PatchResponse>(`/api/broker-accounts/${accountId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isEnabled: next }),
+      });
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || "Update failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onDelete(accountId: string) {
+    const ok = window.confirm(
+      "Delete this broker connection?\n\nThis removes the saved credentials from Aura."
+    );
+    if (!ok) return;
+
+    setError(null);
+    setBusyId(accountId);
+    try {
+      await fetchJSON<DeleteResponse>(`/api/broker-accounts/${accountId}`, {
+        method: "DELETE",
+      });
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || "Delete failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const disabled = saving || loading;
-
-  const statusPill = loading
-    ? "Loading…"
-    : projectX
-      ? projectX.isEnabled
-        ? "Connected - Trading enabled"
-        : "Connected - Trading disabled"
-      : "Not connected";
-
   const canSave =
     username.trim().length > 0 &&
     apiKey.trim().length > 0 &&
@@ -133,26 +178,55 @@ export function BrokerConnectionsCard() {
         ) : null}
 
         <div className="aura-card-muted aura-grid-gap-12">
-          {/* COLLAPSED VIEW */}
-          {projectX && !editing ? (
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">ProjectX</div>
-                <div className="aura-control-help">
-                  {projectX.isEnabled ? "Trading enabled" : "Trading disabled"}
-                </div>
-              </div>
+          {/* CONNECTED (collapsed) VIEW */}
+          {anyConnected && !editing ? (
+            <div className="aura-grid-gap-12">
+              {projectXAccounts.map((acct) => {
+                const rowBusy = busyId === acct.id || disabled;
+                return (
+                  <div key={acct.id} className="aura-control-row">
+                    <div className="aura-control-meta">
+                      <div className="aura-control-title">ProjectX</div>
+                      <div className="aura-control-help">
+                        Account {shortId(acct.id)}
+                      </div>
+                    </div>
 
-              <div className="aura-control-right" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button
-                  className="aura-btn"
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => setEditing(true)}
-                >
-                  Edit
-                </button>
-              </div>
+                    <div
+                      className="aura-control-right"
+                      style={{ display: "flex", gap: 8, alignItems: "center" }}
+                    >
+                      <button
+                        className="aura-btn"
+                        type="button"
+                        disabled={rowBusy}
+                        onClick={() => onToggleEnabled(acct.id, !acct.isEnabled)}
+                        title={acct.isEnabled ? "Disable trading" : "Enable trading"}
+                      >
+                        {acct.isEnabled ? "Trading: ON" : "Trading: OFF"}
+                      </button>
+
+                      <button
+                        className="aura-btn"
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setEditing(true)}
+                      >
+                        Edit credentials
+                      </button>
+
+                      <button
+                        className="aura-btn"
+                        type="button"
+                        disabled={rowBusy}
+                        onClick={() => onDelete(acct.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             /* EDIT / CONNECT VIEW */
@@ -249,10 +323,10 @@ export function BrokerConnectionsCard() {
 
                 <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
                   <button className="aura-btn" onClick={onSave} disabled={!canSave}>
-                    {saving ? "Saving…" : projectX ? "Save" : "Save & connect"}
+                    {saving ? "Saving…" : anyConnected ? "Save" : "Save & connect"}
                   </button>
 
-                  {projectX ? (
+                  {anyConnected ? (
                     <button
                       className="aura-btn"
                       type="button"
