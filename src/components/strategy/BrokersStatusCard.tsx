@@ -1,13 +1,14 @@
 // src/components/strategy/BrokersStatusCard.tsx
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type BrokerAccountRow = {
   id: string;
   brokerName: string;
   isEnabled: boolean;
+  accountLabel?: string | null;
+  externalId?: string | null;
 };
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -16,50 +17,65 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
   });
+
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || `Request failed: ${res.status}`);
+  if (!res.ok) throw new Error((data as any)?.error || `Request failed: ${res.status}`);
   return data as T;
 }
 
-export function BrokersStatusCard() {
+function accountLine(a: BrokerAccountRow) {
+  const name = (a.accountLabel ?? "").trim();
+  const id = (a.externalId ?? "").trim();
+
+  const parts = [name || null, id || null].filter(Boolean) as string[];
+  return parts.length ? parts.join(" | ") : "Account";
+}
+
+export function BrokersStatusCard(props: {
+  isTrading?: boolean;
+  onEnabledCountChange?: (n: number) => void;
+}) {
+  const { isTrading = false, onEnabledCountChange } = props;
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<BrokerAccountRow[]>([]);
 
-  const anyAccounts = accounts.length > 0;
-  const allEnabled = useMemo(
-    () => accounts.length > 0 && accounts.every((a) => a.isEnabled),
-    [accounts]
-  );
-
   async function refresh() {
     setError(null);
     setLoading(true);
     try {
-      const data = await fetchJSON<{ ok: true; accounts: BrokerAccountRow[] }>("/api/broker-accounts", {
-        method: "GET",
-      });
-      setAccounts((data.accounts ?? []).map((a) => ({ id: a.id, brokerName: a.brokerName, isEnabled: a.isEnabled })));
+      const data = await fetchJSON<{ ok: true; accounts: BrokerAccountRow[] }>("/api/broker-accounts");
+      const rows = data.accounts ?? [];
+      setAccounts(rows);
+      onEnabledCountChange?.(rows.filter((a) => a.isEnabled).length);
     } catch (e: any) {
-      setError(e?.message || "Failed to load broker connections");
+      setError(e?.message || "Failed to load broker accounts");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, []);
 
-  async function setEnabledForOne(id: string, next: boolean) {
+  const enabledCount = useMemo(
+    () => accounts.filter((a) => a.isEnabled).length,
+    [accounts]
+  );
+
+  async function toggleAccount(id: string, next: boolean) {
     setError(null);
     setSaving(true);
+
     try {
       await fetchJSON(`/api/broker-accounts/${id}`, {
         method: "PATCH",
         body: JSON.stringify({ isEnabled: next }),
       });
+
       await refresh();
     } catch (e: any) {
       setError(e?.message || "Update failed");
@@ -68,91 +84,76 @@ export function BrokersStatusCard() {
     }
   }
 
-  async function setEnabledForAll(next: boolean) {
-    setError(null);
-    setSaving(true);
-    try {
-      await fetchJSON("/api/broker-accounts/bulk-enable", {
-        method: "POST",
-        body: JSON.stringify({ isEnabled: next }),
-      });
-      await refresh();
-    } catch (e: any) {
-      setError(e?.message || "Bulk update failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const disabled = loading || saving;
+  const disabled = loading || saving || isTrading;
 
   return (
     <section className="aura-card">
       <div className="aura-row-between">
         <div>
-          <div className="aura-card-title">Connected brokers</div>
-          <div className="aura-muted aura-text-xs aura-mt-10">
-            Choose which broker accounts Aura is allowed to trade on when you press RUN.
+          <div className="aura-card-title">Trading Accounts</div>
+          <div className="aura-muted aura-text-xs">
+            Aura will run this strategy on all enabled accounts.
           </div>
         </div>
 
-        {anyAccounts ? (
-          <button
-            className="aura-btn"
-            type="button"
-            disabled={disabled}
-            onClick={() => setEnabledForAll(!allEnabled)}
-            title={allEnabled ? "Disable trading on all accounts" : "Enable trading on all accounts"}
-          >
-            {allEnabled ? "Disable all" : "Enable all"}
-          </button>
-        ) : (
-          <Link href="/app/account" className="aura-btn">
-            Go to Account
-          </Link>
-        )}
+        <div className="aura-muted aura-text-xs">
+          {loading
+            ? "Loading…"
+            : `${enabledCount} enabled`}
+        </div>
       </div>
 
       {error ? (
-        <div className="aura-mt-12 aura-error-block">
-          <div className="aura-text-xs">Error</div>
-          <div className="aura-text-xs">{error}</div>
+        <div
+          className="aura-card-muted aura-text-xs aura-mt-12"
+          style={{ borderColor: "rgba(255,0,0,0.35)" }}
+        >
+          {error}
         </div>
       ) : null}
 
       <div className="aura-mt-12 aura-grid-gap-12">
-        {!anyAccounts ? (
+        {!loading && accounts.length === 0 ? (
           <div className="aura-card-muted">
-            <div className="aura-control-title">No broker connected yet</div>
+            <div className="aura-control-title">No broker accounts connected</div>
             <div className="aura-control-help aura-mt-6">
-              Connect your broker in Account to start trading.
-            </div>
-            <div className="aura-mt-12">
-              <Link href="/app/account" className="aura-btn aura-btn-primary">
-                Connect broker
-              </Link>
+              Connect your broker in Account to allow Aura to trade.
             </div>
           </div>
-        ) : (
-          accounts.map((a) => (
-            <div key={a.id} className="aura-card-muted aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">{a.brokerName === "projectx" ? "ProjectX" : a.brokerName}</div>
-                <div className="aura-control-help">{a.isEnabled ? "Trading enabled" : "Trading disabled"}</div>
-              </div>
+        ) : null}
 
+        {accounts.map((a) => (
+          <div key={a.id} className="aura-control-row">
+            <div className="aura-control-meta">
+              <div className="aura-control-title">
+                {accountLine(a)}
+              </div>
+              <div className="aura-control-help">
+                {a.isEnabled
+                  ? "Strategy will run on this account"
+                  : "Strategy will not run on this account"}
+              </div>
+            </div>
+
+            <div className="aura-control-right">
               <button
                 className="aura-btn"
                 type="button"
                 disabled={disabled}
-                onClick={() => setEnabledForOne(a.id, !a.isEnabled)}
+                onClick={() => toggleAccount(a.id, !a.isEnabled)}
               >
                 {a.isEnabled ? "Enabled" : "Disabled"}
               </button>
             </div>
-          ))
-        )}
+          </div>
+        ))}
       </div>
+
+      {isTrading ? (
+        <div className="aura-muted aura-text-xs aura-mt-12">
+          Settings locked while Aura is running.
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -29,6 +29,7 @@ export default function StrategyPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [current, setCurrent] = useState<StrategySettings | null>(null);
+  const [enabledAccountsCount, setEnabledAccountsCount] = useState<number>(0);
 
   // collapsed by default (we’ll persist per-user in the NEXT step)
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -121,6 +122,7 @@ export default function StrategyPage() {
           loading={loading}
           saving={saving}
           isTrading={isTrading}
+          enabledAccountsCount={enabledAccountsCount}
         />
 
         {err ? (
@@ -134,7 +136,10 @@ export default function StrategyPage() {
         <div className="aura-section-stack">
           <StrategyTopCardsRow current={current} />
           
-          <BrokersStatusCard />
+          <BrokersStatusCard
+            isTrading={isTrading}
+            onEnabledCountChange={setEnabledAccountsCount}
+          />
 
           <TradingSessionsCard
             current={current}

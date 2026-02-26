@@ -7,7 +7,8 @@ export function StrategySummaryStrip(props: {
   current: StrategySettings | null;
   loading: boolean;
   saving: boolean;
-  isTrading: boolean; // locked when true
+  isTrading: boolean;
+  enabledAccountsCount?: number;
 }) {
   const locked = props.isTrading;
 
@@ -57,6 +58,13 @@ export function StrategySummaryStrip(props: {
         <div className="aura-health-pill">
           <span className="aura-health-key">Risk</span>
           <span className="aura-health-val">{riskText}</span>
+        </div>
+
+        <div className="aura-health-pill">
+          <span className="aura-health-key">Accounts</span>
+          <span className="aura-health-val">
+            {props.enabledAccountsCount ?? 0} enabled
+          </span>
         </div>
 
         <div className="aura-health-pill">
