@@ -33,6 +33,8 @@ export async function GET() {
       id: true,
       brokerName: true,
       isEnabled: true,
+      accountLabel: true,
+      externalId: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -59,39 +61,51 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, error: "unsupported broker" }, { status: 400 });
   }
 
+  // Credentials (required)
   const username = toStr(body.username);
   const apiKey = toStr(body.apiKey);
   const contractId = toStr(body.contractId) || "CON.F.US.MGC.J26";
-  const externalAccountId = toStr(body.externalAccountId); // optional
+
+  // Account selection (required now)
+  const externalId = toStr(body.externalId);        // ProjectX account id as string
+  const accountLabel = toStr(body.accountLabel);    // ProjectX account display name
+
+  // Enable/disable trading for THIS account
   const enable = toBool(body.enable, true);
 
   if (!username || !apiKey) {
-    return Response.json(
-      { ok: false, error: "username and apiKey are required" },
-      { status: 400 }
-    );
+    return Response.json({ ok: false, error: "username and apiKey are required" }, { status: 400 });
+  }
+  if (!externalId) {
+    return Response.json({ ok: false, error: "externalId is required" }, { status: 400 });
+  }
+  if (!accountLabel) {
+    return Response.json({ ok: false, error: "accountLabel is required" }, { status: 400 });
   }
 
-  // Encrypt credentials for storage
   const encryptedPayload = encryptJson({
     username,
     apiKey,
     contractId,
-    externalAccountId: externalAccountId || null,
+    externalAccountId: externalId,
   });
 
-  // We keep it simple: 1 broker account per user per brokerName (for now).
+  // Upsert per (userId + brokerName + externalId)
   const existing = await db.brokerAccount.findFirst({
-    where: { userId: user.id, brokerName },
+    where: { userId: user.id, brokerName, externalId },
     select: { id: true },
-    orderBy: { createdAt: "desc" },
   });
 
   const acct = existing
     ? await db.brokerAccount.update({
         where: { id: existing.id },
-        data: { encryptedCredentials: encryptedPayload, isEnabled: enable },
-        select: { id: true, brokerName: true, isEnabled: true },
+        data: {
+          encryptedCredentials: encryptedPayload,
+          isEnabled: enable,
+          externalId,
+          accountLabel,
+        },
+        select: { id: true, brokerName: true, isEnabled: true, externalId: true, accountLabel: true },
       })
     : await db.brokerAccount.create({
         data: {
@@ -99,17 +113,21 @@ export async function POST(req: Request) {
           brokerName,
           encryptedCredentials: encryptedPayload,
           isEnabled: enable,
+          externalId,
+          accountLabel,
         },
-        select: { id: true, brokerName: true, isEnabled: true },
+        select: { id: true, brokerName: true, isEnabled: true, externalId: true, accountLabel: true },
       });
 
-  // Ensure there is a selected broker account (so strategy-settings works)
-  await db.userTradingState.upsert({
-    where: { userId: user.id },
-    update: { selectedBrokerAccountId: acct.id },
-    create: { userId: user.id, selectedBrokerAccountId: acct.id },
-    select: { id: true },
-  });
+  // If enabling, make it selected (keeps existing v1 behaviour)
+  if (enable) {
+    await db.userTradingState.upsert({
+      where: { userId: user.id },
+      update: { selectedBrokerAccountId: acct.id },
+      create: { userId: user.id, selectedBrokerAccountId: acct.id },
+      select: { id: true },
+    });
+  }
 
   return Response.json({ ok: true, account: acct });
 }
