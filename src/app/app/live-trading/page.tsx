@@ -1,3 +1,4 @@
+// src/app/app/live-trading/page.tsx
 export const dynamic = "force-dynamic";
 
 import { currentUser } from "@clerk/nextjs/server";
