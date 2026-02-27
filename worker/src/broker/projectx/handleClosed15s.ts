@@ -88,7 +88,7 @@ async function backfillMissing15sCandles(params: {
 
   for (let t = prev.time + 15; t < currentTime; t += 15) {
     await db.candle15s.upsert({
-      where: { symbol_time_3m: { symbol, time: t } },
+      where: { symbol_time: { symbol, time: t } },
       create: {
         symbol,
         time: t,
@@ -240,7 +240,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       });
 
       await db.candle15s.upsert({
-        where: { symbol_time_3m: { symbol, time } },
+        where: { symbol_time: { symbol, time } },
         create: {
           symbol,
           time,
