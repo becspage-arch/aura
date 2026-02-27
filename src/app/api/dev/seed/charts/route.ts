@@ -65,7 +65,7 @@ export async function POST() {
   // Upsert into Candle15s so repeated seeding is safe
   const candleOps = candles15.map((c) =>
     prisma.candle15s.upsert({
-      where: { symbol_time_3m: { symbol: c.symbol, time: c.time } },
+      where: { symbol_time: { symbol: c.symbol, time: c.time } },
       create: c as any,
       update: c as any,
     })
