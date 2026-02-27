@@ -23,6 +23,9 @@ jobs:
         run: npm ci
 
       - name: Build (web)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: npm run build
 
       - name: Capacitor sync iOS
@@ -141,4 +144,3 @@ jobs:
         run: |
           set -euo pipefail
           fastlane pilot upload --api_key_path "$ASC_API_KEY_PATH" -i "$IPA_PATH" --skip_waiting_for_build_processing true
-          
