@@ -195,7 +195,7 @@ async function upsertCandle3m(params: {
   const id = `c3m_${symbol}_${time}`;
 
   await db.candle3m.upsert({
-    where: { symbol_time: { symbol, time } },
+    where: { symbol_time_3m: { symbol, time } },
     create: {
       id,
       symbol,

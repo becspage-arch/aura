@@ -1,3 +1,4 @@
+// src/lib/ably/server.ts
 import Ably from "ably";
 import { AuraRealtimeEvent, AuraRealtimeEventType } from "@/lib/realtime/events";
 
