@@ -37,9 +37,6 @@ jobs:
         run: sudo gem install fastlane -N
 
       - name: Prepare signing files
-        printf '%s' "$IOS_SIGNING_P12_BASE64" | base64 -D > "$RUNNER_TEMP/ios_distribution.p12"
-ls -la "$RUNNER_TEMP/ios_distribution.p12"
-shasum -a 256 "$RUNNER_TEMP/ios_distribution.p12"
         env:
           IOS_SIGNING_P12_BASE64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
           IOS_SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
@@ -56,14 +53,17 @@ shasum -a 256 "$RUNNER_TEMP/ios_distribution.p12"
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
           security default-keychain -d user -s "$KEYCHAIN"
 
-          # Import cert (.p12)
-          echo "$IOS_SIGNING_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/ios_distribution.p12"
+          # Import cert (.p12) - SAFE decode + checksum
+          printf '%s' "$IOS_SIGNING_P12_BASE64" | base64 -D > "$RUNNER_TEMP/ios_distribution.p12"
+          ls -la "$RUNNER_TEMP/ios_distribution.p12"
+          shasum -a 256 "$RUNNER_TEMP/ios_distribution.p12"
+
           security import "$RUNNER_TEMP/ios_distribution.p12" -k "$KEYCHAIN" -P "$IOS_SIGNING_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KEYCHAIN"
 
           # Install provisioning profile
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          echo "$IOS_PROVISION_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          printf '%s' "$IOS_PROVISION_PROFILE_BASE64" | base64 -D > "$RUNNER_TEMP/profile.mobileprovision"
 
           # Extract UUID + Name from the provisioning profile
           security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
