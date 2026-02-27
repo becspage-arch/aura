@@ -87,9 +87,16 @@ jobs:
 
           # Extract UUID + Name from the provisioning profile
           security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
-          UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$RUNNER_TEMP/profile.plist")
-          NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" "$RUNNER_TEMP/profile.plist")
 
+          UUID=$(plutil -extract UUID raw -o - "$RUNNER_TEMP/profile.plist" 2>/dev/null || true)
+          NAME=$(plutil -extract Name raw -o - "$RUNNER_TEMP/profile.plist" 2>/dev/null || true)
+
+          if [ -z "${UUID:-}" ] || [ -z "${NAME:-}" ]; then
+            echo "❌ Failed to extract UUID/Name from provisioning profile"
+            echo "Top of decoded profile plist:"
+            head -n 40 "$RUNNER_TEMP/profile.plist" || true
+            exit 1
+          fi
           cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
 
           echo "PROFILE_UUID=$UUID" >> $GITHUB_ENV
