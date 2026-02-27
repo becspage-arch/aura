@@ -37,6 +37,9 @@ jobs:
         run: sudo gem install fastlane -N
 
       - name: Prepare signing files
+        printf '%s' "$IOS_SIGNING_P12_BASE64" | base64 -D > "$RUNNER_TEMP/ios_distribution.p12"
+ls -la "$RUNNER_TEMP/ios_distribution.p12"
+shasum -a 256 "$RUNNER_TEMP/ios_distribution.p12"
         env:
           IOS_SIGNING_P12_BASE64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
           IOS_SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
