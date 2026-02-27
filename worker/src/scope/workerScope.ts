@@ -14,35 +14,42 @@ export async function getWorkerScope(params: {
   env: NodeJS.ProcessEnv;
   workerName: string;
 }): Promise<WorkerScope> {
-  const clerkUserId = (params.env.AURA_CLERK_USER_ID || "").trim();
-  if (!clerkUserId) {
-    throw new Error(`[${params.workerName}] Missing AURA_CLERK_USER_ID`);
-  }
-
   const brokerAccountId = (params.env.AURA_BROKER_ACCOUNT_ID || "").trim();
   if (!brokerAccountId) {
     throw new Error(`[${params.workerName}] Missing AURA_BROKER_ACCOUNT_ID`);
   }
 
-  const user = await params.prisma.userProfile.findUnique({
-    where: { clerkUserId },
-    select: { id: true },
-  });
-
-  if (!user?.id) {
-    throw new Error(
-      `[${params.workerName}] No userProfile found for clerkUserId=${clerkUserId}`
-    );
-  }
-
-  const acct = await params.prisma.brokerAccount.findFirst({
-    where: { id: brokerAccountId, userId: user.id },
-    select: { id: true, brokerName: true, externalId: true },
+  const acct = await params.prisma.brokerAccount.findUnique({
+    where: { id: brokerAccountId },
+    select: {
+      id: true,
+      brokerName: true,
+      externalId: true,
+      user: {
+        select: {
+          id: true,
+          clerkUserId: true,
+        },
+      },
+    },
   });
 
   if (!acct) {
     throw new Error(
-      `[${params.workerName}] BrokerAccount not found or not owned by user. brokerAccountId=${brokerAccountId}`
+      `[${params.workerName}] BrokerAccount not found. brokerAccountId=${brokerAccountId}`
+    );
+  }
+
+  if (!acct.user?.id) {
+    throw new Error(
+      `[${params.workerName}] BrokerAccount has no owning user. brokerAccountId=${brokerAccountId}`
+    );
+  }
+
+  const clerkUserId = (acct.user.clerkUserId || "").trim();
+  if (!clerkUserId) {
+    throw new Error(
+      `[${params.workerName}] UserProfile.clerkUserId missing for brokerAccountId=${brokerAccountId}`
     );
   }
 
@@ -54,7 +61,7 @@ export async function getWorkerScope(params: {
 
   return {
     clerkUserId,
-    userId: user.id,
+    userId: acct.user.id,
     brokerAccountId: acct.id,
     brokerName: acct.brokerName,
     externalId: acct.externalId ?? null,

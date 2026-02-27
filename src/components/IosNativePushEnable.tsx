@@ -1,90 +1,114 @@
 // src/components/IosNativePushEnable.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-function isNative() {
-  const cap: any = typeof window !== "undefined" ? (window as any).Capacitor : null;
-  return !!cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform() === true;
+type Status = "idle" | "unsupported" | "ready" | "registering" | "registered" | "error";
+
+function isNativeIos(): boolean {
+  // Capacitor injects window.Capacitor on native; in browser it won't exist.
+  // We keep this super defensive.
+  return typeof window !== "undefined" && !!(window as any).Capacitor?.isNativePlatform?.();
 }
 
 export function IosNativePushEnable() {
-  const [status, setStatus] = useState<string>("Idle");
-  const [native, setNative] = useState(false);
+  const [status, setStatus] = useState<Status>("idle");
+  const [detail, setDetail] = useState<string>("");
+
+  const native = useMemo(() => isNativeIos(), []);
 
   useEffect(() => {
-    setNative(isNative());
-  }, []);
+    if (!native) {
+      setStatus("unsupported");
+      setDetail("Open this inside the installed Aura iPhone app.");
+      return;
+    }
+    setStatus("ready");
+    setDetail("Ready to enable iPhone push.");
+  }, [native]);
 
   async function enable() {
-    if (!isNative()) {
-      setStatus("Not in native app");
-      return;
-    }
+    setStatus("registering");
+    setDetail("Requesting permission…");
 
-    setStatus("Requesting permission…");
-
-    const { PushNotifications } = await import("@capacitor/push-notifications");
-    const { Device } = await import("@capacitor/device");
-
-    const perm = await PushNotifications.requestPermissions();
-    if (perm.receive !== "granted") {
-      setStatus("Permission not granted");
-      return;
-    }
-
-    setStatus("Registering with APNs…");
-
-    // Remove old listeners (best-effort)
     try {
-      await PushNotifications.removeAllListeners();
-    } catch {
-      // ignore
-    }
+      const { PushNotifications } = await import("@capacitor/push-notifications");
+      const { Device } = await import("@capacitor/device");
 
-    PushNotifications.addListener("registration", async (token) => {
-      try {
-        const info = await Device.getInfo();
-        const name = `${info.platform} ${info.model || ""}`.trim();
+      // Permission
+      const perm = await PushNotifications.checkPermissions();
+      if (perm.receive !== "granted") {
+        const req = await PushNotifications.requestPermissions();
+        if (req.receive !== "granted") {
+          setStatus("error");
+          setDetail("Permission not granted.");
+          return;
+        }
+      }
 
-        // iOS dev builds often produce sandbox tokens; TestFlight/AppStore = production
-        const env: "sandbox" | "production" =
-          (process.env.NODE_ENV === "development" ? "sandbox" : "production");
+      // Register with APNs
+      await PushNotifications.register();
 
-        const r = await fetch("/api/push/ios/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            deviceToken: token.value,
-            environment: env,
-            deviceName: name || null,
-          }),
+      // Wait for token
+      const token: string = await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("Timed out waiting for device token.")), 15000);
+
+        PushNotifications.addListener("registration", (tkn) => {
+          clearTimeout(t);
+          resolve(tkn.value);
         });
 
-        const txt = await r.text().catch(() => "");
-        if (!r.ok) throw new Error(`Register failed (${r.status}) ${txt}`);
+        PushNotifications.addListener("registrationError", (err) => {
+          clearTimeout(t);
+          reject(new Error(err?.message || "registrationError"));
+        });
+      });
 
-        setStatus("✅ Registered with Aura");
-      } catch (e: any) {
-        setStatus(`❌ ${e?.message ?? "Register error"}`);
+      setDetail("Saving device…");
+
+      const info = await Device.getInfo();
+      const name = info?.model ? `${info.model}` : "iPhone";
+
+      const res = await fetch("/api/push/ios/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceToken: token,
+          // We don't force env here; server can cope + we fallback on BadDeviceToken now.
+          deviceName: name,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || `REGISTER_HTTP_${res.status}`);
       }
-    });
 
-    PushNotifications.addListener("registrationError", (err) => {
-      setStatus(`❌ APNs registration error: ${JSON.stringify(err)}`);
-    });
-
-    await PushNotifications.register();
+      setStatus("registered");
+      setDetail("iPhone registered. You can send a test push now.");
+    } catch (e: any) {
+      setStatus("error");
+      setDetail(e?.message || "Unknown error");
+    }
   }
 
   return (
-    <div className="aura-row-between">
-      <button type="button" className="aura-btn" onClick={enable} disabled={!native}>
-        Enable iPhone push (native)
-      </button>
+    <div className="aura-grid-gap-10">
+      <div className="aura-row-between">
+        <div className="aura-muted aura-text-xs">{detail}</div>
 
-      <div className="aura-muted aura-text-xs" style={{ textAlign: "right" }}>
-        {status}
+        <button
+          type="button"
+          className="aura-btn"
+          onClick={enable}
+          disabled={status === "registering" || status === "unsupported"}
+        >
+          {status === "registered"
+            ? "Enabled"
+            : status === "registering"
+            ? "Enabling…"
+            : "Enable iPhone push"}
+        </button>
       </div>
     </div>
   );

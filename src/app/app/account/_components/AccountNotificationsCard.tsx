@@ -2,15 +2,11 @@
 "use client";
 
 import { useState } from "react";
-import { PushStatusRow } from "@/components/PushStatusRow";
 import { TestEmailButton } from "@/components/TestEmailButton";
 import { NotificationPreferences } from "@/components/NotificationPreferences";
-import { OneSignalLoader } from "@/components/OneSignalLoader";
-import { OneSignalInit } from "@/components/OneSignalInit";
-import { EnablePushCard } from "@/components/EnablePushCard";
+import { IosNativePushEnable } from "@/components/IosNativePushEnable";
 
 export function AccountNotificationsCard() {
-  const [pushOpen, setPushOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
 
   return (
@@ -50,35 +46,32 @@ export function AccountNotificationsCard() {
             <span className="aura-select-pill">On</span>
           </div>
 
-          {/* Phone push (inline) */}
+          {/* iPhone push (native app) */}
           <div className="aura-card-muted aura-grid-gap-12">
-            <div className="aura-control-row">
-              <div className="aura-control-meta">
-                <div className="aura-control-title">Phone push</div>
-                <div className="aura-control-help">
-                  Lock-screen notifications (setup required on this device).
-                </div>
-              </div>
-
-              <div className="aura-control-right" style={{ display: "flex", gap: 8 }}>
-                <PushStatusRow />
-                <button
-                  type="button"
-                  className="aura-btn"
-                  onClick={() => setPushOpen((v) => !v)}
-                >
-                  {pushOpen ? "Hide" : "Enable / manage"}
-                </button>
+            <div className="aura-control-meta">
+              <div className="aura-control-title">iPhone push (native)</div>
+              <div className="aura-control-help">
+                Lock-screen notifications from the installed Aura iPhone app. This replaces “Add to Home Screen” push.
               </div>
             </div>
 
-            {pushOpen ? (
-              <div className="aura-mt-10 aura-grid-gap-12">
-                <OneSignalLoader />
-                <OneSignalInit />
-                <EnablePushCard compact />
+            <IosNativePushEnable />
+
+            <div className="aura-row-between">
+              <button
+                type="button"
+                className="aura-btn aura-btn-subtle"
+                onClick={async () => {
+                  await fetch("/api/push/ios/test", { method: "POST" });
+                }}
+              >
+                Send test iPhone push
+              </button>
+
+              <div className="aura-muted aura-text-xs" style={{ textAlign: "right" }}>
+                Sends to all registered iPhones on your account.
               </div>
-            ) : null}
+            </div>
           </div>
 
           {/* Email (inline) */}
