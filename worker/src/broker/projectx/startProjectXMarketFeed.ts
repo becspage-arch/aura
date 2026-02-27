@@ -3,6 +3,15 @@ import { ProjectXMarketHub } from "./projectxMarketHub.js";
 import { Candle15sAggregator } from "../../candles/candle15sAggregator.js";
 import { makeHandleClosed15s } from "./handleClosed15s.js";
 
+function toNum(v: any): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 const lastPersistAtByInstrument = new Map<string, number>();
 const PERSIST_EVERY_MS = 250;
 
@@ -60,6 +69,19 @@ export async function startProjectXMarketFeed(params: {
       const tsMs = q.ts ? Date.parse(q.ts) : NaN;
       const ageMs = Number.isFinite(tsMs) ? Date.now() - tsMs : null;
 
+      // ---- normalize numeric fields (ProjectX can send strings) ----
+      const bid = toNum((q as any).bid);
+      const ask = toNum((q as any).ask);
+      const last = toNum((q as any).last);
+
+      // lastPrice used for debugging / queries (prefer last, else mid, else bid/ask)
+      const lastPrice =
+        last != null ? last :
+        (bid != null && ask != null) ? (bid + ask) / 2 :
+        bid != null ? bid :
+        ask != null ? ask :
+        null;
+
       const LIVE_QUOTE_MAX_AGE_MS = 15_000;
       if (ageMs !== null && ageMs <= LIVE_QUOTE_MAX_AGE_MS) {
         lastLiveQuoteAtMs = Date.now();
@@ -69,9 +91,9 @@ export async function startProjectXMarketFeed(params: {
       try {
         const instrumentKey = q.contractId;
         const now = Date.now();
-        const last = lastPersistAtByInstrument.get(instrumentKey) ?? 0;
+        const lastPersist = lastPersistAtByInstrument.get(instrumentKey) ?? 0;
 
-        if (now - last >= PERSIST_EVERY_MS) {
+        if (now - lastPersist >= PERSIST_EVERY_MS) {
           lastPersistAtByInstrument.set(instrumentKey, now);
 
           const db = params.getPrisma();
@@ -86,9 +108,10 @@ export async function startProjectXMarketFeed(params: {
                 clerkUserId: ident.clerkUserId,
                 broker: "projectx",
                 contractId: q.contractId,
-                bid: q.bid ?? null,
-                ask: q.ask ?? null,
-                last: q.last ?? null,
+                bid,
+                ask,
+                last,
+                lastPrice,
                 ts: q.ts ?? null,
               },
               userId: ident.userId,
@@ -107,22 +130,25 @@ export async function startProjectXMarketFeed(params: {
         broker: "projectx",
         data: {
           contractId: q.contractId,
-          bid: q.bid,
-          ask: q.ask,
-          last: q.last ?? null,
+          bid,
+          ask,
+          last,
+          lastPrice,
           ts: q.ts ?? null,
         },
       });
 
-      if (q.last == null && q.bid == null && q.ask == null) return;
+      console.log("[projectx-market] quote", { contractId: q.contractId, lastPrice, bid, ask });
+
+      if (last == null && bid == null && ask == null) return;
 
       // 3) Build 15s candle from quote stream
       const closed = candle15s.ingest(
         {
           contractId: q.contractId,
-          bid: q.bid,
-          ask: q.ask,
-          last: q.last ?? null,
+          bid,
+          ask,
+          last,
           ts: q.ts ?? null,
         },
         Date.now()
