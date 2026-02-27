@@ -60,7 +60,16 @@ export function IosNativePushEnable() {
 
         PushNotifications.addListener("registrationError", (err) => {
           clearTimeout(t);
-          reject(new Error(err?.message || "registrationError"));
+
+          // Capacitor typings vary; RegistrationError doesn't guarantee `message`.
+          // Common shapes: { error: string } or sometimes something else.
+          const msg =
+            (err as any)?.message ||
+            (err as any)?.error ||
+            (typeof err === "string" ? err : null) ||
+            "registrationError";
+
+          reject(new Error(msg));
         });
       });
 

@@ -231,6 +231,7 @@ export async function startBrokerFeed(params: {
     maxStopTicks: number;
     entryType: "market" | "limit";
     sessions: { asia: boolean; london: boolean; ny: boolean };
+    contractId: string | null;
   }> {
     const db = getPrisma();
 
@@ -265,6 +266,7 @@ export async function startBrokerFeed(params: {
         rr: Number(cfg?.rr ?? 2),
         maxStopTicks: Number(cfg?.maxStopTicks ?? 45),
         entryType: (cfg?.entryType === "limit" ? "limit" : "market") as "market" | "limit",
+        contractId: typeof cfg?.contractId === "string" ? cfg.contractId.trim() : null,
         sessions:
           sessionsFromCfg == null
             ? { asia: false, london: false, ny: false }
@@ -290,6 +292,7 @@ export async function startBrokerFeed(params: {
         maxStopTicks: 45,
         entryType: "market",
         sessions: { asia: false, london: false, ny: false },
+        contractId: null,
       };
     }
 
@@ -309,6 +312,7 @@ export async function startBrokerFeed(params: {
       maxStopTicks: Number(ss?.maxStopTicks ?? 45),
       entryType: (ss?.entryType === "limit" ? "limit" : "market") as "market" | "limit",
       sessions: noneSelected ? { asia: false, london: false, ny: false } : sessions,
+      contractId: typeof ss?.contractId === "string" ? ss.contractId.trim() : null,
     };
   }
 
@@ -423,7 +427,12 @@ export async function startBrokerFeed(params: {
           ? (broker as any).getAuthToken()
           : null;
 
-      const contractId = process.env.PROJECTX_CONTRACT_ID?.trim() || null;
+      const settings = await getStrategySettingsForWorker();
+
+      const contractId =
+        settings.contractId ||
+        process.env.PROJECTX_CONTRACT_ID?.trim() ||
+        null;
 
       if (!token) {
         console.warn("[projectx-market] no token available, market hub not started");
@@ -431,7 +440,9 @@ export async function startBrokerFeed(params: {
       }
 
       if (!contractId) {
-        console.warn("[projectx-market] PROJECTX_CONTRACT_ID not set, market hub not started");
+        console.warn("[projectx-market] contractId missing (db+env). market hub not started", {
+          brokerAccountId: scope.brokerAccountId,
+        });
         return;
       }
 
