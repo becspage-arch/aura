@@ -27,7 +27,11 @@ export type HandleClosed15sDeps = {
   }) => Promise<void>;
 
   getUserTradingState: () => Promise<{ isPaused: boolean; isKillSwitched: boolean }>;
-getUserIdentityForWorker: () => Promise<{ clerkUserId: string; userId: string; brokerAccountId: string }>;
+  getUserIdentityForWorker: () => Promise<{
+    clerkUserId: string;
+    userId: string;
+    brokerAccountId: string;
+  }>;
   getStrategySettingsForWorker: () => Promise<{
     sessions: { asia: boolean; london: boolean; ny: boolean };
     maxContracts?: number | null;
@@ -125,6 +129,22 @@ async function backfillMissing15sCandles(params: {
         });
       },
     });
+
+    // ✅ Emit backfill 15s close event (so observers don’t “stall”)
+    await emitSafe({
+      name: "candle.15s.closed",
+      ts: new Date().toISOString(),
+      broker: brokerNameForEvent,
+      data: {
+        t0: t * 1000,
+        o: fillPrice,
+        h: fillPrice,
+        l: fillPrice,
+        c: fillPrice,
+        ticks: 0,
+        backfill: true,
+      },
+    });
   }
 }
 
@@ -134,7 +154,7 @@ async function hasOpenTrade(params: {
   brokerName: string;
   contractId: string;
   symbol?: string | null;
-  maxOpenTrades: number; // NEW
+  maxOpenTrades: number;
 }) {
   const openStatuses: any[] = [
     "INTENT_CREATED",
@@ -164,6 +184,10 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
     const closed = params.closed;
     const ticks = Number(closed?.data?.ticks ?? 0);
 
+    const db = deps.getPrisma();
+    const symbol = (process.env.PROJECTX_SYMBOL || "").trim() || closed.data.contractId;
+    const time = Math.floor(closed.data.t0 / 1000);
+
     if (!deps.rolloverOkLoggedRef.value && params.source === "rollover" && ticks > 1) {
       deps.rolloverOkLoggedRef.value = true;
       console.log(
@@ -171,50 +195,9 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       );
     }
 
-    // Always emit close events for forceClose / tiny bars, but don’t trade
-    if (params.source === "forceClose" || ticks <= 1) {
-      // ✅ flush any in-progress 3m bucket before we exit
-      try {
-        const db = deps.getPrisma();
-        const symbol = (process.env.PROJECTX_SYMBOL || "").trim() || closed.data.contractId;
-
-        await flush3mForSymbol({
-          db,
-          symbol,
-          emit3mClosed: async (c3) => {
-            await deps.emitSafe({
-              name: "candle.3m.closed",
-              ts: new Date().toISOString(),
-              broker: "projectx",
-              data: c3,
-            });
-
-            // IMPORTANT: flush is not a true close, don't feed it into the engine
-          },
-        });
-      } catch {
-        // ignore flush errors
-      }
-
-      // ✅ still emit the 15s close event (but never trade on it)
-      await deps.emitSafe({
-        name: "candle.15s.closed",
-        ts: new Date().toISOString(),
-        broker: "projectx",
-        data: closed.data,
-      });
-
-      return;
-    }
-
-    // 3a) Persist CLOSED candle + run strategy
+    // ✅ Persist CLOSED 15s candle + build 3m ALWAYS (even tiny candles / forceClose)
     try {
-      const db = deps.getPrisma();
-
-      const symbol = (process.env.PROJECTX_SYMBOL || "").trim() || closed.data.contractId;
-      const time = Math.floor(closed.data.t0 / 1000);
-
-      // ✅ Backfill missing 15s candles if the broker feed "jumped"
+      // Backfill missing 15s candles if the broker feed "jumped"
       await backfillMissing15sCandles({
         db,
         symbol,
@@ -223,6 +206,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         brokerNameForEvent: "projectx",
       });
 
+      // Persist real closed 15s candle
       await db.candle15s.upsert({
         where: { symbol_time: { symbol, time } },
         create: {
@@ -241,7 +225,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         },
       });
 
-      // ✅ feed the derived 3m builder with the *real* closed candle
+      // Feed derived 3m builder with the real closed candle
       await onClosed15sUpdate3m({
         db,
         candle: {
@@ -277,6 +261,20 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           }
         },
       });
+    } catch (e) {
+      console.error("[projectx-market] failed to persist Candle15s / build 3m", e);
+    }
+
+    // ✅ Tiny/forceClose candles do NOT trade, but they DO persist + build 3m (above)
+    if (params.source === "forceClose" || ticks <= 1) {
+      await deps.emitSafe({
+        name: "candle.15s.closed",
+        ts: new Date().toISOString(),
+        broker: "projectx",
+        data: closed.data,
+      });
+      return;
+    }
 
       // 3b) Strategy enabled?
       const externalAccountId = String(deps.status?.accountId ?? "");
