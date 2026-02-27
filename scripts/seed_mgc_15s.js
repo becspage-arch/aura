@@ -72,7 +72,7 @@ async function main() {
   for (const b of bars) {
     const time = Math.floor(new Date(b.t).getTime() / 1000);
     await prisma.candle15s.upsert({
-      where: { symbol_time: { symbol: SYMBOL, time } },
+      where: { symbol_time_3m: { symbol: SYMBOL, time } },
       create: {
         symbol: SYMBOL,
         time,

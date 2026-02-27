@@ -1,3 +1,4 @@
+// src/app/api/internal/notifications/ingest/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { notify } from "@/lib/notifications/notify";

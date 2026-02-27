@@ -17,7 +17,7 @@ export async function upsertCandle15s(prisma: PrismaClient, x: Candle15sClosed) 
 
   return prisma.candle15s.upsert({
     where: {
-      symbol_time: {
+      symbol_time_3m: {
         symbol: x.symbol,
         time: timeSec,
       },
