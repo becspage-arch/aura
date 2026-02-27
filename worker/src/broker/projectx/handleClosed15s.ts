@@ -206,6 +206,17 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         brokerNameForEvent: "projectx",
       });
 
+      console.log("[candle15s-close] broker", {
+        contractId: closed.data.contractId,
+        t0: closed.data.t0,
+        time: Math.floor(closed.data.t0 / 1000),
+        o: Number(closed.data.o),
+        h: Number(closed.data.h),
+        l: Number(closed.data.l),
+        c: Number(closed.data.c),
+        ticks: Number(closed?.data?.ticks ?? 0),
+      });
+
       // Persist real closed 15s candle
       await db.candle15s.upsert({
         where: { symbol_time: { symbol, time } },
