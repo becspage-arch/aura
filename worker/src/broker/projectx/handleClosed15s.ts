@@ -125,22 +125,6 @@ async function backfillMissing15sCandles(params: {
         });
       },
     });
-
-    // Emit backfill 15s close event for downstream observers (marked backfill)
-    await emitSafe({
-      name: "candle.15s.closed",
-      ts: new Date().toISOString(),
-      broker: brokerNameForEvent,
-      data: {
-        t0: t * 1000,
-        o: fillPrice,
-        h: fillPrice,
-        l: fillPrice,
-        c: fillPrice,
-        ticks: 0,
-        backfill: true,
-      },
-    });
   }
 }
 
