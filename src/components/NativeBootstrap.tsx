@@ -4,42 +4,77 @@
 import { useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
-import { Device } from "@capacitor/device";
+import { App } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
+
+function isNative() {
+  return Capacitor.isNativePlatform();
+}
+
+async function registerApnsToken(token: string) {
+  // In Capacitor with server.url, fetch() is fine — it will hit https://tradeaura.net
+  // Ensure cookies/session exist (you must be logged in inside the app webview).
+  const res = await fetch("/api/push/ios/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      deviceToken: token,
+      environment: "production", // TestFlight = production APNs
+      deviceName: "iPhone",
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Register device failed: ${res.status} ${text}`);
+  }
+}
 
 export default function NativeBootstrap() {
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
+    if (!isNative()) return;
 
+    // 1) Deep link return handler (fixes “login happened in Safari but app didn’t update”)
+    const sub = App.addListener("appUrlOpen", async ({ url }) => {
+      try {
+        // Close Safari / SFSafariViewController if it’s open
+        await Browser.close();
+
+        // If Clerk redirects back with a custom scheme or universal link,
+        // bring it into the webview
+        if (url) {
+          // simplest: navigate the webview to the callback URL
+          window.location.href = url;
+        }
+      } catch {
+        // ignore
+      }
+    });
+
+    // 2) APNs registration
     (async () => {
-      // 1) Ask permission + register with APNs
       const perm = await PushNotifications.requestPermissions();
       if (perm.receive !== "granted") return;
 
       await PushNotifications.register();
 
-      // 2) When we receive the APNs token, register it to our backend
       PushNotifications.addListener("registration", async (token) => {
         try {
-          const info = await Device.getInfo().catch(() => null);
-          const deviceName = info ? `${info.manufacturer ?? ""} ${info.model ?? ""}`.trim() : null;
-
-          await fetch("/api/push/ios/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              deviceToken: token.value,
-              environment: "production", // TestFlight is production APNs
-              deviceName,
-            }),
-          });
-        } catch {
-          // no-op: we don't want bootstrap to crash the app
+          await registerApnsToken(token.value);
+        } catch (e) {
+          console.error(e);
         }
       });
 
-      // Optional: avoid silent failures during setup
-      PushNotifications.addListener("registrationError", () => {});
+      PushNotifications.addListener("registrationError", (err) => {
+        console.error("APNs registrationError", err);
+      });
     })();
+
+    return () => {
+      sub.remove();
+    };
   }, []);
 
   return null;
