@@ -127,20 +127,15 @@ jobs:
         run: |
           echo "$APPSTORE_CONNECT_API_KEY_BASE64" | base64 --decode > key.p8
 
-          cat > api_key.json <<EOF
-          {
-            "key_id": "$APPSTORE_CONNECT_KEY_ID",
-            "issuer_id": "$APPSTORE_CONNECT_ISSUER_ID",
-            "key": "$(cat key.p8 | sed ':a;N;$!ba;s/\n/\\n/g')",
-            "in_house": false
-          }
-          EOF
+          python3 - <<'PY'
+          import json, os
+          key_id = os.environ["APPSTORE_CONNECT_KEY_ID"]
+          issuer_id = os.environ["APPSTORE_CONNECT_ISSUER_ID"]
+          with open("key.p8", "r", encoding="utf-8") as f:
+              key = f.read()
+          data = {"key_id": key_id, "issuer_id": issuer_id, "key": key, "in_house": False}
+          with open("api_key.json", "w", encoding="utf-8") as f:
+              json.dump(data, f)
+          PY
 
           echo "ASC_API_KEY_PATH=api_key.json" >> $GITHUB_ENV
-
-      - name: Upload to TestFlight
-        run: |
-          fastlane pilot upload \
-            --api_key_path "$ASC_API_KEY_PATH" \
-            -i "$IPA_PATH" \
-            --skip_waiting_for_build_processing true

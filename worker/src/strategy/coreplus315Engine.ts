@@ -420,6 +420,15 @@ export class CorePlus315Engine {
       const top = c0.low;
       const bottom = c2.high;
 
+      console.log(
+        `[coreplus315] FVG_WINDOW_BULL ` +
+        `c2_time=${new Date(c2.time * 1000).toISOString()} ` +
+        `c2_high=${c2.high} c2_low=${c2.low} ` +
+        `c1_time=${new Date(this.last3m[this.last3m.length - 2].time * 1000).toISOString()} ` +
+        `c0_time=${new Date(c0.time * 1000).toISOString()} ` +
+        `c0_high=${c0.high} c0_low=${c0.low}`
+      );
+
       console.log(`[coreplus315] NEW_3M_FVG kind=bull side=buy top=${top} bottom=${bottom} c0_low=${c0.low} c2_high=${c2.high}`);
 
       this.activeFvg = {
@@ -437,6 +446,15 @@ export class CorePlus315Engine {
     if (bearFvg) {
       const top = c2.low;
       const bottom = c0.high;
+
+      console.log(
+        `[coreplus315] FVG_WINDOW_BEAR ` +
+        `c2_time=${new Date(c2.time * 1000).toISOString()} ` +
+        `c2_high=${c2.high} c2_low=${c2.low} ` +
+        `c1_time=${new Date(this.last3m[this.last3m.length - 2].time * 1000).toISOString()} ` +
+        `c0_time=${new Date(c0.time * 1000).toISOString()} ` +
+        `c0_high=${c0.high} c0_low=${c0.low}`
+      );
 
       console.log(`[coreplus315] NEW_3M_FVG kind=bear side=sell top=${top} bottom=${bottom} c0_high=${c0.high} c2_low=${c2.low}`);
 
