@@ -139,3 +139,19 @@ jobs:
           PY
 
           echo "ASC_API_KEY_PATH=api_key.json" >> $GITHUB_ENV
+
+      - name: Sanity check IPA + API key file
+        run: |
+          set -e
+          echo "ASC_API_KEY_PATH=$ASC_API_KEY_PATH"
+          echo "IPA_PATH=$IPA_PATH"
+          ls -lah "$ASC_API_KEY_PATH"
+          ls -lah "$IPA_PATH"
+
+      - name: Upload to TestFlight
+        run: |
+          set -e
+          fastlane pilot upload \
+            --api_key_path "$ASC_API_KEY_PATH" \
+            -i "$IPA_PATH" \
+            --skip_waiting_for_build_processing true
