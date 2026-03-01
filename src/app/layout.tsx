@@ -1,6 +1,6 @@
 // src/app/layout.tsx
 import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
+import ClerkProviderNative from "@/components/ClerkProviderNative";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -43,19 +43,13 @@ export default function RootLayout({
       </head>
 
       <body className={`${inter.variable} ${geistMono.variable} aura-body`}>
-        <ClerkProvider
-          publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-          afterSignInUrl="/app"
-          afterSignUpUrl="/app"
-          signInUrl="/sign-in"
-          signUpUrl="/sign-up"
-        >
+        <ClerkProviderNative>
           <ThemeProvider>
             {/* Native bootstrap runs ONLY in Capacitor */}
             <NativeBootstrap />
             {children}
           </ThemeProvider>
-        </ClerkProvider>
+        </ClerkProviderNative>
       </body>
     </html>
   );
