@@ -2,11 +2,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { SignIn, useClerk } from "@clerk/nextjs";
+import { SignIn, useSignIn } from "@clerk/nextjs";
 import { Capacitor } from "@capacitor/core";
 
 export default function Page() {
-  const clerk = useClerk();
+  const { signIn } = useSignIn();
 
   const isNative = useMemo(() => Capacitor.isNativePlatform(), []);
 
@@ -26,12 +26,12 @@ export default function Page() {
     setBusy(true);
     setErr(null);
     try {
-      await clerk.openSignIn({
-        afterSignInUrl: "/app",
-        afterSignUpUrl: "/app",
+      if (!signIn) throw new Error("Clerk signIn not ready");
+
+      await signIn.authenticateWithRedirect({
+        strategy: "oauth_google",
         redirectUrl: "net.tradeaura.app://callback",
-        // force provider
-        initialValues: { strategy: "oauth_google" },
+        redirectUrlComplete: "/app",
       });
     } catch (e: any) {
       console.error("Native Google OAuth start failed", e);
