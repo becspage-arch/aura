@@ -23,11 +23,17 @@ export default function Page() {
   }, []);
 
   async function signInWithGoogleNative() {
+    console.log("NATIVE_GOOGLE_CLICK", { href: window.location.href });
     setBusy(true);
     setErr(null);
     try {
       if (!signIn) throw new Error("Clerk signIn not ready");
 
+      console.log("NATIVE_GOOGLE_REDIRECT_START", {
+        redirectUrl: "net.tradeaura.app://callback",
+        redirectUrlComplete: "/app",
+      });
+      
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: "net.tradeaura.app://callback",
