@@ -43,7 +43,13 @@ export default function RootLayout({
       </head>
 
       <body className={`${inter.variable} ${geistMono.variable} aura-body`}>
-        <ClerkProvider afterSignInUrl="/app" afterSignUpUrl="/app">
+        <ClerkProvider
+          publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+          afterSignInUrl="/app"
+          afterSignUpUrl="/app"
+          signInUrl="/sign-in"
+          signUpUrl="/sign-up"
+        >
           <ThemeProvider>
             {/* Native bootstrap runs ONLY in Capacitor */}
             <NativeBootstrap />
