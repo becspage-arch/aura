@@ -12,28 +12,37 @@ export default function Page() {
 
   const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
   const pkHint = pk ? `${pk.slice(0, 12)}…${pk.slice(-6)}` : "MISSING";
-  const pkType = pk.startsWith("pk_live_") ? "LIVE" : pk.startsWith("pk_test_") ? "TEST" : "UNKNOWN";
+  const pkType = pk.startsWith("pk_live_")
+    ? "LIVE"
+    : pk.startsWith("pk_test_")
+      ? "TEST"
+      : "UNKNOWN";
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [debug, setDebug] = useState<string[]>([]);
+
+  function dbg(line: string) {
+    setDebug((d) => [...d, `${new Date().toISOString()} ${line}`]);
+  }
 
   useEffect(() => {
-    // safety: clear any stale error state on mount
     setErr(null);
+    setDebug([]);
   }, []);
 
   async function signInWithGoogleNative() {
-    console.log("NATIVE_GOOGLE_CLICK", { href: window.location.href });
+    dbg(`NATIVE_GOOGLE_CLICK href=${window.location.href}`);
     setBusy(true);
     setErr(null);
+
     try {
       if (!signIn) throw new Error("Clerk signIn not ready");
 
-      console.log("NATIVE_GOOGLE_REDIRECT_START", {
-        redirectUrl: "net.tradeaura.app://callback",
-        redirectUrlComplete: "/app",
-      });
-      
+      dbg(
+        "NATIVE_GOOGLE_REDIRECT_START redirectUrl=net.tradeaura.app://callback redirectUrlComplete=/app",
+      );
+
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: "net.tradeaura.app://callback",
@@ -43,6 +52,7 @@ export default function Page() {
       console.error("Native Google OAuth start failed", e);
       setErr(e?.message || "Failed to start Google sign-in");
       setBusy(false);
+      dbg(`NATIVE_GOOGLE_ERROR ${e?.message || String(e)}`);
     }
   }
 
@@ -88,6 +98,24 @@ export default function Page() {
           {err ? (
             <div style={{ color: "#ffb4b4", fontSize: 13, lineHeight: 1.4 }}>
               {err}
+            </div>
+          ) : null}
+
+          {debug.length ? (
+            <div
+              style={{
+                marginTop: 4,
+                padding: 10,
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.15)",
+                background: "rgba(0,0,0,0.25)",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                fontSize: 12,
+                lineHeight: 1.4,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {debug.join("\n")}
             </div>
           ) : null}
 
