@@ -85,6 +85,7 @@ type FvgBox = {
   invalid: boolean;
   retested: boolean;
   traded: boolean;
+  retestIgnoredLogged?: boolean;
 };
 
 function floorTo3m(t: number): number {
@@ -303,24 +304,25 @@ export class CorePlus315Engine {
     // IMPORTANT: Pine only starts retest logic AFTER the 3m candle that created the FVG has closed.
     // So we must NOT mark retested on 15s candles that belong to the same 3m bucket as the FVG creation candle.
     if (!this.activeFvg.retested) {
-      const isSame3mBucketAsFvgCreation = floorTo3m(c.time) === this.activeFvg.time;
+      const isSame3mBucketAsFvgCreation = floorTo3m(d.time) === this.activeFvg.time;
 
       const { top, bottom } = fvgBounds(this.activeFvg);
-      const overlaps = c.low <= top && c.high >= bottom;
+      const overlaps = d.low <= top && d.high >= bottom;
 
       if (isSame3mBucketAsFvgCreation) {
         // This is the exact Pine behaviour we’re enforcing:
         // ignore retests inside the same 3m candle that created the FVG.
-        if (overlaps) {
+        if (overlaps && !this.activeFvg.retestIgnoredLogged) {
+          this.activeFvg.retestIgnoredLogged = true;
           console.log("[coreplus315] RETEST_IGNORED_SAME_3M_BUCKET", {
             fvgTime: this.activeFvg.time,
             fvgIso: new Date(this.activeFvg.time * 1000).toISOString(),
-            candle15sTime: c.time,
-            candle15sIso: new Date(c.time * 1000).toISOString(),
+            candle15sTime: d.time,
+            candle15sIso: new Date(d.time * 1000).toISOString(),
             top,
             bottom,
-            cLow: c.low,
-            cHigh: c.high,
+            cLow: d.low,
+            cHigh: d.high,
           });
         }
       } else {
@@ -329,12 +331,12 @@ export class CorePlus315Engine {
           console.log("[coreplus315] RETEST_CONFIRMED", {
             fvgTime: this.activeFvg.time,
             fvgIso: new Date(this.activeFvg.time * 1000).toISOString(),
-            candle15sTime: c.time,
-            candle15sIso: new Date(c.time * 1000).toISOString(),
+            candle15sTime: d.time,
+            candle15sIso: new Date(d.time * 1000).toISOString(),
             top,
             bottom,
-            cLow: c.low,
-            cHigh: c.high,
+            cLow: d.low,
+            cHigh: d.high,
           });
         }
       }
@@ -484,10 +486,19 @@ export class CorePlus315Engine {
     if (this.activeFvg && !this.activeFvg.invalid && c3.time !== this.activeFvg.time) {
       const { top, bottom } = fvgBounds(this.activeFvg);
 
+      let nowInvalid = false;
+
       if (this.activeFvg.side === "buy") {
-        if (c3.close < bottom) this.activeFvg.invalid = true;
+        if (c3.close < bottom) nowInvalid = true;
       } else {
-        if (c3.close > top) this.activeFvg.invalid = true;
+        if (c3.close > top) nowInvalid = true;
+      }
+
+      if (nowInvalid) {
+        this.activeFvg.invalid = true;
+
+        // Defensive: clear retest flagging state so next FVG starts clean
+        this.activeFvg.retestIgnoredLogged = false;
       }
     }
 
@@ -620,6 +631,7 @@ export class CorePlus315Engine {
         invalid: false,
         retested: false,
         traded: false,
+        retestIgnoredLogged: false,
       };
       return;
     }
@@ -641,6 +653,7 @@ export class CorePlus315Engine {
         invalid: false,
         retested: false,
         traded: false,
+        retestIgnoredLogged: false,
       };
       return;
     }
