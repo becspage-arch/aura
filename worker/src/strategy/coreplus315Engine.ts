@@ -101,6 +101,12 @@ function fvgBounds(fvg: { top: number; bottom: number }) {
   return { top, bottom };
 }
 
+function segTouch(ea: number, eb: number, lo: number, hi: number): boolean {
+  const emaMin = Math.min(ea, eb);
+  const emaMax = Math.max(ea, eb);
+  return emaMin <= hi && emaMax >= lo;
+}
+
 export class CorePlus315Engine {
   private cfg: CorePlus315Config;
 
@@ -110,7 +116,13 @@ export class CorePlus315Engine {
   // 3m series for FVG detection (need last 3 closed 3m candles)
   private last3m: Candle3m[] = [];
 
-  // active FVG (we follow “latest box” semantics like your indicator)
+  // --- EMA50 on 3m close (to match Pine) ---
+  private readonly emaLen = 50;
+  private emaSeedCloses: number[] = [];
+  private ema50: number | null = null;
+  private last3mEma: (number | null)[] = []; // aligns 1:1 with last3m
+
+  // active FVG (we follow “latest QUALIFIED box” semantics like your indicator)
   private activeFvg: FvgBox | null = null;
 
   constructor(params: {
@@ -275,10 +287,16 @@ export class CorePlus315Engine {
     }
 
     // Retest detection (any 15s candle that overlaps the FVG zone)
+    // IMPORTANT: Pine only starts retest logic AFTER the 3m candle that created the FVG has closed.
+    // So we must NOT mark retested on 15s candles that belong to the same 3m bucket as the FVG creation candle.
     if (!this.activeFvg.retested) {
-      const { top, bottom } = fvgBounds(this.activeFvg);
-      const overlaps = c.low <= top && c.high >= bottom;
-      if (overlaps) this.activeFvg.retested = true;
+      const isSame3mBucketAsFvgCreation = floorTo3m(d.time) === this.activeFvg.time;
+
+      if (!isSame3mBucketAsFvgCreation) {
+        const { top, bottom } = fvgBounds(this.activeFvg);
+        const overlaps = c.low <= top && c.high >= bottom;
+        if (overlaps) this.activeFvg.retested = true;
+      }
     }
 
     if (!this.activeFvg.retested) {
@@ -394,42 +412,127 @@ export class CorePlus315Engine {
       })}`
     );
 
+    // --- Update EMA50 on 3m close (matches Pine ta.ema(close, 50) on the 3m series) ---
+    const alpha = 2 / (this.emaLen + 1);
+
+    if (this.ema50 == null) {
+      // seed with SMA of first 50 closes (TradingView-style practical match in live conditions)
+      this.emaSeedCloses.push(c3.close);
+      if (this.emaSeedCloses.length > this.emaLen) this.emaSeedCloses.shift();
+
+      if (this.emaSeedCloses.length === this.emaLen) {
+        const sma =
+          this.emaSeedCloses.reduce((acc, v) => acc + v, 0) / this.emaLen;
+        this.ema50 = sma;
+      }
+    } else {
+      this.ema50 = alpha * c3.close + (1 - alpha) * this.ema50;
+    }
+
+    const ema0 = this.ema50;
+
+    // store series + ema aligned
     this.last3m.push(c3);
+    this.last3mEma.push(ema0);
 
     if (this.last3m.length > 50) this.last3m.shift();
+    if (this.last3mEma.length > 50) this.last3mEma.shift();
 
-    // Invalidate existing active FVG using latest 3m close (on subsequent bars)
-    if (this.activeFvg && !this.activeFvg.invalid) {
+    // Invalidate existing active FVG using latest 3m close
+    // IMPORTANT: never invalidate on the SAME 3m candle that created the FVG.
+    if (this.activeFvg && !this.activeFvg.invalid && c3.time !== this.activeFvg.time) {
+      const { top, bottom } = fvgBounds(this.activeFvg);
+
       if (this.activeFvg.side === "buy") {
-        if (c3.close < this.activeFvg.bottom) this.activeFvg.invalid = true;
+        if (c3.close < bottom) this.activeFvg.invalid = true;
       } else {
-        if (c3.close > this.activeFvg.top) this.activeFvg.invalid = true;
+        if (c3.close > top) this.activeFvg.invalid = true;
       }
     }
 
     // Need 3 closed 3m candles to evaluate FVG (current + 2 back)
     if (this.last3m.length < 3) return;
+    if (this.last3mEma.length < 3) return;
 
     const c0 = this.last3m[this.last3m.length - 1];
+    const c1 = this.last3m[this.last3m.length - 2];
     const c2 = this.last3m[this.last3m.length - 3];
 
+    const e0 = this.last3mEma[this.last3mEma.length - 1];
+    const e1 = this.last3mEma[this.last3mEma.length - 2];
+    const e2 = this.last3mEma[this.last3mEma.length - 3];
+
+    // If EMA isn't seeded yet, we cannot qualify FVGs (live trading will be seeded quickly).
+    if (e0 == null || e1 == null || e2 == null) {
+      console.log("[coreplus315] EMA50 not seeded yet - skipping EMA-qualified FVG eval", {
+        emaLen: this.emaLen,
+        seedCount: this.emaSeedCloses.length,
+      });
+      return;
+    }
+
+    // Raw FVG detection (same as Pine)
     const bullFvg = c0.low > c2.high;
     const bearFvg = c0.high < c2.low;
 
-    if (bullFvg) {
+    // Pine "touchAny" logic using EMA segment touch across the 3 bars:
+    // touchBar2 uses ema[2] -> ema[1] against candle2 range
+    // touchBar1 uses ema[1] -> ema[0] against candle1 range
+    // touchBar0 uses ema[1] -> ema[0] against candle0 range
+    const touchBar2 = segTouch(e2, e1, c2.low, c2.high);
+    const touchBar1 = segTouch(e1, e0, c1.low, c1.high);
+    const touchBar0 = segTouch(e1, e0, c0.low, c0.high);
+    const touchAny = touchBar2 || touchBar1 || touchBar0;
+
+    const closeAbove = c0.close > e0;
+    const closeBelow = c0.close < e0;
+
+    // --- Qualified FVG creation rules (your strategy / Pine defaults: onlyWhen50=false) ---
+    const bullQualified = bullFvg && touchAny && closeAbove;
+    const bearQualified = bearFvg && touchAny && closeBelow;
+
+    if (bullFvg || bearFvg) {
+      console.log("[coreplus315] FVG_CANDIDATE", {
+        time: c0.time,
+        iso: new Date(c0.time * 1000).toISOString(),
+        bullFvg,
+        bearFvg,
+        touchAny,
+        touchBar2,
+        touchBar1,
+        touchBar0,
+        ema0: e0,
+        c0_close: c0.close,
+        closeAbove,
+        closeBelow,
+        bullQualified,
+        bearQualified,
+        keptPrevious: !(bullQualified || bearQualified),
+        prevFvg: this.activeFvg
+          ? {
+              side: this.activeFvg.side,
+              time: this.activeFvg.time,
+              top: this.activeFvg.top,
+              bottom: this.activeFvg.bottom,
+              invalid: this.activeFvg.invalid,
+              retested: this.activeFvg.retested,
+              traded: this.activeFvg.traded,
+            }
+          : null,
+      });
+    }
+
+    // If candidate FVG is NOT qualified, ignore it (previous FVG stays active/invalid)
+    if (!bullQualified && !bearQualified) return;
+
+    if (bullQualified) {
       const top = c0.low;
       const bottom = c2.high;
 
       console.log(
-        `[coreplus315] FVG_WINDOW_BULL ` +
-        `c2_time=${new Date(c2.time * 1000).toISOString()} ` +
-        `c2_high=${c2.high} c2_low=${c2.low} ` +
-        `c1_time=${new Date(this.last3m[this.last3m.length - 2].time * 1000).toISOString()} ` +
-        `c0_time=${new Date(c0.time * 1000).toISOString()} ` +
-        `c0_high=${c0.high} c0_low=${c0.low}`
+        `[coreplus315] NEW_3M_FVG kind=bull side=buy top=${top} bottom=${bottom} ` +
+          `ema0=${e0} c0_close=${c0.close} touchAny=${touchAny}`
       );
-
-      console.log(`[coreplus315] NEW_3M_FVG kind=bull side=buy top=${top} bottom=${bottom} c0_low=${c0.low} c2_high=${c2.high}`);
 
       this.activeFvg = {
         side: "buy",
@@ -443,20 +546,14 @@ export class CorePlus315Engine {
       return;
     }
 
-    if (bearFvg) {
+    if (bearQualified) {
       const top = c2.low;
       const bottom = c0.high;
 
       console.log(
-        `[coreplus315] FVG_WINDOW_BEAR ` +
-        `c2_time=${new Date(c2.time * 1000).toISOString()} ` +
-        `c2_high=${c2.high} c2_low=${c2.low} ` +
-        `c1_time=${new Date(this.last3m[this.last3m.length - 2].time * 1000).toISOString()} ` +
-        `c0_time=${new Date(c0.time * 1000).toISOString()} ` +
-        `c0_high=${c0.high} c0_low=${c0.low}`
+        `[coreplus315] NEW_3M_FVG kind=bear side=sell top=${top} bottom=${bottom} ` +
+          `ema0=${e0} c0_close=${c0.close} touchAny=${touchAny}`
       );
-
-      console.log(`[coreplus315] NEW_3M_FVG kind=bear side=sell top=${top} bottom=${bottom} c0_high=${c0.high} c2_low=${c2.low}`);
 
       this.activeFvg = {
         side: "sell",
