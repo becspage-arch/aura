@@ -376,6 +376,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           create: {
             signalKey,
             userId: ident.userId,
+            brokerAccountId: ident.brokerAccountId,
             strategy: "coreplus315",
             brokerName: deps.broker?.name ?? "projectx",
             symbol,
@@ -439,6 +440,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         create: {
           signalKey,
           userId: ident.userId,
+          brokerAccountId: ident.brokerAccountId,
           strategy: "coreplus315",
           brokerName: deps.broker?.name ?? "projectx",
           symbol,
