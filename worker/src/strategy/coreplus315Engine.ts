@@ -107,6 +107,19 @@ function segTouch(ea: number, eb: number, lo: number, hi: number): boolean {
   return emaMin <= hi && emaMax >= lo;
 }
 
+function fvgSummary(f: FvgBox | null) {
+  if (!f) return null;
+  return {
+    side: f.side,
+    time: f.time,
+    top: f.top,
+    bottom: f.bottom,
+    invalid: f.invalid,
+    retested: f.retested,
+    traded: f.traded,
+  };
+}
+
 export class CorePlus315Engine {
   private cfg: CorePlus315Config;
 
@@ -290,12 +303,40 @@ export class CorePlus315Engine {
     // IMPORTANT: Pine only starts retest logic AFTER the 3m candle that created the FVG has closed.
     // So we must NOT mark retested on 15s candles that belong to the same 3m bucket as the FVG creation candle.
     if (!this.activeFvg.retested) {
-      const isSame3mBucketAsFvgCreation = floorTo3m(d.time) === this.activeFvg.time;
+      const isSame3mBucketAsFvgCreation = floorTo3m(c.time) === this.activeFvg.time;
 
-      if (!isSame3mBucketAsFvgCreation) {
-        const { top, bottom } = fvgBounds(this.activeFvg);
-        const overlaps = c.low <= top && c.high >= bottom;
-        if (overlaps) this.activeFvg.retested = true;
+      const { top, bottom } = fvgBounds(this.activeFvg);
+      const overlaps = c.low <= top && c.high >= bottom;
+
+      if (isSame3mBucketAsFvgCreation) {
+        // This is the exact Pine behaviour we’re enforcing:
+        // ignore retests inside the same 3m candle that created the FVG.
+        if (overlaps) {
+          console.log("[coreplus315] RETEST_IGNORED_SAME_3M_BUCKET", {
+            fvgTime: this.activeFvg.time,
+            fvgIso: new Date(this.activeFvg.time * 1000).toISOString(),
+            candle15sTime: c.time,
+            candle15sIso: new Date(c.time * 1000).toISOString(),
+            top,
+            bottom,
+            cLow: c.low,
+            cHigh: c.high,
+          });
+        }
+      } else {
+        if (overlaps) {
+          this.activeFvg.retested = true;
+          console.log("[coreplus315] RETEST_CONFIRMED", {
+            fvgTime: this.activeFvg.time,
+            fvgIso: new Date(this.activeFvg.time * 1000).toISOString(),
+            candle15sTime: c.time,
+            candle15sIso: new Date(c.time * 1000).toISOString(),
+            top,
+            bottom,
+            cLow: c.low,
+            cHigh: c.high,
+          });
+        }
       }
     }
 
@@ -464,9 +505,15 @@ export class CorePlus315Engine {
 
     // If EMA isn't seeded yet, we cannot qualify FVGs (live trading will be seeded quickly).
     if (e0 == null || e1 == null || e2 == null) {
-      console.log("[coreplus315] EMA50 not seeded yet - skipping EMA-qualified FVG eval", {
+      console.log("[coreplus315] EVAL_3M_SUMMARY", {
+        t: c0.time,
+        iso: new Date(c0.time * 1000).toISOString(),
+        emaSeeded: false,
         emaLen: this.emaLen,
         seedCount: this.emaSeedCloses.length,
+        prevFvg: fvgSummary(this.activeFvg),
+        action: "KEEP_PREVIOUS",
+        note: "EMA not seeded yet - skipping FVG qualification",
       });
       return;
     }
@@ -521,6 +568,37 @@ export class CorePlus315Engine {
           : null,
       });
     }
+
+    // ----- Structured 3m evaluation summary (once per closed 3m candle) -----
+    const summary = {
+      t: c0.time,
+      iso: new Date(c0.time * 1000).toISOString(),
+
+      emaSeeded: true,
+      ema0: e0,
+      ema1: e1,
+      ema2: e2,
+
+      raw: { bullFvg, bearFvg },
+      emaFilter: {
+        touchAny,
+        touchBar2,
+        touchBar1,
+        touchBar0,
+        closeAbove,
+        closeBelow,
+      },
+      qualified: { bullQualified, bearQualified },
+
+      prevFvg: fvgSummary(this.activeFvg),
+      action: bullQualified
+        ? "ADOPT_BULL"
+        : bearQualified
+          ? "ADOPT_BEAR"
+          : "KEEP_PREVIOUS",
+    };
+
+    console.log("[coreplus315] EVAL_3M_SUMMARY", summary);
 
     // If candidate FVG is NOT qualified, ignore it (previous FVG stays active/invalid)
     if (!bullQualified && !bearQualified) return;

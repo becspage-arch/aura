@@ -287,6 +287,10 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       return;
     }
 
+    // -----------------------------
+    // STRATEGY / EXECUTION (separate try/catch)
+    // -----------------------------
+    try {
       // 3b) Strategy enabled?
       const externalAccountId = String(deps.status?.accountId ?? "");
       const strategyEnabled = externalAccountId
@@ -330,8 +334,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       }
 
       // We always want a stable signal row key – we can build it from the candidate/intent
-      const candidate =
-        evalRes.kind === "intent" ? evalRes.intent : evalRes.candidate;
+      const candidate = evalRes.kind === "intent" ? evalRes.intent : evalRes.candidate;
 
       if (!candidate) {
         const dbg = deps.strategy.getDebugState?.() as any;
@@ -405,7 +408,6 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           },
           update: {
             updatedAt: new Date(),
-            // keep status BLOCKED and refresh reason/meta
             status: "BLOCKED",
             blockReason: String(evalRes.reason),
             meta: {
@@ -434,7 +436,6 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       logTag("TRADE_INTENT", { worker: deps.env.WORKER_NAME, intent });
       logTag("BRACKET", { worker: deps.env.WORKER_NAME, bracket });
 
-      // Upsert the signal as DETECTED (idempotent)
       await db.strategySignal.upsert({
         where: { signalKey },
         create: {
@@ -459,25 +460,16 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           contracts: Number.isFinite(intent.contracts) ? Number(intent.contracts) : null,
           riskUsdPlanned: toDec(intent.riskUsdPlanned),
           status: "DETECTED",
-          meta: {
-            intent,
-            bracket,
-          },
+          meta: { intent, bracket },
         },
         update: {
           updatedAt: new Date(),
-          meta: {
-            intent,
-            bracket,
-          },
-          // don’t overwrite TAKEN/BLOCKED here (runtime blocks below will set BLOCKED explicitly)
+          meta: { intent, bracket },
         },
       });
 
-      // ✅ Gate execution after ingest (prevents stale context after pause/resume)
       const { isPaused, isKillSwitched } = await deps.getUserTradingState();
 
-      // Block reasons first (and persist them)
       if (isKillSwitched) {
         await db.strategySignal.update({
           where: { signalKey },
@@ -496,17 +488,15 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         return;
       }
 
-            let enforcedMaxOpenTrades = 1;
+      let enforcedMaxOpenTrades = 1;
       let maxContracts: number | null = null;
 
       // Trading Windows gate (blocks opening new trades outside selected windows)
       try {
         const ss = await deps.getStrategySettingsForWorker();
 
-        // For now it's always 1 even if DB has something else
         enforcedMaxOpenTrades = 1;
 
-        // Max contracts cap (null = no cap)
         maxContracts =
           ss.maxContracts == null
             ? null
@@ -515,7 +505,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
               : null;
 
         const tw = matchTradingWindows({
-          atEpochSec: intent.entryTime, // use signal time, not "now"
+          atEpochSec: intent.entryTime,
           sessions: ss.sessions,
         });
 
@@ -525,11 +515,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
             data: {
               status: "BLOCKED",
               blockReason: "OUTSIDE_TRADING_WINDOWS",
-              meta: {
-                intent,
-                bracket,
-                tradingWindows: tw,
-              },
+              meta: { intent, bracket, tradingWindows: tw },
             },
           });
 
@@ -545,7 +531,6 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           return;
         }
       } catch (e) {
-        // Fail-safe: if we can't load settings, DO NOT block trading unexpectedly
         console.warn(
           `[${deps.env.WORKER_NAME}] Trading windows check failed (allowing trade)`,
           e
@@ -572,7 +557,6 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         return;
       }
 
-      // Parse execution inputs from bracket
       const contractIdFromBracket = String(
         closed?.data?.contractId || (bracket as any).contractId || ""
       ).trim();
@@ -621,7 +605,6 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         return;
       }
 
-      // Explicit “in trade” block - so we can show it on charts later
       const inTrade = await hasOpenTrade({
         db,
         userId: ident.userId,
@@ -654,7 +637,6 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       try {
         const execKey = `coreplus315:${ident.clerkUserId}:${Date.now()}`;
 
-        // ✅ absolute prices from strategy intent (preferred)
         const stopPriceAbs =
           intent?.stopPrice != null && Number.isFinite(Number(intent.stopPrice))
             ? Number(intent.stopPrice)
@@ -671,28 +653,24 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           input: {
             execKey,
             userId: ident.userId,
-            brokerAccountId: ident.brokerAccountId, // ✅ ADD THIS (3B)
+            brokerAccountId: ident.brokerAccountId,
             brokerName: deps.broker.name,
             contractId: contractIdFromBracket,
             symbol: (process.env.PROJECTX_SYMBOL || "").trim() || null,
             side,
             qty,
             maxContracts,
-            entryType: (deps.strategy?.getConfig?.()?.entryType ?? "market"),
+            entryType: deps.strategy?.getConfig?.()?.entryType ?? "market",
             stopLossTicks: Number(stopLossTicks),
             takeProfitTicks: Number(takeProfitTicks),
-
             stopPrice: stopPriceAbs,
             takeProfitPrice: takeProfitPriceAbs,
-
             customTag: `aura-coreplus315-${Date.now()}`,
           },
         });
 
-        // ✅ Only mark traded after successful submission
         deps.strategy.markActiveFvgTraded({ fvgTime: intent.fvgTime });
 
-        // Mark signal as TAKEN and link it
         await db.strategySignal.update({
           where: { signalKey },
           data: {
@@ -754,7 +732,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         }
       }
     } catch (e) {
-      console.error("[projectx-market] failed to persist Candle15s / run strategy", e);
+      console.error("[projectx-market] failed to run strategy", e);
     }
 
     // 3c) Emit candle close event
