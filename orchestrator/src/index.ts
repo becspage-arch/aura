@@ -4,6 +4,7 @@ import { ECSClient, ListTasksCommand, DescribeTasksCommand, RunTaskCommand, Stop
 import { db, checkDb } from "./db.js";
 import { env, POLL_MS, SUBNETS, SECURITY_GROUPS } from "./env.js";
 import { decryptJson } from "./crypto";
+import { ListTaskDefinitionsCommand } from "@aws-sdk/client-ecs";
 
 const ecs = new ECSClient({ region: env.AWS_REGION });
 
@@ -96,12 +97,30 @@ async function listOrchestratorTasks(): Promise<any[]> {
   return described.tasks || [];
 }
 
+async function getLatestWorkerTaskDefinition(): Promise<string> {
+  const res = await ecs.send(
+    new ListTaskDefinitionsCommand({
+      familyPrefix: "aura-worker",
+      status: "ACTIVE",
+      sort: "DESC",
+      maxResults: 1,
+    })
+  );
+
+  const arn = res.taskDefinitionArns?.[0];
+  if (!arn) {
+    throw new Error("No ACTIVE aura-worker task definition found");
+  }
+
+  return arn;
+}
+
 async function runWorker(a: DesiredAccount) {
   await ecs.send(
     new RunTaskCommand({
       cluster: env.ECS_CLUSTER,
       startedBy: "aura-orchestrator",
-      taskDefinition: env.WORKER_TASK_DEFINITION,
+      taskDefinition: await getLatestWorkerTaskDefinition(),
       launchType: "FARGATE",
       networkConfiguration: {
         awsvpcConfiguration: {

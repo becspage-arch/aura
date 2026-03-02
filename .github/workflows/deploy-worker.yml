@@ -1,0 +1,41 @@
+name: Deploy Worker to ECS
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "worker/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::074184607195:role/github-actions-deploy-role
+          aws-region: eu-west-2
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        run: |
+          IMAGE=074184607195.dkr.ecr.eu-west-2.amazonaws.com/aura-worker:${{ github.sha }}
+          docker build -f worker/Dockerfile -t $IMAGE .
+          docker push $IMAGE
+
+      - name: Register new task definition revision
+        run: |
+          sed "s|aura-worker:latest|aura-worker:${{ github.sha }}|g" worker/ecs-taskdef.json > taskdef.json
+
+          aws ecs register-task-definition \
+            --cli-input-json file://taskdef.json

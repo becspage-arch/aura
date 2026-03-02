@@ -33,10 +33,6 @@
           "value": "ENABLED"
         },
         {
-          "name": "WORKER_TASK_DEFINITION",
-          "value": "aura-worker:37"
-        },
-        {
           "name": "WORKER_CONTAINER_NAME",
           "value": "aura-worker"
         },
