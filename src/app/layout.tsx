@@ -42,7 +42,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
 
-      <body className={`${inter.variable} ${geistMono.variable} aura-body`}>
+      <body className={`${inter.variable} ${geistMono.variable} aura-body`}> 
         <ClerkProviderNative>
           <ThemeProvider>
             {/* Native bootstrap runs ONLY in Capacitor */}
