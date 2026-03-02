@@ -64,6 +64,15 @@ export async function onClosed15sUpdate3m(params: {
     return;
   }
 
+  console.log("[c3m] DERIVE_ATTEMPT", {
+    symbol: candle.symbol,
+    bucketStart,
+    triggering15sTime: candle.time,
+    rows: rows.length,
+    firstTime: rows[0]?.time ?? null,
+    lastTime: rows[rows.length - 1]?.time ?? null,
+  });
+
   const open = Number(rows[0].open);
   const close = Number(rows[rows.length - 1].close);
 
