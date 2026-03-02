@@ -268,6 +268,8 @@ async function reconcileOnce() {
         }
       }
     }
+  }
+  
   // Stop tasks for accounts no longer enabled
   for (const [acctId, tasks] of byAccount.entries()) {
     if (!desiredSet.has(acctId)) {
