@@ -10,11 +10,11 @@ function isNativeApp() {
 
 export default function Page() {
   const redirectUrl = isNativeApp()
-    ? "net.tradeaura.app://callback"
+    ? "net.tradeaura.app://callback?"
     : "/";
 
   const after = isNativeApp()
-    ? "net.tradeaura.app://callback"
+    ? "net.tradeaura.app://callback?"
     : "/app";
 
   return (
