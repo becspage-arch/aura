@@ -4,12 +4,23 @@
 import { SignUp } from "@clerk/nextjs";
 
 function isNativeApp() {
-  return typeof window !== "undefined" && !!(window as any).Capacitor?.isNativePlatform?.();
+  return typeof window !== "undefined" &&
+    !!(window as any).Capacitor?.isNativePlatform?.();
 }
 
 export default function Page() {
-  const redirectUrl = isNativeApp() ? "net.tradeaura.app://sso-callback" : "/sso-callback";
-  const after = isNativeApp() ? "net.tradeaura.app://app" : "/app";
+  const redirectUrl = isNativeApp()
+    ? "net.tradeaura.app://callback"
+    : "/";
 
-  return <SignUp redirectUrl={redirectUrl} forceRedirectUrl={after} />;
+  const after = isNativeApp()
+    ? "net.tradeaura.app://callback"
+    : "/app";
+
+  return (
+    <SignUp
+      redirectUrl={redirectUrl}
+      forceRedirectUrl={after}
+    />
+  );
 }
