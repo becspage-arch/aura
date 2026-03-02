@@ -119,7 +119,7 @@ async function handleSetPause(req: Request) {
     message: `Pause set to ${nextPaused} (all enabled accounts)`,
     data: { brokerAccountIds: targetIds, isPaused: nextPaused },
     userId: user.id,
-    brokerAccountId: null,
+    // brokerAccountId intentionally omitted (global action)
   });
 
   // For UI: when nextPaused=true, definitely paused.
