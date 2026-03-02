@@ -516,16 +516,19 @@ export class CorePlus315Engine {
 
     // If EMA isn't seeded yet, we cannot qualify FVGs (live trading will be seeded quickly).
     if (e0 == null || e1 == null || e2 == null) {
-      console.log("[coreplus315] EVAL_3M_SUMMARY", {
-        t: c0.time,
-        iso: new Date(c0.time * 1000).toISOString(),
-        emaSeeded: false,
-        emaLen: this.emaLen,
-        seedCount: this.emaSeedCloses.length,
-        prevFvg: fvgSummary(this.activeFvg),
-        action: "KEEP_PREVIOUS",
-        note: "EMA not seeded yet - skipping FVG qualification",
-      });
+    console.log(
+      "[coreplus315] EVAL_3M_SUMMARY " +
+        JSON.stringify({
+          t: c0.time,
+          iso: new Date(c0.time * 1000).toISOString(),
+          emaSeeded: false,
+          emaLen: this.emaLen,
+          seedCount: this.emaSeedCloses.length,
+          prevFvg: fvgSummary(this.activeFvg),
+          action: "KEEP_PREVIOUS",
+          note: "EMA not seeded yet - skipping FVG qualification",
+        })
+    );
       return;
     }
 
@@ -609,7 +612,7 @@ export class CorePlus315Engine {
           : "KEEP_PREVIOUS",
     };
 
-    console.log("[coreplus315] EVAL_3M_SUMMARY", summary);
+    console.log("[coreplus315] EVAL_3M_SUMMARY " + JSON.stringify(summary));
 
     // If candidate FVG is NOT qualified, ignore it (previous FVG stays active/invalid)
     if (!bullQualified && !bearQualified) return;
