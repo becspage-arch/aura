@@ -219,8 +219,36 @@ async function reconcileOnce() {
       continue;
     }
 
+    const latestWorkerTaskDef = await getLatestWorkerTaskDefinition();
+
+    // Exactly 1 running worker → check if outdated
+    if (tasks.length === 1) {
+      const task = tasks[0];
+      const runningTaskDef = task.taskDefinitionArn;
+
+      if (runningTaskDef !== latestWorkerTaskDef) {
+        console.log("[orchestrator] upgrading worker", {
+          brokerAccountId: acct.brokerAccountId,
+          from: runningTaskDef,
+          to: latestWorkerTaskDef,
+        });
+
+        if (task?.taskArn) {
+          await stopTask(
+            task.taskArn,
+            "orchestrator:auto-upgrade",
+            acct.brokerAccountId
+          );
+        }
+
+        await runWorker(acct);
+      }
+
+      continue;
+    }
+
+    // More than 1 → dedupe
     if (tasks.length > 1) {
-      // Keep newest (highest startedAt), stop the rest
       const sorted = [...tasks].sort((a, b) => {
         const at = new Date(a?.startedAt || 0).getTime();
         const bt = new Date(b?.startedAt || 0).getTime();
@@ -240,8 +268,6 @@ async function reconcileOnce() {
         }
       }
     }
-  }
-
   // Stop tasks for accounts no longer enabled
   for (const [acctId, tasks] of byAccount.entries()) {
     if (!desiredSet.has(acctId)) {
