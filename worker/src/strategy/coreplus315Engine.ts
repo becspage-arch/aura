@@ -495,6 +495,17 @@ export class CorePlus315Engine {
       }
 
       if (nowInvalid) {
+        console.log("[coreplus315] FVG_INVALIDATED", {
+          side: this.activeFvg.side,
+          fvgTime: this.activeFvg.time,
+          fvgIso: new Date(this.activeFvg.time * 1000).toISOString(),
+          invalidatedBy3mTime: c3.time,
+          invalidatedBy3mIso: new Date(c3.time * 1000).toISOString(),
+          close: c3.close,
+          top,
+          bottom,
+        });
+
         this.activeFvg.invalid = true;
 
         // Defensive: clear retest flagging state so next FVG starts clean
