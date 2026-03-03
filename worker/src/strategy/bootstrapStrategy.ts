@@ -99,6 +99,47 @@ export async function bootstrapStrategy(params: {
 
   const strategy = new CorePlus315Engine({ tickSize, tickValue });
 
+  async function seedEngineFromRecent3m(params: {
+  env: { WORKER_NAME: string };
+  db: PrismaClient;
+  symbol: string;
+  engine: CorePlus315Engine;
+  bars?: number;
+}) {
+  const bars = params.bars ?? 80; // >= 50 so EMA can seed
+  const rows = await params.db.candle3m.findMany({
+    where: { symbol: params.symbol },
+    orderBy: { time: "desc" },
+    take: bars,
+    select: { symbol: true, time: true, open: true, high: true, low: true, close: true },
+  });
+
+  const asc = rows.slice().reverse().map((r) => ({
+    symbol: r.symbol,
+    time: Number(r.time),
+    open: Number(r.open),
+    high: Number(r.high),
+    low: Number(r.low),
+    close: Number(r.close),
+  }));
+
+  console.log(`[${params.env.WORKER_NAME}] strategy seed3m start`, {
+    symbol: params.symbol,
+    requested: bars,
+    loaded: asc.length,
+    first: asc[0]?.time ?? null,
+    last: asc[asc.length - 1]?.time ?? null,
+  });
+
+  for (const c3 of asc) {
+    params.engine.ingestClosed3m(c3);
+  }
+
+  console.log(`[${params.env.WORKER_NAME}] strategy seed3m done`, {
+    debug: params.engine.getDebugState(),
+  });
+}
+
   const ss = await params.getStrategySettingsForWorker();
 
   strategy.setConfig({
@@ -114,6 +155,27 @@ export async function bootstrapStrategy(params: {
     maxStopTicks: ss.maxStopTicks,
     entryType: ss.entryType,
   });
+
+  // Always seed from recent 3m candles so EMA50 + FVG state survives worker restarts
+  const db = params.getPrisma();
+
+  const symbol =
+    (process.env.PROJECTX_SYMBOL || "").trim() ||
+    String(params.status?.contractId ?? "").trim();
+
+  if (symbol) {
+    await seedEngineFromRecent3m({
+      env: params.env,
+      db,
+      symbol,
+      engine: strategy,
+      bars: 80,
+    });
+  } else {
+    console.warn(
+      `[${params.env.WORKER_NAME}] strategy seed3m skipped (missing symbol: set PROJECTX_SYMBOL or ensure status.contractId present)`
+    );
+  }
 
   console.log(`[${params.env.WORKER_NAME}] strategy ready`, {
     name: "coreplus315",
