@@ -451,6 +451,15 @@ export async function startBrokerFeed(params: {
       getStrategySettingsForWorker,
     });
 
+    // INSTRUMENT DEBUG PIPELINE
+    console.log(`[${env.WORKER_NAME}] instrument pipeline`, {
+      baseSymbol: instrument?.baseSymbol ?? null,
+      resolvedContractId: instrument?.contractId ?? null,
+      broker: broker.name,
+      brokerAccountId: scope.brokerAccountId,
+      externalAccountId: scope.externalId ?? null,
+    });
+
     // --- ProjectX market hub ---
     if (broker.name === "projectx") {
       const token =
