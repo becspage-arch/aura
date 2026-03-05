@@ -39,6 +39,7 @@ async function envForWorker(a: DesiredAccount) {
     // Inject decrypted creds into runtime
     { name: "PROJECTX_USERNAME", value: String(creds.username || "") },
     { name: "PROJECTX_API_KEY", value: String(creds.apiKey || "") },
+    { name: "PROJECTX_CONTRACT_ID", value: "CON.F.US.MGC.J26" }, // TEMP: hardcoded to stop flapping
     {
       name: "PROJECTX_SYMBOL",
       value: String(

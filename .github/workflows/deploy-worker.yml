@@ -27,15 +27,24 @@ jobs:
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push image
+      - name: Build and push image (sha + latest)
         run: |
-          IMAGE=074184607195.dkr.ecr.eu-west-2.amazonaws.com/aura-worker:${{ github.sha }}
-          docker build -f worker/Dockerfile -t $IMAGE .
-          docker push $IMAGE
+          ECR=074184607195.dkr.ecr.eu-west-2.amazonaws.com
+          REPO=aura-worker
+          SHA_TAG=$ECR/$REPO:${{ github.sha }}
+          LATEST_TAG=$ECR/$REPO:latest
+
+          docker build -f worker/Dockerfile -t $SHA_TAG -t $LATEST_TAG .
+          docker push $SHA_TAG
+          docker push $LATEST_TAG
 
       - name: Register new task definition revision
         run: |
-          sed "s|aura-worker:latest|aura-worker:${{ github.sha }}|g" worker/ecs-taskdef.json > taskdef.json
+          ECR=074184607195.dkr.ecr.eu-west-2.amazonaws.com
+          REPO=aura-worker
+          IMAGE=$ECR/$REPO:${{ github.sha }}
 
-          aws ecs register-task-definition \
-            --cli-input-json file://taskdef.json
+          # Replace the full image string exactly (this must match your ecs-taskdef.json)
+          sed "s|\"image\": \"$ECR/$REPO:latest\"|\"image\": \"$IMAGE\"|g" worker/ecs-taskdef.json > taskdef.json
+
+          aws ecs register-task-definition --cli-input-json file://taskdef.json
