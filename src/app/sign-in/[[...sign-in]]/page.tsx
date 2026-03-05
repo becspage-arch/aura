@@ -6,42 +6,53 @@ import { SignIn, useSignIn } from "@clerk/nextjs";
 import type { OAuthStrategy } from "@clerk/types";
 
 function isNativeApp() {
-  return typeof window !== "undefined" &&
-    !!(window as any).Capacitor?.isNativePlatform?.();
+  return (
+    typeof window !== "undefined" &&
+    !!(window as any).Capacitor?.isNativePlatform?.()
+  );
 }
 
 export default function Page() {
   const native = isNativeApp();
   const { signIn } = useSignIn();
 
-  if (!native) {
-    return <SignIn />;
-  }
-
+  if (!native) return <SignIn />;
   if (!signIn) return null;
 
   const signInWithGoogle = async () => {
     const strategy: OAuthStrategy = "oauth_google";
     await signIn.authenticateWithRedirect({
       strategy,
-      // MUST match your Clerk allowlist exactly
       redirectUrl: "net.tradeaura.app://callback?",
-      // After Clerk finishes, iOS will open the app via the same URL
       redirectUrlComplete: "net.tradeaura.app://callback?",
     });
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#fff",
+        paddingTop: "calc(env(safe-area-inset-top) + 24px)",
+        paddingLeft: "24px",
+        paddingRight: "24px",
+        paddingBottom: "24px",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+      }}
+    >
       <button
         onClick={signInWithGoogle}
         style={{
           width: "100%",
-          height: 48,
-          borderRadius: 10,
+          maxWidth: 420,
+          height: 52,
+          borderRadius: 12,
           border: "1px solid #ddd",
           background: "#fff",
           fontSize: 16,
+          fontWeight: 600,
         }}
       >
         Continue with Google
