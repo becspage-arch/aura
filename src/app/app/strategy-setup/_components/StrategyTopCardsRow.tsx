@@ -12,7 +12,13 @@ type Props = {
 
 const INSTRUMENTS: Array<{ value: string; label: string }> = [
   { value: "MGC", label: "Micro Gold (MGC)" },
+  { value: "GC",  label: "Gold (GC)" },
+
   { value: "MES", label: "Micro E-mini S&P 500 (MES)" },
+  { value: "ES",  label: "E-mini S&P 500 (ES)" },
+
+  { value: "MNQ", label: "Micro E-mini Nasdaq-100 (MNQ)" },
+  { value: "NQ",  label: "E-mini Nasdaq-100 (NQ)" },
 ];
 
 export function StrategyTopCardsRow({
