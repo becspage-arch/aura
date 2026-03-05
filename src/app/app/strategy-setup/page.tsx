@@ -132,7 +132,12 @@ export default function StrategyPage() {
 
         {/* Core */}
         <div className="aura-section-stack">
-          <StrategyTopCardsRow current={current} />
+          <StrategyTopCardsRow
+            current={current}
+            saving={saving}
+            disabled={disabled}
+            patchStrategySettings={patchStrategySettings}
+          />
           
           <BrokersStatusCard
             isTrading={isTrading}

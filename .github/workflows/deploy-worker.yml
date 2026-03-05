@@ -45,6 +45,6 @@ jobs:
           IMAGE=$ECR/$REPO:${{ github.sha }}
 
           # Replace the full image string exactly (this must match your ecs-taskdef.json)
-          sed "s|\"image\": \"$ECR/$REPO:latest\"|\"image\": \"$IMAGE\"|g" worker/ecs-taskdef.json > taskdef.json
-
+          sed "s|$ECR/$REPO:latest|$IMAGE|g" worker/ecs-taskdef.json > taskdef.json
+          
           aws ecs register-task-definition --cli-input-json file://taskdef.json

@@ -292,38 +292,50 @@ async function main() {
     },
   });
 
-  // 7) Start broker feed
-  try {
-    await startBrokerFeed({
-      scope,
-      onBrokerReady: async (b) => {
-        brokerRef = b;
+  // 7) Start broker feed (NEVER exit the process on startup failure - retry instead)
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-        console.log(`[${env.WORKER_NAME}] broker ready for exec`, {
-          name: (b as any)?.name ?? null,
-        });
+  while (true) {
+    try {
+      await startBrokerFeed({
+        scope,
+        onBrokerReady: async (b) => {
+          brokerRef = b;
 
-        const { resumeOpenExecutions } = await import("./execution/resumeOpenExecutions.js");
+          console.log(`[${env.WORKER_NAME}] broker ready for exec`, {
+            name: (b as any)?.name ?? null,
+          });
 
-        await resumeOpenExecutions({
-          prisma: db,
-          broker: b,
-          userId: scope.userId,
-          brokerAccountId: scope.brokerAccountId,
-        });
-      },
-      emitSafe: async (event) => {
-        await brokerChannel.publish(event.name, event);
+          const { resumeOpenExecutions } = await import("./execution/resumeOpenExecutions.js");
 
-        console.log(`[${env.WORKER_NAME}] published broker event`, {
-          name: event.name,
-          broker: event.broker,
-        });
-      },
-    });
-  } catch (e) {
-    console.error(`[${env.WORKER_NAME}] broker start failed`, e);
-    process.exit(1);
+          await resumeOpenExecutions({
+            prisma: db,
+            broker: b,
+            userId: scope.userId,
+            brokerAccountId: scope.brokerAccountId,
+          });
+        },
+        emitSafe: async (event) => {
+          await brokerChannel.publish(event.name, event);
+
+          console.log(`[${env.WORKER_NAME}] published broker event`, {
+            name: event.name,
+            broker: event.broker,
+          });
+        },
+      });
+
+      // startBrokerFeed should run forever.
+      // If it ever returns, we pause briefly and restart it.
+      console.warn(`[${env.WORKER_NAME}] startBrokerFeed returned unexpectedly - restarting in 5s`);
+      await sleep(5_000);
+    } catch (e) {
+      console.error(`[${env.WORKER_NAME}] broker start failed - retrying in 10s`, {
+        name: (e as any)?.name ?? null,
+        message: (e as any)?.message ?? String(e),
+      });
+      await sleep(10_000);
+    }
   }
 }
 
