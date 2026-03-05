@@ -3,12 +3,13 @@
 
 import { Suspense, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useSignIn } from "@clerk/nextjs";
+import { useSignIn, useClerk } from "@clerk/nextjs";
 
 function ConsumeTicketInner() {
   const sp = useSearchParams();
   const router = useRouter();
   const { signIn } = useSignIn();
+  const { setActive } = useClerk();
 
   useEffect(() => {
     const ticket = sp.get("ticket");
@@ -17,14 +18,14 @@ function ConsumeTicketInner() {
     (async () => {
       try {
         const res = await signIn.create({
-        strategy: "ticket",
-        ticket,
+          strategy: "ticket",
+          ticket,
         } as any);
 
         const sid = (res as any)?.createdSessionId;
 
         if (sid) {
-          await signIn.setActive({ session: sid });
+          await setActive({ session: sid });
         }
 
         router.replace("/app");
@@ -32,7 +33,7 @@ function ConsumeTicketInner() {
         router.replace("/sign-in");
       }
     })();
-  }, [sp, router, signIn]);
+  }, [sp, router, signIn, setActive]);
 
   return <div style={{ padding: 24 }}>Signing you in…</div>;
 }
