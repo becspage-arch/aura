@@ -171,7 +171,7 @@ export async function bootstrapStrategy(params: {
   // Always seed from recent 3m candles so EMA50 + FVG state survives worker restarts
   const db = params.getPrisma();
 
-  const baseSymbol = Array.isArray(ss.symbols) && ss.symbols.length
+  const baseSymbolRaw = Array.isArray(ss.symbols) && ss.symbols.length
     ? String(ss.symbols[0])
     : "MGC";
 
@@ -180,9 +180,19 @@ export async function bootstrapStrategy(params: {
   // For now we take contractId from runtime env (injected by orchestrator).
   // Next step: broker adapter resolves this dynamically at startup (rollover-safe) and injects it into scope.
   const { normalizeBaseSymbol } = await import("../instruments/resolveProjectXContract.js");
+  const baseSymbol = normalizeBaseSymbol(baseSymbolRaw);
 
   const contractIdRaw = (process.env.PROJECTX_CONTRACT_ID || "").trim();
   const contractId: string | null = contractIdRaw.length ? contractIdRaw : null;
+
+  console.log(`[${params.env.WORKER_NAME}] SYMBOL_DEBUG`, {
+    clerkUserId: params.clerkUserId || null,
+    symbolsRaw: Array.isArray(ss.symbols) ? ss.symbols : null,
+    baseSymbolRaw,
+    baseSymbol,
+    contractIdEnvRaw: contractIdRaw || null,
+    contractId,
+  });
 
   if (!contractId) {
     console.warn(`[${params.env.WORKER_NAME}] strategy seed3m skipped (PROJECTX_CONTRACT_ID missing)`, {
