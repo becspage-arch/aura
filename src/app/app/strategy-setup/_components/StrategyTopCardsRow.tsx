@@ -10,7 +10,10 @@ type Props = {
   patchStrategySettings: (patch: Partial<StrategySettings>) => Promise<any>;
 };
 
-const INSTRUMENTS = ["MGC"]; // future: ["MGC","MES","MNQ"]
+const INSTRUMENTS: Array<{ value: string; label: string }> = [
+  { value: "MGC", label: "Micro Gold (MGC)" },
+  { value: "MES", label: "Micro E-mini S&P 500 (MES)" },
+];
 
 export function StrategyTopCardsRow({
   current,
@@ -46,9 +49,9 @@ export function StrategyTopCardsRow({
           disabled={disabled || saving}
           onChange={(e) => onChange(e.target.value)}
         >
-          {INSTRUMENTS.map((s) => (
-            <option key={s} value={s}>
-              {s}
+          {INSTRUMENTS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
