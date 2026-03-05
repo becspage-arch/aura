@@ -17,8 +17,7 @@ export default function ClerkProviderNative({
       afterSignUpUrl="/app"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
-      // Critical: WKWebView / native webviews are NOT "standard browsers"
-      standardBrowser={!isNative}
+      standardBrowser={isNative}
     >
       {children}
     </ClerkProvider>
