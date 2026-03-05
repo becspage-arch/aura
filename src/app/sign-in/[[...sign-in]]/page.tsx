@@ -1,4 +1,3 @@
-// src/app/sign-in/[[...sign-in]]/page.tsx
 "use client";
 
 import { SignIn } from "@clerk/nextjs";
@@ -14,17 +13,19 @@ export default function Page() {
   if (!native) return <SignIn />;
 
   const onGoogle = async () => {
-    // Dynamic import so web build doesn’t require the plugin
-    const mod = await import("@codetrix-studio/capacitor-google-auth");
-    const GoogleAuth = mod.GoogleAuth;
+    // Access plugin via window.Capacitor to avoid Next bundling it
+    const GoogleAuth = (window as any)?.Capacitor?.Plugins?.GoogleAuth;
 
-    const result = await GoogleAuth.signIn();
-    const idToken = result?.authentication?.idToken;
-
-    if (!idToken) {
-      // stay on page, no guessing UI
+    if (!GoogleAuth) {
+      console.error("GoogleAuth plugin not available");
       return;
     }
+
+    const result = await GoogleAuth.signIn();
+
+    const idToken = result?.authentication?.idToken;
+
+    if (!idToken) return;
 
     const res = await fetch("/api/native/google/exchange", {
       method: "POST",
@@ -34,12 +35,14 @@ export default function Page() {
     });
 
     if (!res.ok) return;
+
     const data = await res.json();
 
     const ticket = data?.ticket;
     if (!ticket) return;
 
-    window.location.href = `/native/consume-ticket?ticket=${encodeURIComponent(ticket)}`;
+    window.location.href =
+      `/native/consume-ticket?ticket=${encodeURIComponent(ticket)}`;
   };
 
   return (
