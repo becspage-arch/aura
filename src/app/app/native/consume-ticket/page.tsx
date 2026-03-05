@@ -17,9 +17,9 @@ function ConsumeTicketInner() {
     (async () => {
       try {
         const res = await signIn.create({
-          strategy: "ticket",
-          ticket,
-        } as any;
+        strategy: "ticket",
+        ticket,
+        } as any);
 
         const sid = (res as any)?.createdSessionId;
 
