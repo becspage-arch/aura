@@ -1,11 +1,11 @@
 // src/app/native/consume-ticket/page.tsx
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSignIn } from "@clerk/nextjs";
 
-export default function Page() {
+function ConsumeTicketInner() {
   const sp = useSearchParams();
   const router = useRouter();
   const { signIn } = useSignIn();
@@ -19,14 +19,11 @@ export default function Page() {
         const res = await signIn.create({
           strategy: "ticket",
           ticket,
-        } as any);
+        } as any;
 
-        // If Clerk returns a session, set it active
-        // (shape can vary; this works with Clerk v6 patterns)
-        // @ts-ignore
-        const sid = res?.createdSessionId ?? res?.createdSessionId;
+        const sid = (res as any)?.createdSessionId;
+
         if (sid) {
-          // @ts-ignore
           await signIn.setActive({ session: sid });
         }
 
@@ -38,4 +35,12 @@ export default function Page() {
   }, [sp, router, signIn]);
 
   return <div style={{ padding: 24 }}>Signing you in…</div>;
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Signing you in…</div>}>
+      <ConsumeTicketInner />
+    </Suspense>
+  );
 }
