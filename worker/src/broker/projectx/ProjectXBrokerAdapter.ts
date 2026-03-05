@@ -627,61 +627,38 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
 
   private async resolveAndLoadActiveContract(): Promise<void> {
     if (!this.token) throw new Error("resolveAndLoadActiveContract: no token");
+    if (this.accountSimulated == null) {
+      throw new Error("resolveAndLoadActiveContract: accountSimulated unknown (fetch accounts first)");
+    }
 
-    // v1: ship MGC only (base symbol), but resolution lives here for rollover later
-    const { resolveProjectXContractId } = await import("../../instruments/resolveProjectXContract.js");
+    const { resolveProjectXContract } = await import(
+      "../../instruments/resolveProjectXContract.js"
+    );
 
+    // NOTE: still hardcoded until we complete checklist item #4 (settings -> worker)
     const baseSymbol = "MGC";
-    const contractId = resolveProjectXContractId(baseSymbol);
+    const live = !this.accountSimulated;
 
-    this.contractId = contractId;
-
-    // Load tickSize/tickValue from broker for this contractId
-    const res = await fetch("https://api.topstepx.com/api/Contract/searchById", {
-      method: "POST",
-      headers: {
-        accept: "text/plain",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
-      },
-      body: JSON.stringify({ contractId }),
+    const resolved = await resolveProjectXContract({
+      token: this.token,
+      symbol: baseSymbol,
+      live,
     });
 
-    const text = await res.text();
-    const json = parseJsonOrNull(text);
-    const c = json?.contract ?? null;
-
-    const tickSize =
-      typeof c?.tickSize === "number" ? c.tickSize : Number(c?.tickSize ?? NaN);
-    const tickValue =
-      typeof c?.tickValue === "number" ? c.tickValue : Number(c?.tickValue ?? NaN);
-
-    this.contractTickSize = Number.isFinite(tickSize) ? tickSize : null;
-    this.contractTickValue = Number.isFinite(tickValue) ? tickValue : null;
+    this.contractId = resolved.contractId;
+    this.contractTickSize = resolved.tickSize;
+    this.contractTickValue = resolved.tickValue;
 
     console.log("[projectx-adapter] active contract resolved", {
       baseSymbol,
-      contractId,
-      status: res.status,
-      ok: res.ok,
-      tickSize: this.contractTickSize,
-      tickValue: this.contractTickValue,
-      contractFound: Boolean(c),
-      errorCode: json?.errorCode ?? null,
-      errorMessage: json?.errorMessage ?? null,
+      live,
+      ...resolved,
     });
 
-    if (!res.ok || !c) {
-      throw new Error(
-        `ProjectX Contract/searchById failed for contractId=${contractId} (HTTP ${res.status})${
-          json?.errorMessage ? `: ${json.errorMessage}` : ""
-        }`
-      );
-    }
-
     if (!this.contractTickSize || !this.contractTickValue) {
+      // If ProjectX ever omits tick info from Contract/search result, fail fast for safety
       throw new Error(
-        `ProjectX contract spec missing tickSize/tickValue for contractId=${contractId}`
+        `ProjectX contract spec missing tickSize/tickValue for contractId=${this.contractId}`
       );
     }
   }
