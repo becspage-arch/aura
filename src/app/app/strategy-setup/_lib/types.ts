@@ -36,7 +36,7 @@ export type StrategySettings = {
   };
 
   maxContracts?: number | null;
-  maxOpenTrades?: number | null; // will be forced to 1 for now
+  maxOpenTrades?: number | null; 
 };
 
 export type StrategyGetResponse = { ok: true; strategySettings: StrategySettings };

@@ -7,6 +7,13 @@ import {
 import { buildBracketFromIntent } from "../trading/buildBracket.js";
 import Ably from "ably";
 
+export type BootstrapInstrument = { baseSymbol: string; contractId: string | null };
+
+export type BootstrapStrategyResult = {
+  strategy: CorePlus315Engine | null;
+  instrument: BootstrapInstrument;
+};
+
 function numOrNull(v: unknown): number | null {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
@@ -84,8 +91,9 @@ export async function bootstrapStrategy(params: {
     maxStopTicks: number;
     entryType: "market" | "limit";
     sessions?: { asia: boolean; london: boolean; ny: boolean };
+    symbols: string[]; 
   }>;
-}) {
+}): Promise<BootstrapStrategyResult> {
   const tickSize = numOrNull(params.status?.tickSize);
   const tickValue = numOrNull(params.status?.tickValue);
 
@@ -94,7 +102,11 @@ export async function bootstrapStrategy(params: {
       `[${params.env.WORKER_NAME}] strategy NOT started (missing tickSize/tickValue)`,
       { tickSize, tickValue }
     );
-    return { strategy: null as CorePlus315Engine | null };
+
+    return {
+      strategy: null,
+      instrument: { baseSymbol: "MGC", contractId: null },
+    };
   }
 
   const strategy = new CorePlus315Engine({ tickSize, tickValue });
@@ -159,23 +171,41 @@ export async function bootstrapStrategy(params: {
   // Always seed from recent 3m candles so EMA50 + FVG state survives worker restarts
   const db = params.getPrisma();
 
-  const symbol =
-    (process.env.PROJECTX_SYMBOL || "").trim() ||
-    String(params.status?.contractId ?? "").trim();
+  const baseSymbol = Array.isArray(ss.symbols) && ss.symbols.length
+    ? String(ss.symbols[0])
+    : "MGC";
 
-  if (symbol) {
+  // ✅ Resolve to ProjectX contractId (what your Candle15s/Candle3m are keyed by)
+  const { resolveProjectXContractId, normalizeBaseSymbol } = await import(
+    "../instruments/resolveProjectXContract.js"
+  );
+
+  let contractId: string | null = null;
+  try {
+    contractId = resolveProjectXContractId(baseSymbol);
+  } catch (e) {
+    console.warn(
+      `[${params.env.WORKER_NAME}] strategy seed3m skipped (unsupported symbol)`,
+      { baseSymbol, err: e instanceof Error ? e.message : String(e) }
+    );
+  }
+
+  if (contractId) {
     await seedEngineFromRecent3m({
       env: params.env,
       db,
-      symbol,
+      symbol: contractId, // IMPORTANT: seed using contractId (matches Candle3m.symbol)
       engine: strategy,
       bars: 80,
     });
-  } else {
-    console.warn(
-      `[${params.env.WORKER_NAME}] strategy seed3m skipped (missing symbol: set PROJECTX_SYMBOL or ensure status.contractId present)`
-    );
   }
+
+  const instrument = {
+    baseSymbol: normalizeBaseSymbol(baseSymbol),
+    contractId,
+  };
+
+  console.log(`[${params.env.WORKER_NAME}] instrument resolved`, instrument);
 
   console.log(`[${params.env.WORKER_NAME}] strategy ready`, {
     name: "coreplus315",
@@ -261,7 +291,7 @@ export async function bootstrapStrategy(params: {
   const enableReplay = process.env.STRATEGY_REPLAY === "1";
 
   if (enableReplay) {
-    const symbol = (process.env.PROJECTX_SYMBOL || "").trim();
+    const symbol = contractId ?? "";
     if (symbol) {
       await replayRecentCandlesOnce({
         env: params.env,
@@ -281,5 +311,5 @@ export async function bootstrapStrategy(params: {
     );
   }
 
-  return { strategy };
+  return { strategy, instrument };
 }

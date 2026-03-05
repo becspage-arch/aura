@@ -24,6 +24,8 @@ export async function startProjectXMarketFeed(params: {
   broker: any;
   status: any;
 
+  instrument: { baseSymbol: string; contractId: string | null };
+
   getPrisma: () => any;
   emitSafe: (event: any) => Promise<void>;
 
@@ -49,6 +51,7 @@ export async function startProjectXMarketFeed(params: {
     env: params.env,
     DRY_RUN: params.DRY_RUN,
     broker: params.broker,
+    instrument: params.instrument,
     getPrisma: params.getPrisma,
     emitSafe: params.emitSafe,
     getUserTradingState: params.getUserTradingState,

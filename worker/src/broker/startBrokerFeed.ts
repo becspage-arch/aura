@@ -231,7 +231,9 @@ export async function startBrokerFeed(params: {
     maxStopTicks: number;
     entryType: "market" | "limit";
     sessions: { asia: boolean; london: boolean; ny: boolean };
-    contractId: string | null;
+    symbols: string[];
+    maxContracts?: number | null;
+    maxOpenTrades?: number | null;
   }> {
     const db = getPrisma();
 
@@ -243,36 +245,47 @@ export async function startBrokerFeed(params: {
 
     const cfg = (acct as any)?.config ?? null;
 
-    // normalize sessions from cfg if present
-    const sessionsFromCfgRaw = cfg?.sessions ?? null;
-    const sessionsFromCfg = sessionsFromCfgRaw
+    // Sessions (none selected = "All Hours")
+    const sessionsRaw = cfg?.sessions ?? null;
+    const sessionsFromCfg = sessionsRaw
       ? {
-          asia: Boolean(sessionsFromCfgRaw?.asia),
-          london: Boolean(sessionsFromCfgRaw?.london),
-          ny: Boolean(sessionsFromCfgRaw?.ny),
+          asia: Boolean(sessionsRaw?.asia),
+          london: Boolean(sessionsRaw?.london),
+          ny: Boolean(sessionsRaw?.ny),
         }
-      : null;
+      : { asia: false, london: false, ny: false };
 
-    // if cfg has sessions but none selected => treat as "All Hours"
-    const cfgNoneSelected =
-      sessionsFromCfg != null &&
-      !sessionsFromCfg.asia &&
-      !sessionsFromCfg.london &&
-      !sessionsFromCfg.ny;
+    const noneSelected =
+      !sessionsFromCfg.asia && !sessionsFromCfg.london && !sessionsFromCfg.ny;
+
+    // Symbols (v1: first symbol only, default MGC)
+    const symbols =
+      Array.isArray(cfg?.symbols) && cfg.symbols.length
+        ? cfg.symbols.map((s: any) => String(s).trim()).filter(Boolean)
+        : ["MGC"];
 
     if (cfg) {
       return {
         riskUsd: Number(cfg?.riskUsd ?? 200),
         rr: Number(cfg?.rr ?? 2),
         maxStopTicks: Number(cfg?.maxStopTicks ?? 45),
-        entryType: (cfg?.entryType === "limit" ? "limit" : "market") as "market" | "limit",
-        contractId: typeof cfg?.contractId === "string" ? cfg.contractId.trim() : null,
-        sessions:
-          sessionsFromCfg == null
-            ? { asia: false, london: false, ny: false }
-            : cfgNoneSelected
-              ? { asia: false, london: false, ny: false }
-              : sessionsFromCfg,
+        entryType: (cfg?.entryType === "limit" ? "limit" : "market") as
+          | "market"
+          | "limit",
+        sessions: noneSelected ? { asia: false, london: false, ny: false } : sessionsFromCfg,
+        symbols,
+        maxContracts:
+          cfg?.maxContracts == null
+            ? null
+            : Number.isFinite(Number(cfg.maxContracts))
+              ? Math.max(1, Math.floor(Number(cfg.maxContracts)))
+              : null,
+        maxOpenTrades:
+          cfg?.maxOpenTrades == null
+            ? null
+            : Number.isFinite(Number(cfg.maxOpenTrades))
+              ? Math.max(1, Math.floor(Number(cfg.maxOpenTrades)))
+              : null,
       };
     }
 
@@ -285,34 +298,51 @@ export async function startBrokerFeed(params: {
     const ss = state?.strategySettings as any;
 
     if (!ss) {
-      // still safe defaults if both missing
       return {
         riskUsd: 200,
         rr: 2,
         maxStopTicks: 45,
         entryType: "market",
         sessions: { asia: false, london: false, ny: false },
-        contractId: null,
+        symbols: ["MGC"],
+        maxContracts: null,
+        maxOpenTrades: null,
       };
     }
 
-    const sessionsRaw = ss?.sessions ?? null;
+    const sRaw = ss?.sessions ?? null;
     const sessions = {
-      asia: Boolean(sessionsRaw?.asia),
-      london: Boolean(sessionsRaw?.london),
-      ny: Boolean(sessionsRaw?.ny),
+      asia: Boolean(sRaw?.asia),
+      london: Boolean(sRaw?.london),
+      ny: Boolean(sRaw?.ny),
     };
 
-    // "All Hours" mode = none selected (no restriction)
-    const noneSelected = !sessions.asia && !sessions.london && !sessions.ny;
+    const noneSelected2 = !sessions.asia && !sessions.london && !sessions.ny;
+
+    const symbols2 =
+      Array.isArray(ss?.symbols) && ss.symbols.length
+        ? ss.symbols.map((s: any) => String(s).trim()).filter(Boolean)
+        : ["MGC"];
 
     return {
       riskUsd: Number(ss?.riskUsd ?? 200),
       rr: Number(ss?.rr ?? 2),
       maxStopTicks: Number(ss?.maxStopTicks ?? 45),
       entryType: (ss?.entryType === "limit" ? "limit" : "market") as "market" | "limit",
-      sessions: noneSelected ? { asia: false, london: false, ny: false } : sessions,
-      contractId: typeof ss?.contractId === "string" ? ss.contractId.trim() : null,
+      sessions: noneSelected2 ? { asia: false, london: false, ny: false } : sessions,
+      symbols: symbols2,
+      maxContracts:
+        ss?.maxContracts == null
+          ? null
+          : Number.isFinite(Number(ss.maxContracts))
+            ? Math.max(1, Math.floor(Number(ss.maxContracts)))
+            : null,
+      maxOpenTrades:
+        ss?.maxOpenTrades == null
+          ? null
+          : Number.isFinite(Number(ss.maxOpenTrades))
+            ? Math.max(1, Math.floor(Number(ss.maxOpenTrades)))
+            : null,
     };
   }
 
@@ -412,7 +442,7 @@ export async function startBrokerFeed(params: {
       expectedUser: scope.clerkUserId,
     });
 
-    const { strategy } = await bootstrapStrategy({
+    const { strategy, instrument } = await bootstrapStrategy({
       env,
       getPrisma,
       clerkUserId: scope.clerkUserId,
@@ -427,10 +457,8 @@ export async function startBrokerFeed(params: {
           ? (broker as any).getAuthToken()
           : null;
 
-      const settings = await getStrategySettingsForWorker();
-
       const contractId =
-        settings.contractId ||
+        instrument.contractId ||
         process.env.PROJECTX_CONTRACT_ID?.trim() ||
         null;
 
@@ -466,6 +494,7 @@ export async function startBrokerFeed(params: {
           DRY_RUN,
           broker,
           status,
+          instrument,
           getPrisma,
           emitSafe,
           getUserTradingState,

@@ -16,6 +16,7 @@ export type HandleClosed15sDeps = {
   DRY_RUN: boolean;
 
   broker: any;
+  instrument: { baseSymbol: string; contractId: string | null };
 
   getPrisma: () => PrismaClient;
 
@@ -185,7 +186,16 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
     const ticks = Number(closed?.data?.ticks ?? 0);
 
     const db = deps.getPrisma();
-    const symbol = (process.env.PROJECTX_SYMBOL || "").trim() || closed.data.contractId;
+
+    const brokerContractId = String(closed?.data?.contractId ?? "").trim();
+    const activeContractId = String(deps.instrument?.contractId ?? "").trim();
+
+    // ✅ Candle storage key (must match your existing DB rows)
+    const candleContractId = activeContractId || brokerContractId;
+
+    // ✅ Base symbol for UI-facing rows (StrategySignal/Execution)
+    const baseSymbol = String(deps.instrument?.baseSymbol ?? "MGC").trim().toUpperCase();
+
     const time = Math.floor(closed.data.t0 / 1000);
 
     if (!deps.rolloverOkLoggedRef.value && params.source === "rollover" && ticks > 1) {
@@ -200,7 +210,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       // Backfill missing 15s candles if the broker feed "jumped"
       await backfillMissing15sCandles({
         db,
-        symbol,
+        symbol: candleContractId,
         currentTime: time,
         emitSafe: deps.emitSafe,
         brokerNameForEvent: "projectx",
@@ -219,9 +229,9 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
 
       // Persist real closed 15s candle
       await db.candle15s.upsert({
-        where: { symbol_time: { symbol, time } },
+        where: { symbol_time: { symbol: candleContractId, time } },
         create: {
-          symbol,
+          symbol: candleContractId,
           time,
           open: closed.data.o,
           high: closed.data.h,
@@ -240,7 +250,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       await onClosed15sUpdate3m({
         db,
         candle: {
-          symbol,
+          symbol: candleContractId,
           time,
           open: Number(closed.data.o),
           high: Number(closed.data.h),
@@ -306,7 +316,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
 
       // ✅ Always evaluate candles so HTF context stays fresh (even when paused)
       const evalRes = (deps.strategy as any).evaluateClosed15s({
-        symbol,
+        symbol: baseSymbol,
         time,
         open: closed.data.o,
         high: closed.data.h,
@@ -320,7 +330,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         logTag("NO_TRADE_DEBUG", {
           worker: deps.env.WORKER_NAME,
           source: params.source,
-          symbol,
+          symbol: baseSymbol,
           time,
           ticks,
           engine: dbg ?? null,
@@ -341,7 +351,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         logTag("NO_TRADE_DEBUG", {
           worker: deps.env.WORKER_NAME,
           source: params.source,
-          symbol,
+          symbol: baseSymbol,
           time,
           ticks,
           engine: dbg ?? null,
@@ -354,7 +364,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       const signalKey = makeSignalKey({
         strategy: "coreplus315",
         userId: ident.userId,
-        symbol,
+        symbol: baseSymbol,
         side: candidate.side,
         entryTime: candidate.entryTime,
         fvgTime: candidate.fvgTime,
@@ -382,10 +392,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
             brokerAccountId: ident.brokerAccountId,
             strategy: "coreplus315",
             brokerName: deps.broker?.name ?? "projectx",
-            symbol,
-            contractId:
-              String(closed?.data?.contractId || (bracket as any).contractId || "").trim() ||
-              null,
+            symbol: baseSymbol,
+            contractId: candleContractId ? candleContractId : null,
             side: candidate.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
             entryTime: candidate.entryTime,
             fvgTime: candidate.fvgTime,
@@ -444,10 +452,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           brokerAccountId: ident.brokerAccountId,
           strategy: "coreplus315",
           brokerName: deps.broker?.name ?? "projectx",
-          symbol,
-          contractId:
-            String(closed?.data?.contractId || (bracket as any).contractId || "").trim() ||
-            null,
+          symbol: baseSymbol,
+          contractId: candleContractId ? candleContractId : null,
           side: intent.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
           entryTime: intent.entryTime,
           fvgTime: intent.fvgTime,
@@ -610,7 +616,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         userId: ident.userId,
         brokerName: deps.broker.name,
         contractId: contractIdFromBracket,
-        symbol: (process.env.PROJECTX_SYMBOL || "").trim() || null,
+        symbol: baseSymbol,
         maxOpenTrades: enforcedMaxOpenTrades,
       });
 
@@ -655,8 +661,8 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
             userId: ident.userId,
             brokerAccountId: ident.brokerAccountId,
             brokerName: deps.broker.name,
-            contractId: contractIdFromBracket,
-            symbol: (process.env.PROJECTX_SYMBOL || "").trim() || null,
+            contractId: contractIdFromBracket || candleContractId,
+            symbol: baseSymbol,
             side,
             qty,
             maxContracts,
