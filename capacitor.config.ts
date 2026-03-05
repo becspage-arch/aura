@@ -9,6 +9,13 @@ const config: CapacitorConfig = {
     url: "https://tradeaura.net",
     cleartext: false,
   },
+  plugins: {
+    GoogleAuth: {
+      scopes: ["profile", "email"],
+      serverClientId: "", // leave blank
+      forceCodeForRefreshToken: false,
+    },
+  },
 };
 
 export default config;

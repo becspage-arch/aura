@@ -1,31 +1,45 @@
 // src/app/sign-in/[[...sign-in]]/page.tsx
 "use client";
 
-import * as React from "react";
-import { SignIn, useSignIn } from "@clerk/nextjs";
-import type { OAuthStrategy } from "@clerk/types";
+import { SignIn } from "@clerk/nextjs";
+import { Capacitor } from "@capacitor/core";
 
 function isNativeApp() {
-  return (
-    typeof window !== "undefined" &&
-    !!(window as any).Capacitor?.isNativePlatform?.()
-  );
+  return Capacitor.isNativePlatform();
 }
 
 export default function Page() {
   const native = isNativeApp();
-  const { signIn } = useSignIn();
 
   if (!native) return <SignIn />;
-  if (!signIn) return null;
 
-  const signInWithGoogle = async () => {
-    const strategy: OAuthStrategy = "oauth_google";
-    await signIn.authenticateWithRedirect({
-      strategy,
-      redirectUrl: "net.tradeaura.app://callback?",
-      redirectUrlComplete: "net.tradeaura.app://callback?",
+  const onGoogle = async () => {
+    // Dynamic import so web build doesn’t require the plugin
+    const mod = await import("@codetrix-studio/capacitor-google-auth");
+    const GoogleAuth = mod.GoogleAuth;
+
+    const result = await GoogleAuth.signIn();
+    const idToken = result?.authentication?.idToken;
+
+    if (!idToken) {
+      // stay on page, no guessing UI
+      return;
+    }
+
+    const res = await fetch("/api/native/google/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ idToken }),
     });
+
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const ticket = data?.ticket;
+    if (!ticket) return;
+
+    window.location.href = `/native/consume-ticket?ticket=${encodeURIComponent(ticket)}`;
   };
 
   return (
@@ -34,16 +48,12 @@ export default function Page() {
         minHeight: "100vh",
         background: "#fff",
         paddingTop: "calc(env(safe-area-inset-top) + 24px)",
-        paddingLeft: "24px",
-        paddingRight: "24px",
-        paddingBottom: "24px",
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
+        paddingLeft: 24,
+        paddingRight: 24,
       }}
     >
       <button
-        onClick={signInWithGoogle}
+        onClick={onGoogle}
         style={{
           width: "100%",
           maxWidth: 420,

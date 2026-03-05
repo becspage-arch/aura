@@ -4,12 +4,13 @@
 <dict>
 	<key>CFBundleURLTypes</key>
 	<array>
-		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>net.tradeaura.app</string>
-			</array>
-		</dict>
+	<dict>
+		<key>CFBundleURLSchemes</key>
+		<array>
+		<string>net.tradeaura.app</string>
+		<string>com.googleusercontent.apps.453466232987-cn3sp0rj0dut4iou9tkemlutqtitlv5t</string>
+		</array>
+	</dict>
 	</array>
     <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
