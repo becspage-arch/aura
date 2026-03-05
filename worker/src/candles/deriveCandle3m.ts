@@ -98,7 +98,6 @@ export async function onClosed15sUpdate3m(params: {
   await db.candle3m.upsert({
     where: { symbol_time_3m: { symbol: candle.symbol, time: bucketStart } },
     create: {
-      id: `c3m_${candle.symbol}_${bucketStart}`,
       symbol: candle.symbol,
       time: bucketStart,
       open: toDec(open),
