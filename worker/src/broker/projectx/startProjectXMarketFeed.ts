@@ -233,5 +233,6 @@ export async function startProjectXMarketFeed(params: {
   console.log("[projectx-market] started", {
     accountId: params.status?.accountId ?? null,
     contractId: params.contractId,
+    instrument: params.instrument,
   });
 }
