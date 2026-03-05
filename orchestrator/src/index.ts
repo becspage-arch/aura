@@ -39,7 +39,14 @@ async function envForWorker(a: DesiredAccount) {
     // Inject decrypted creds into runtime
     { name: "PROJECTX_USERNAME", value: String(creds.username || "") },
     { name: "PROJECTX_API_KEY", value: String(creds.apiKey || "") },
-    { name: "PROJECTX_CONTRACT_ID", value: String(creds.contractId || "CON.F.US.MGC.J26") },
+    {
+      name: "PROJECTX_SYMBOL",
+      value: String(
+        creds.symbol ||
+          baseSymbolFromProjectXContractId(creds.contractId) ||
+          "MGC"
+      ),
+    },
     ...(creds.externalAccountId
       ? [{ name: "PROJECTX_ACCOUNT_ID", value: String(creds.externalAccountId) }]
       : []),
@@ -73,6 +80,14 @@ function getBrokerAccountIdFromTask(task: any, containerName: string): string | 
   const hit = envs.find((e: any) => e?.name === "AURA_BROKER_ACCOUNT_ID");
   const v = (hit?.value || "").trim();
   return v ? v : null;
+}
+
+function baseSymbolFromProjectXContractId(contractId: unknown): string | null {
+  const s = String(contractId ?? "").trim().toUpperCase();
+  // Expected format: CON.F.US.MGC.J26 (symbol is the 4th segment)
+  const parts = s.split(".");
+  const sym = parts.length >= 4 ? parts[3] : "";
+  return sym ? sym : null;
 }
 
 async function listOrchestratorTasks(): Promise<any[]> {

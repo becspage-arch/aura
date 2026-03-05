@@ -48,7 +48,7 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({} as any));
 
-    const contractId = String(body.contractId || "CON.F.US.MGC.J26");
+    const symbol = String(body.symbol || "MGC").trim().toUpperCase();
     const side = body.side === "sell" ? "sell" : "buy";
     const size = Number.isFinite(Number(body.size)) ? Number(body.size) : 1;
     const stopLossTicks = Number.isFinite(Number(body.stopLossTicks)) ? Number(body.stopLossTicks) : 45;
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
     await ably.channels.get(channel).publish("exec", {
       type: "manualOrder",
-      payload: { contractId, side, size, stopLossTicks, takeProfitTicks },
+      payload: { symbol, side, size, stopLossTicks, takeProfitTicks },
     });
 
     await publishInAppNotification(clerkUserId, {
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
       published: true,
       clerkUserIdUsed: clerkUserId,
       channel,
-      order: { contractId, side, size, stopLossTicks, takeProfitTicks },
+      order: { symbol, side, size, stopLossTicks, takeProfitTicks },
     });
   } catch (e) {
     return NextResponse.json(

@@ -175,19 +175,19 @@ export async function bootstrapStrategy(params: {
     ? String(ss.symbols[0])
     : "MGC";
 
-  // ✅ Resolve to ProjectX contractId (what your Candle15s/Candle3m are keyed by)
-  const { resolveProjectXContractId, normalizeBaseSymbol } = await import(
-    "../instruments/resolveProjectXContract.js"
-  );
+  // ✅ Base symbol is what the user selects (eg "MGC")
+  // ✅ ContractId is what the broker feed + candle store are keyed by (eg "CON.F.US.MGC.J26")
+  // For now we take contractId from runtime env (injected by orchestrator).
+  // Next step: broker adapter resolves this dynamically at startup (rollover-safe) and injects it into scope.
+  const { normalizeBaseSymbol } = await import("../instruments/resolveProjectXContract.js");
 
-  let contractId: string | null = null;
-  try {
-    contractId = resolveProjectXContractId(baseSymbol);
-  } catch (e) {
-    console.warn(
-      `[${params.env.WORKER_NAME}] strategy seed3m skipped (unsupported symbol)`,
-      { baseSymbol, err: e instanceof Error ? e.message : String(e) }
-    );
+  const contractIdRaw = (process.env.PROJECTX_CONTRACT_ID || "").trim();
+  const contractId: string | null = contractIdRaw.length ? contractIdRaw : null;
+
+  if (!contractId) {
+    console.warn(`[${params.env.WORKER_NAME}] strategy seed3m skipped (PROJECTX_CONTRACT_ID missing)`, {
+      baseSymbol,
+    });
   }
 
   if (contractId) {

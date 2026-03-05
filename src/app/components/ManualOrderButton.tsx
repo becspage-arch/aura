@@ -18,7 +18,7 @@ export function ManualOrderButton() {
         brokerName: "projectx",
         brokerAccountId: "cmlv7u7jh04in01qzqbg58kog", // your selectedBrokerAccountId from Neon
 
-        contractId: "CON.F.US.MGC.J26",
+        symbol: "MGC",
         side: "buy" as const,
         size: 1,
         stopLossTicks: 45,
@@ -29,7 +29,7 @@ export function ManualOrderButton() {
 
       setStatus("sent");
       setMsg(
-        `Sent: ${order.side.toUpperCase()} ${order.size} ${order.contractId} | SL ${order.stopLossTicks}t | TP ${order.takeProfitTicks}t`
+        `Sent: ${order.side.toUpperCase()} ${order.size} ${order.symbol} | SL ${order.stopLossTicks}t | TP ${order.takeProfitTicks}t`
       );
     } catch (e) {
       setStatus("error");

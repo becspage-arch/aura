@@ -126,6 +126,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   // Contract spec (needed for sizing/risk)
   private contractTickSize: number | null = null;
   private contractTickValue: number | null = null;
+  private contractId: string | null = null;
 
   // validate no more than every 10 minutes (well within 200/60s rate limit)
   private lastValidateAtMs = 0;
@@ -136,6 +137,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       accountId: this.accountId,
       accountName: this.accountName,
       simulated: this.accountSimulated,
+      contractId: this.contractId,
       tickSize: this.contractTickSize,
       tickValue: this.contractTickValue,
     };
@@ -620,8 +622,68 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   async warmup(): Promise<void> {
     await this.validateToken();
     await this.fetchActiveAccounts();
-    await this.testHistoryBars();
-    await this.testContractAccess();
+    await this.resolveAndLoadActiveContract();
+  }
+
+  private async resolveAndLoadActiveContract(): Promise<void> {
+    if (!this.token) throw new Error("resolveAndLoadActiveContract: no token");
+
+    // v1: ship MGC only (base symbol), but resolution lives here for rollover later
+    const { resolveProjectXContractId } = await import("../../instruments/resolveProjectXContract.js");
+
+    const baseSymbol = "MGC";
+    const contractId = resolveProjectXContractId(baseSymbol);
+
+    this.contractId = contractId;
+
+    // Load tickSize/tickValue from broker for this contractId
+    const res = await fetch("https://api.topstepx.com/api/Contract/searchById", {
+      method: "POST",
+      headers: {
+        accept: "text/plain",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      body: JSON.stringify({ contractId }),
+    });
+
+    const text = await res.text();
+    const json = parseJsonOrNull(text);
+    const c = json?.contract ?? null;
+
+    const tickSize =
+      typeof c?.tickSize === "number" ? c.tickSize : Number(c?.tickSize ?? NaN);
+    const tickValue =
+      typeof c?.tickValue === "number" ? c.tickValue : Number(c?.tickValue ?? NaN);
+
+    this.contractTickSize = Number.isFinite(tickSize) ? tickSize : null;
+    this.contractTickValue = Number.isFinite(tickValue) ? tickValue : null;
+
+    console.log("[projectx-adapter] active contract resolved", {
+      baseSymbol,
+      contractId,
+      status: res.status,
+      ok: res.ok,
+      tickSize: this.contractTickSize,
+      tickValue: this.contractTickValue,
+      contractFound: Boolean(c),
+      errorCode: json?.errorCode ?? null,
+      errorMessage: json?.errorMessage ?? null,
+    });
+
+    if (!res.ok || !c) {
+      throw new Error(
+        `ProjectX Contract/searchById failed for contractId=${contractId} (HTTP ${res.status})${
+          json?.errorMessage ? `: ${json.errorMessage}` : ""
+        }`
+      );
+    }
+
+    if (!this.contractTickSize || !this.contractTickValue) {
+      throw new Error(
+        `ProjectX contract spec missing tickSize/tickValue for contractId=${contractId}`
+      );
+    }
   }
 
   /**
@@ -1388,6 +1450,7 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     this.accountId = null;
     this.accountName = null;
     this.accountSimulated = null;
+    this.contractId = null;
     this.contractTickSize = null;
     this.contractTickValue = null;
     console.log("[projectx-adapter] disconnected");

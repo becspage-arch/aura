@@ -25,6 +25,7 @@ export type BrokerEventName =
   | "broker.error"
   | "broker.market.quote"
   | "candle.15s.closed"
+  | "candle.3m.closed"
   | "exec.bracket";
 
 export type BrokerEvent = {
@@ -458,9 +459,7 @@ export async function startBrokerFeed(params: {
           : null;
 
       const contractId =
-        instrument.contractId ||
-        process.env.PROJECTX_CONTRACT_ID?.trim() ||
-        null;
+        status?.contractId != null ? String(status.contractId).trim() : null;
 
       if (!token) {
         console.warn("[projectx-market] no token available, market hub not started");
@@ -468,8 +467,9 @@ export async function startBrokerFeed(params: {
       }
 
       if (!contractId) {
-        console.warn("[projectx-market] contractId missing (db+env). market hub not started", {
+        console.warn("[projectx-market] contractId missing (broker status). market hub not started", {
           brokerAccountId: scope.brokerAccountId,
+          status,
         });
         return;
       }

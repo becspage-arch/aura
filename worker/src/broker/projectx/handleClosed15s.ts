@@ -190,8 +190,16 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
     const brokerContractId = String(closed?.data?.contractId ?? "").trim();
     const activeContractId = String(deps.instrument?.contractId ?? "").trim();
 
-    // ✅ Candle storage key (must match your existing DB rows)
-    const candleContractId = activeContractId || brokerContractId;
+    // ✅ Candle storage key MUST be the resolved active contract id (never fall back)
+    const candleContractId = activeContractId;
+
+    if (!candleContractId) {
+      console.warn("[candle15s-close] missing active contractId - skipping", {
+        brokerContractId,
+        instrument: deps.instrument,
+      });
+      return;
+    }
 
     // ✅ Base symbol for UI-facing rows (StrategySignal/Execution)
     const baseSymbol = String(deps.instrument?.baseSymbol ?? "MGC").trim().toUpperCase();
@@ -564,7 +572,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       }
 
       const contractIdFromBracket = String(
-        closed?.data?.contractId || (bracket as any).contractId || ""
+        (bracket as any).contractId || candleContractId || ""
       ).trim();
 
       const side =

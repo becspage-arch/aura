@@ -13,7 +13,6 @@ type EnvLike = {
 type ManualExecPayload = {
   token?: unknown;
   clerkUserId?: unknown;
-  contractId?: unknown;
   symbol?: unknown;
   side?: unknown;
   size?: unknown;
@@ -52,7 +51,6 @@ function sanitizePayload(p: ManualExecPayload) {
   return {
     token: asString(p.token) ? "***" : null,
     clerkUserId: asString(p.clerkUserId),
-    contractId: asString(p.contractId),
     symbol: asString(p.symbol),
     side: asString(p.side),
     size: p.size,
@@ -75,7 +73,7 @@ export async function startManualExecListener(params: {
   DRY_RUN: boolean;
   broker: IBrokerAdapter;
   getPrisma: () => PrismaClient;
-  getUserIdentityForWorker: () => Promise<{ clerkUserId: string; userId: string }>;
+  getUserIdentityForWorker: () => Promise<{ clerkUserId: string; userId: string; brokerAccountId: string }>;
   enabled: boolean;
   manualToken: string;
   expectedUser: string;
@@ -139,34 +137,35 @@ export async function startManualExecListener(params: {
       });
     }
 
-    // --- Validate required order fields ---
-    const contractId = asString(payload.contractId);
-    const side = asSide(payload.side);
-    const qty = asNumber(payload.size);
+  // --- Validate required order fields ---
+  // ✅ Accept symbol from UI; resolve to active contractId inside worker.
+  const symbol = (asString(payload.symbol) || "").toUpperCase();
+  const side = asSide(payload.side);
+  const qty = asNumber(payload.size);
 
-    if (!contractId) {
-      return reject(params.env, "missing_contractId", { channelName, safe });
-    }
-    if (!side) {
-      return reject(params.env, "invalid_side", { channelName, safe, allowed: ["buy", "sell"] });
-    }
-    if (!qty || qty <= 0) {
-      return reject(params.env, "invalid_size", { channelName, safe, note: "size must be > 0" });
-    }
+  if (!symbol) {
+    return reject(params.env, "missing_symbol", { channelName, safe });
+  }
+  if (!side) {
+    return reject(params.env, "invalid_side", { channelName, safe, allowed: ["buy", "sell"] });
+  }
+  if (!qty || qty <= 0) {
+    return reject(params.env, "invalid_size", { channelName, safe, note: "size must be > 0" });
+  }
 
-    const stopLossTicks = asNumber(payload.stopLossTicks);
-    const takeProfitTicks = asNumber(payload.takeProfitTicks);
+  const stopLossTicks = asNumber(payload.stopLossTicks);
+  const takeProfitTicks = asNumber(payload.takeProfitTicks);
 
-    logTag(`[${params.env.WORKER_NAME}] MANUAL_EXEC_PARSED`, {
-      channelName,
-      messageName: msg.name,
-      payloadExecKey: asString(payload.execKey),
-      contractId,
-      side,
-      qty,
-      stopLossTicks,
-      takeProfitTicks,
-    });
+  logTag(`[${params.env.WORKER_NAME}] MANUAL_EXEC_PARSED`, {
+    channelName,
+    messageName: msg.name,
+    payloadExecKey: asString(payload.execKey),
+    symbol,
+    side,
+    qty,
+    stopLossTicks,
+    takeProfitTicks,
+  });
 
     if (stopLossTicks == null || stopLossTicks <= 0) {
       return reject(params.env, "invalid_stopLossTicks", {
@@ -185,7 +184,7 @@ export async function startManualExecListener(params: {
     }
 
     // --- Map worker user identity (internal userId) ---
-    let ident: { clerkUserId: string; userId: string };
+    let ident: { clerkUserId: string; userId: string; brokerAccountId: string };
     try {
       ident = await params.getUserIdentityForWorker();
     } catch (e) {
@@ -204,10 +203,42 @@ export async function startManualExecListener(params: {
       });
     }
 
-    const entryType = asEntryType(payload.entryType);
-    const symbol = asString(payload.symbol);
+const entryType = asEntryType(payload.entryType);
 
-    const execKey = `manual:${clerkUserId}:${Date.now()}:${contractId}:${side}:${qty}:${stopLossTicks}:${takeProfitTicks}`;
+// ✅ Resolve contractId at runtime (rollover-safe)
+// Prefer per-account config.activeContractId / contractId, else env.
+let resolvedContractId: string | null = null;
+
+try {
+  const prisma = params.getPrisma();
+  const acct = await prisma.brokerAccount.findUnique({
+    where: { id: ident.brokerAccountId },
+    select: { config: true },
+  });
+
+  const cfg: any = (acct as any)?.config ?? null;
+  const c =
+    (cfg?.activeContractId != null ? String(cfg.activeContractId).trim() : "") ||
+    (cfg?.contractId != null ? String(cfg.contractId).trim() : "") ||
+    "";
+
+  if (c) resolvedContractId = c;
+} catch {
+  // ignore and fall back
+}
+
+if (!resolvedContractId) {
+  resolvedContractId = (process.env.PROJECTX_CONTRACT_ID || "").trim() || null;
+}
+
+if (!resolvedContractId) {
+  return reject(params.env, "missing_resolved_contractId", { channelName, safe, brokerAccountId });
+}
+
+const contractId = resolvedContractId;
+
+const execKey = `manual:${clerkUserId}:${Date.now()}:${symbol}:${contractId}:${side}:${qty}:${stopLossTicks}:${takeProfitTicks}`;
+
     const customTag = asString(payload.customTag) || null;
 
     if (params.DRY_RUN) {
@@ -242,7 +273,7 @@ export async function startManualExecListener(params: {
           execKey,
           userId: ident.userId,
           brokerName: (params.broker as any)?.name ?? "unknown",
-          brokerAccountId,
+          brokerAccountId: ident.brokerAccountId,
           contractId,
           symbol,
           side,

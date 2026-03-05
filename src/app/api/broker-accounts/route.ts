@@ -173,7 +173,7 @@ export async function POST(req: Request) {
 
   const username = toStr(body.username);
   const apiKey = toStr(body.apiKey);
-  const contractId = toStr(body.contractId) || "CON.F.US.MGC.J26";
+  const symbol = toStr(body.symbol) || "MGC";
 
   if (!username || !apiKey) {
     return Response.json(
@@ -197,7 +197,7 @@ export async function POST(req: Request) {
   const encryptedPayload = encryptJson({
     username,
     apiKey,
-    contractId,
+    symbol,
   });
 
   // Upsert ALL discovered accounts

@@ -41,7 +41,7 @@ const EnvSchema = z.object({
 
   // ProjectX (TopstepX)
   PROJECTX_API_KEY: z.string().optional(),
-  PROJECTX_CONTRACT_ID: z.string().min(1),
+  PROJECTX_SYMBOL: z.string().min(1).default("MGC"),
 });
 
 export const env = EnvSchema.parse(process.env);
@@ -88,5 +88,5 @@ export const CQG = {
 
 export const PROJECTX = {
   apiKey: env.PROJECTX_API_KEY ?? "",
-  contractId: env.PROJECTX_CONTRACT_ID,
+  symbol: env.PROJECTX_SYMBOL.trim().toUpperCase(),
 };

@@ -184,7 +184,7 @@ export function BrokerConnectionsCard() {
           brokerName: "projectx",
           username,
           apiKey,
-          contractId: "CON.F.US.MGC.J26",
+          symbol: "MGC",
           externalId: a.externalId,
           accountLabel: a.accountLabel,
           enable: true,

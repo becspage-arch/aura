@@ -32,7 +32,7 @@ export async function publishManualOrder(params: {
   brokerName: string;
   brokerAccountId: string;
 
-  contractId: string;
+  symbol: string;
   side: "buy" | "sell";
   size: number;
   stopLossTicks: number;
@@ -54,7 +54,7 @@ export async function publishManualOrder(params: {
   await ch.publish("exec", {
     type: "manualOrder",
     payload: {
-      contractId: params.contractId,
+      symbol: String(params.symbol || "").trim().toUpperCase(),
       side: params.side,
       size: params.size,
       stopLossTicks: params.stopLossTicks,
