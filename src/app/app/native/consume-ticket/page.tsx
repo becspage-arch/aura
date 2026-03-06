@@ -1,7 +1,7 @@
 // src/app/native/consume-ticket/page.tsx
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSignIn, useClerk } from "@clerk/nextjs";
 
@@ -11,7 +11,12 @@ function ConsumeTicketInner() {
   const { signIn } = useSignIn();
   const { setActive } = useClerk();
 
+  const hasRun = useRef(false);
+
   useEffect(() => {
+    if (hasRun.current) return;
+    hasRun.current = true;
+
     const ticket = sp.get("ticket");
     if (!ticket || !signIn) return;
 
@@ -33,7 +38,7 @@ function ConsumeTicketInner() {
         router.replace("/sign-in");
       }
     })();
-  }, [sp, router, signIn, setActive]);
+  }, []); // intentionally empty
 
   return <div style={{ padding: 24 }}>Signing you in…</div>;
 }
