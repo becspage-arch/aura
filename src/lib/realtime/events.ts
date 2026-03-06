@@ -9,6 +9,7 @@ export type AuraRealtimeEventType =
   | "status_update"
   | "risk_settings_update"
   | "strategy_settings_update"
+  | "strategy_symbol_changed"
   | "error"
   | "candle_closed";
 
@@ -92,6 +93,12 @@ export type StrategySettingsUpdateData = {
   strategySettings: Record<string, unknown>;
 };
 
+export type StrategySymbolChangedData = {
+  brokerAccountId: string;
+  previousSymbol: string;
+  nextSymbol: string;
+};
+
 /* -----------------------------
    Error events
 ------------------------------ */
@@ -116,5 +123,6 @@ export type AuraRealtimeEvent =
   | AuraBaseEvent<"status_update", StatusUpdateData>
   | AuraBaseEvent<"risk_settings_update", RiskSettingsUpdateData>
   | AuraBaseEvent<"strategy_settings_update", StrategySettingsUpdateData>
+  | AuraBaseEvent<"strategy_symbol_changed", StrategySymbolChangedData>
   | AuraBaseEvent<"error", ErrorData>
   | AuraBaseEvent<"candle_closed", CandleClosedData>;
