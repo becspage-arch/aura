@@ -242,4 +242,3 @@ export async function startProjectXMarketFeed(params: {
   // startBrokerFeed() thinks the feed ended and restarts it in a loop.
   await new Promise<void>(() => {});
 }
-}
