@@ -354,7 +354,20 @@ export async function POST(req: Request) {
   }
 
   const existing = acct.config ?? legacyStrategySettings ?? null;
+  const prevStrategySettings = normalize(existing);
   const nextStrategySettings = mergeAndNormalize(existing, body);
+
+  const prevSymbol =
+    Array.isArray(prevStrategySettings.symbols) && prevStrategySettings.symbols.length
+      ? String(prevStrategySettings.symbols[0]).trim().toUpperCase()
+      : "MGC";
+
+  const nextSymbol =
+    Array.isArray(nextStrategySettings.symbols) && nextStrategySettings.symbols.length
+      ? String(nextStrategySettings.symbols[0]).trim().toUpperCase()
+      : "MGC";
+
+  const symbolChanged = prevSymbol !== nextSymbol;
 
   const next = await db.brokerAccount.update({
     where: { id: acct.id },
@@ -377,6 +390,14 @@ export async function POST(req: Request) {
   await publishToUser(clerkUserId, "strategy_settings_update", {
     strategySettings: normalize(next.config),
   });
+
+  if (symbolChanged) {
+    await publishToUser(clerkUserId, "strategy_symbol_changed", {
+      brokerAccountId: acct.id,
+      previousSymbol: prevSymbol,
+      nextSymbol,
+    });
+  }
 
   return Response.json({
     ok: true,

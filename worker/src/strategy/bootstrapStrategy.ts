@@ -271,9 +271,28 @@ export async function bootstrapStrategy(params: {
         console.log(`[${params.env.WORKER_NAME}] strategySettings applied (Ably)`, {
           ...next,
           sessions: ss?.sessions ?? null,
+          symbols: Array.isArray(ss?.symbols) ? ss.symbols : null,
         });
       } catch (e) {
         console.warn(`[${params.env.WORKER_NAME}] strategy_settings_update handler failed`, e);
+      }
+    });
+
+    ch.subscribe("strategy_symbol_changed", (msg) => {
+      try {
+        const payload: any = msg?.data ?? null;
+
+        console.warn(`[${params.env.WORKER_NAME}] strategy_symbol_changed received - restarting worker`, {
+          brokerAccountId: payload?.brokerAccountId ?? null,
+          previousSymbol: payload?.previousSymbol ?? null,
+          nextSymbol: payload?.nextSymbol ?? null,
+        });
+
+        setTimeout(() => {
+          process.exit(0);
+        }, 250);
+      } catch (e) {
+        console.warn(`[${params.env.WORKER_NAME}] strategy_symbol_changed handler failed`, e);
       }
     });
 
