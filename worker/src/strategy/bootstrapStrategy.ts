@@ -175,14 +175,11 @@ export async function bootstrapStrategy(params: {
     ? String(ss.symbols[0])
     : "MGC";
 
-  // ✅ Base symbol is what the user selects (eg "MGC")
-  // ✅ ContractId is what the broker feed + candle store are keyed by (eg "CON.F.US.MGC.J26")
-  // For now we take contractId from runtime env (injected by orchestrator).
-  // Next step: broker adapter resolves this dynamically at startup (rollover-safe) and injects it into scope.
   const { normalizeBaseSymbol } = await import("../instruments/resolveProjectXContract.js");
   const baseSymbol = normalizeBaseSymbol(baseSymbolRaw);
 
-  const contractIdRaw = (process.env.PROJECTX_CONTRACT_ID || "").trim();
+  const contractIdRaw =
+    params.status?.contractId != null ? String(params.status.contractId).trim() : "";
   const contractId: string | null = contractIdRaw.length ? contractIdRaw : null;
 
   console.log(`[${params.env.WORKER_NAME}] SYMBOL_DEBUG`, {
@@ -190,7 +187,7 @@ export async function bootstrapStrategy(params: {
     symbolsRaw: Array.isArray(ss.symbols) ? ss.symbols : null,
     baseSymbolRaw,
     baseSymbol,
-    contractIdEnvRaw: contractIdRaw || null,
+    contractIdFromStatusRaw: contractIdRaw || null,
     contractId,
   });
 

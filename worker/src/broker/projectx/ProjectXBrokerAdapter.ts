@@ -622,21 +622,34 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
   async warmup(): Promise<void> {
     await this.validateToken();
     await this.fetchActiveAccounts();
-    await this.resolveAndLoadActiveContract();
   }
 
-  private async resolveAndLoadActiveContract(): Promise<void> {
-    if (!this.token) throw new Error("resolveAndLoadActiveContract: no token");
+  async resolveInstrumentForBaseSymbol(baseSymbolInput: string): Promise<{
+    baseSymbol: string;
+    contractId: string;
+    tickSize: number;
+    tickValue: number;
+    activeContract: boolean;
+    symbolId: string | null;
+    name: string | null;
+    description: string | null;
+    live: boolean;
+    candidatesCount: number;
+  }> {
+    if (!this.token) throw new Error("resolveInstrumentForBaseSymbol: no token");
     if (this.accountSimulated == null) {
-      throw new Error("resolveAndLoadActiveContract: accountSimulated unknown (fetch accounts first)");
+      throw new Error("resolveInstrumentForBaseSymbol: accountSimulated unknown (fetch accounts first)");
     }
 
-    const { resolveProjectXContract } = await import(
+    const { resolveProjectXContract, normalizeBaseSymbol } = await import(
       "../../instruments/resolveProjectXContract.js"
     );
 
-    // NOTE: still hardcoded until we complete checklist item #4 (settings -> worker)
-    const baseSymbol = "MGC";
+    const baseSymbol = normalizeBaseSymbol(baseSymbolInput);
+    if (!baseSymbol) {
+      throw new Error("resolveInstrumentForBaseSymbol: baseSymbol missing");
+    }
+
     const live = !this.accountSimulated;
 
     const resolved = await resolveProjectXContract({
@@ -656,11 +669,23 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
     });
 
     if (!this.contractTickSize || !this.contractTickValue) {
-      // If ProjectX ever omits tick info from Contract/search result, fail fast for safety
       throw new Error(
         `ProjectX contract spec missing tickSize/tickValue for contractId=${this.contractId}`
       );
     }
+
+    return {
+      baseSymbol,
+      contractId: resolved.contractId,
+      tickSize: this.contractTickSize,
+      tickValue: this.contractTickValue,
+      activeContract: resolved.activeContract,
+      symbolId: resolved.symbolId,
+      name: resolved.name,
+      description: resolved.description,
+      live: resolved.live,
+      candidatesCount: resolved.candidatesCount,
+    };
   }
 
   /**

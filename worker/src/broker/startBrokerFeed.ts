@@ -404,16 +404,56 @@ export async function startBrokerFeed(params: {
       broker: broker.name,
     });
 
-    const status =
+    let status =
       typeof (broker as any).getStatus === "function"
         ? (broker as any).getStatus()
         : null;
+
+    let startupInstrument: { baseSymbol: string; contractId: string | null } = {
+      baseSymbol: "MGC",
+      contractId: null,
+    };
+
+    if (broker.name === "projectx") {
+      const { normalizeBaseSymbol } = await import("../instruments/resolveProjectXContract.js");
+
+      const ss = await getStrategySettingsForWorker();
+      const baseSymbolRaw =
+        Array.isArray(ss?.symbols) && ss.symbols.length ? String(ss.symbols[0]) : "MGC";
+      const baseSymbol = normalizeBaseSymbol(baseSymbolRaw);
+
+      const resolved = await (broker as any).resolveInstrumentForBaseSymbol(baseSymbol);
+
+      startupInstrument = {
+        baseSymbol,
+        contractId: resolved.contractId,
+      };
+
+      status =
+        typeof (broker as any).getStatus === "function"
+          ? (broker as any).getStatus()
+          : status;
+
+      console.log(`[${env.WORKER_NAME}] startup instrument resolved`, {
+        broker: broker.name,
+        brokerAccountId: scope.brokerAccountId,
+        baseSymbol,
+        contractId: resolved.contractId,
+        tickSize: resolved.tickSize,
+        tickValue: resolved.tickValue,
+        live: resolved.live,
+        symbolId: resolved.symbolId,
+      });
+    }
 
     await emitSafe({
       name: "broker.ready",
       ts: new Date().toISOString(),
       broker: broker.name,
-      data: status ?? undefined,
+      data: {
+        ...(status ?? {}),
+        instrument: startupInstrument,
+      },
     });
 
     // IMPORTANT: hand the live broker instance back to index.ts for Ably exec
@@ -468,7 +508,7 @@ export async function startBrokerFeed(params: {
           : null;
 
       const contractId =
-        status?.contractId != null ? String(status.contractId).trim() : null;
+        instrument?.contractId != null ? String(instrument.contractId).trim() : null;
 
       if (!token) {
         console.warn("[projectx-market] no token available, market hub not started");
