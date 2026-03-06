@@ -1,3 +1,4 @@
+// src/lib/ably/channels.ts
 export function userChannelName(clerkUserId: string) {
-  return `user:${clerkUserId}`;
+  return `aura:ui:${clerkUserId}`;
 }

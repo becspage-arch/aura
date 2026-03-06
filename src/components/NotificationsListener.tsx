@@ -1,12 +1,10 @@
 // src/components/NotificationsListener.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useUser } from "@clerk/nextjs";
-import Ably from "ably";
-import { getAblyRealtime } from "@/lib/ably/client";
+import { useEffect, useState } from "react";
 import { ToastHost, type ToastItem } from "./ToastHost";
 import type { AuraToastPayload } from "./toastBus";
+import { subscribeMyUiChannel } from "@/lib/ably/client";
 
 type InAppPayload = {
   type?: string;
@@ -17,15 +15,7 @@ type InAppPayload = {
 };
 
 export function NotificationsListener() {
-  const { user, isLoaded } = useUser();
-  const userId = user?.id;
-
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-
-  const channelName = useMemo(() => {
-    if (!userId) return null;
-    return `user:${userId}:notifications`;
-  }, [userId]);
 
   function pushToast(p: InAppPayload) {
     const title = p.title ?? "Aura";
@@ -65,25 +55,14 @@ export function NotificationsListener() {
     return () => window.removeEventListener("aura:toast", onLocalToast);
   }, []);
 
-  // Ably toasts
+  // Ably toasts - deterministic per-user UI channel only
   useEffect(() => {
-    if (!isLoaded) return;
-    if (!channelName) return;
-
-    const client = getAblyRealtime();
-    const channel = client.channels.get(channelName);
-
-    const handler = (msg: Ably.Message) => {
-      const p = msg.data as InAppPayload;
+    return subscribeMyUiChannel(({ event }) => {
+      const p = event?.data as InAppPayload | undefined;
+      if (!p) return;
       pushToast(p);
-    };
-
-    channel.subscribe("notification", handler);
-
-    return () => {
-      channel.unsubscribe("notification", handler);
-    };
-  }, [isLoaded, channelName]);
+    });
+  }, []);
 
   return <ToastHost toasts={toasts} />;
 }

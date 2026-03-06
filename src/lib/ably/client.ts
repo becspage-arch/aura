@@ -26,8 +26,8 @@ function getClientId(client: Ably.Realtime) {
 }
 
 /**
- * ✅ Preferred: deterministic per-user UI channel.
- * IMPORTANT: does NOT throw on initial load; waits until Ably is connected/authenticated.
+ * Preferred: deterministic per-user UI channel.
+ * Subscribes once only.
  */
 export function subscribeMyUiChannel(onMessage: (item: TimelineItem) => void) {
   const client = getAblyRealtime();
@@ -35,12 +35,13 @@ export function subscribeMyUiChannel(onMessage: (item: TimelineItem) => void) {
   let channel: Ably.RealtimeChannel | null = null;
   let handler: ((msg: Ably.Message) => void) | null = null;
   let disposed = false;
+  let attached = false;
 
   const attach = () => {
-    if (disposed) return;
+    if (disposed || attached) return;
 
     const me = getClientId(client);
-    if (!me) return; // still not authenticated
+    if (!me) return;
 
     const channelName = `aura:ui:${me}`;
     channel = client.channels.get(channelName);
@@ -51,12 +52,11 @@ export function subscribeMyUiChannel(onMessage: (item: TimelineItem) => void) {
     };
 
     channel.subscribe(handler);
+    attached = true;
   };
 
-  // Try immediately (works if auth already done)
   attach();
 
-  // Otherwise wait for Ably connection (auth completes during connect)
   const onConnected = () => attach();
   client.connection.on("connected", onConnected);
 
@@ -74,12 +74,15 @@ export function subscribeMyUiChannel(onMessage: (item: TimelineItem) => void) {
  * Back-compat export used by existing code.
  * SECURITY: only allows subscribing to the caller's own aura:ui:<me>.
  */
-export function subscribeUserChannel(channelName: string, onMessage: (item: TimelineItem) => void) {
+export function subscribeUserChannel(
+  channelName: string,
+  onMessage: (item: TimelineItem) => void
+) {
   const client = getAblyRealtime();
 
   const tryValidate = () => {
     const me = getClientId(client);
-    if (!me) return true; // can't validate yet, so allow for now and validate on connect
+    if (!me) return true;
     const expected = `aura:ui:${me}`;
     if (channelName !== expected) {
       throw new Error(`Forbidden channel. Expected ${expected}`);
@@ -87,7 +90,6 @@ export function subscribeUserChannel(channelName: string, onMessage: (item: Time
     return true;
   };
 
-  // validate now if possible (otherwise validation happens once connected)
   tryValidate();
 
   return subscribeMyUiChannel(onMessage);
