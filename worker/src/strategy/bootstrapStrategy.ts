@@ -233,7 +233,7 @@ export async function bootstrapStrategy(params: {
       `[${params.env.WORKER_NAME}] Ably subscribe skipped (clerkUserId missing)`
     );
   } else {
-    const channelName = `user:${params.clerkUserId.trim()}`;
+        const channelName = `aura:ui:${params.clerkUserId.trim()}`;
 
     const realtime = new Ably.Realtime({ key: ablyKey });
 
@@ -309,7 +309,7 @@ export async function bootstrapStrategy(params: {
 
     console.log(`[${params.env.WORKER_NAME}] Ably strategy settings subscription active`, {
       channelName,
-      event: "strategy_settings_update",
+      events: ["strategy_settings_update", "strategy_symbol_changed"],
     });
   }
 
