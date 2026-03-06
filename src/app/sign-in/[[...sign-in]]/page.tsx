@@ -8,42 +8,60 @@ function isNativeApp() {
   return Capacitor.isNativePlatform();
 }
 
+const GOOGLE_WEB_CLIENT_ID =
+  "453466232987-cn3sp0rj0dut4iou9tkemlutqtitlv5t.apps.googleusercontent.com";
+
 export default function Page() {
   const native = isNativeApp();
 
   if (!native) return <SignIn />;
 
   const onGoogle = async () => {
-    // Access plugin via window.Capacitor to avoid Next bundling it
-    const GoogleAuth = (window as any)?.Capacitor?.Plugins?.GoogleAuth;
+    try {
+      const GoogleSignIn = (window as any)?.Capacitor?.Plugins?.GoogleSignIn;
 
-    if (!GoogleAuth) {
-      console.error("GoogleAuth plugin not available");
-      return;
+      if (!GoogleSignIn) {
+        console.error("GoogleSignIn plugin not available");
+        return;
+      }
+
+      await GoogleSignIn.initialize({
+        clientId: GOOGLE_WEB_CLIENT_ID,
+      });
+
+      const result = await GoogleSignIn.signIn();
+      const idToken = result?.idToken;
+
+      if (!idToken) {
+        console.error("GoogleSignIn returned no idToken", result);
+        return;
+      }
+
+      const res = await fetch("/api/native/google/exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ idToken }),
+      });
+
+      if (!res.ok) {
+        console.error("native google exchange failed", res.status);
+        return;
+      }
+
+      const data = await res.json();
+      const ticket = data?.ticket;
+
+      if (!ticket) {
+        console.error("native google exchange returned no ticket", data);
+        return;
+      }
+
+      window.location.href =
+        `/native/consume-ticket?ticket=${encodeURIComponent(ticket)}`;
+    } catch (err) {
+      console.error("native google sign-in failed", err);
     }
-
-    const result = await GoogleAuth.signIn();
-
-    const idToken = result?.authentication?.idToken;
-
-    if (!idToken) return;
-
-    const res = await fetch("/api/native/google/exchange", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ idToken }),
-    });
-
-    if (!res.ok) return;
-
-    const data = await res.json();
-
-    const ticket = data?.ticket;
-    if (!ticket) return;
-
-    window.location.href =
-      `/native/consume-ticket?ticket=${encodeURIComponent(ticket)}`;
   };
 
   return (

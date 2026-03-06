@@ -235,4 +235,11 @@ export async function startProjectXMarketFeed(params: {
     contractId: params.contractId,
     instrument: params.instrument,
   });
+
+  // IMPORTANT:
+  // Keep this function alive for the lifetime of the worker.
+  // ProjectXMarketHub drives callbacks/events asynchronously, so if we return here,
+  // startBrokerFeed() thinks the feed ended and restarts it in a loop.
+  await new Promise<void>(() => {});
+}
 }
