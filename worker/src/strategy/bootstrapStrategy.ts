@@ -280,7 +280,8 @@ export async function bootstrapStrategy(params: {
 
     ch.subscribe("strategy_symbol_changed", (msg) => {
       try {
-        const payload: any = msg?.data ?? null;
+        const envelope: any = msg?.data ?? null;
+        const payload: any = envelope?.data ?? envelope ?? null;
 
         console.warn(`[${params.env.WORKER_NAME}] strategy_symbol_changed received - restarting worker`, {
           brokerAccountId: payload?.brokerAccountId ?? null,
