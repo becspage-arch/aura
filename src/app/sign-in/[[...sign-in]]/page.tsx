@@ -1,3 +1,4 @@
+// src/app/sign-in/[[...sign-in]]/page.tsx
 "use client";
 
 import { SignIn } from "@clerk/nextjs";
@@ -50,7 +51,7 @@ export default function Page() {
       style={{
         minHeight: "100vh",
         background: "#fff",
-        paddingTop: "calc(env(safe-area-inset-top) + 24px)",
+        paddingTop: "calc(env(safe-area-inset-top) + 224px)",
         paddingLeft: 24,
         paddingRight: 24,
       }}
