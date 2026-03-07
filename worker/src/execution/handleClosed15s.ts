@@ -1,15 +1,16 @@
-// worker/src/broker/execution/handleClosed15s.ts
+// worker/src/execution/handleClosed15s.ts
 
 import type { PrismaClient } from "@prisma/client";
 import { Prisma, OrderSide } from "@prisma/client";
 
-import type { CorePlus315Engine } from "../../strategy/coreplus315Engine.js";
+import type { CorePlus315Engine } from "../strategy/coreplus315Engine.js";
 import { buildBracketFromIntent } from "../trading/buildBracket.js";
 import { executeBracket } from "./executeBracket.js";
 import { logTag } from "../lib/logTags";
 import { flush3mForSymbol } from "../candles/deriveCandle3m.js";
 import { onClosed15sUpdate3m } from "../candles/deriveCandle3m.js";
 import { matchTradingWindows } from "../lib/tradingWindows.js";
+import { demoRuntime } from "../broker/aurademo/demoRuntime.js";
 
 export type HandleClosed15sDeps = {
   env: { WORKER_NAME: string };
@@ -47,7 +48,6 @@ export type HandleClosed15sDeps = {
 
   status: any;
 
-  // mutable state owned by ProjectX start-up
   rolloverOkLoggedRef: { value: boolean };
 };
 
@@ -221,7 +221,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         symbol: candleContractId,
         currentTime: time,
         emitSafe: deps.emitSafe,
-        brokerNameForEvent: "projectx",
+        brokerNameForEvent: deps.broker.name,
       });
 
       console.log("[candle15s-close] broker", {
@@ -269,7 +269,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           await deps.emitSafe({
             name: "candle.3m.closed",
             ts: new Date().toISOString(),
-            broker: "projectx",
+            broker: deps.broker.name,
             data: c3,
           });
 
@@ -291,7 +291,24 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         },
       });
     } catch (e) {
-      console.error("[projectx-market] failed to persist Candle15s / build 3m", e);
+      console.error(`[${deps.broker.name}-market] failed to persist Candle15s / build 3m`, e);
+    }
+
+    const demoExits = demoRuntime.evaluateClosed15s({
+      symbol: candleContractId,
+      time,
+      open: Number(closed.data.o),
+      high: Number(closed.data.h),
+      low: Number(closed.data.l),
+      close: Number(closed.data.c),
+    });
+
+    if (demoExits.length) {
+      console.log("[demo-broker] EXIT_TRIGGERS", {
+        broker: deps.broker.name,
+        count: demoExits.length,
+        exits: demoExits,
+      });
     }
 
     // ✅ Tiny/forceClose candles do NOT trade, but they DO persist + build 3m (above)
@@ -299,7 +316,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       await deps.emitSafe({
         name: "candle.15s.closed",
         ts: new Date().toISOString(),
-        broker: "projectx",
+        broker: deps.broker.name,
         data: closed.data,
       });
       return;
@@ -313,7 +330,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       const externalAccountId = String(deps.status?.accountId ?? "");
       const strategyEnabled = externalAccountId
         ? await deps.getStrategyEnabledForAccount({
-            brokerName: "projectx",
+            brokerName: deps.broker.name,
             externalAccountId,
           })
         : true;
@@ -384,7 +401,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
       await deps.emitSafe({
         name: "exec.bracket",
         ts: new Date().toISOString(),
-        broker: "projectx",
+        broker: deps.broker.name,
         data: { source: params.source, bracket, signalKey },
       });
 
@@ -399,7 +416,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
             userId: ident.userId,
             brokerAccountId: ident.brokerAccountId,
             strategy: "coreplus315",
-            brokerName: deps.broker?.name ?? "projectx",
+            brokerName: deps.broker.name,
             symbol: baseSymbol,
             contractId: candleContractId ? candleContractId : null,
             side: candidate.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
@@ -459,7 +476,7 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
           userId: ident.userId,
           brokerAccountId: ident.brokerAccountId,
           strategy: "coreplus315",
-          brokerName: deps.broker?.name ?? "projectx",
+          brokerName: deps.broker.name,
           symbol: baseSymbol,
           contractId: candleContractId ? candleContractId : null,
           side: intent.side === "sell" ? OrderSide.SELL : OrderSide.BUY,
@@ -746,14 +763,14 @@ export function makeHandleClosed15s(deps: HandleClosed15sDeps) {
         }
       }
     } catch (e) {
-      console.error("[projectx-market] failed to run strategy", e);
+      console.error(`[${deps.broker.name}-market] failed to run strategy`, e);
     }
 
     // 3c) Emit candle close event
     await deps.emitSafe({
       name: "candle.15s.closed",
       ts: new Date().toISOString(),
-      broker: "projectx",
+      broker: deps.broker.name,
       data: closed.data,
     });
   };

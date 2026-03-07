@@ -5,7 +5,7 @@ import { createBroker } from "./createBroker.js";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { startManualExecListener } from "./manualExecListener.js";
-import { startProjectXMarketFeed } from "./projectx/startProjectXMarketFeed.js";
+import { startMarketFeed } from "./startMarketFeed.js";
 import { bootstrapStrategy } from "../strategy/bootstrapStrategy.js";
 import { startProjectXUserFeed } from "./projectx/startProjectXUserFeed.js";
 import type { IBrokerAdapter } from "./IBrokerAdapter.js";
@@ -500,64 +500,50 @@ export async function startBrokerFeed(params: {
       externalAccountId: scope.externalId ?? null,
     });
 
-    // --- ProjectX market hub ---
+    let marketToken: string | null = null;
+    let marketContractId: string | null = null;
+
     if (broker.name === "projectx") {
-      const token =
+      marketToken =
         typeof (broker as any).getAuthToken === "function"
           ? (broker as any).getAuthToken()
           : null;
 
-      const contractId =
+      marketContractId =
         instrument?.contractId != null ? String(instrument.contractId).trim() : null;
 
-      if (!token) {
-        console.warn("[projectx-market] no token available, market hub not started");
-        return;
-      }
-
-      if (!contractId) {
-        console.warn("[projectx-market] contractId missing (broker status). market hub not started", {
-          brokerAccountId: scope.brokerAccountId,
-          status,
-        });
-        return;
-      }
-
-      // --- ProjectX user hub (orders/fills/positions) ---
-      try {
-        await startProjectXUserFeed({
-          env,
-          DRY_RUN,
-          getPrisma,
-          getUserIdentityForWorker,
-          token,
-          accountId: status?.accountId ?? null,
-        });
-      } catch (e) {
-        console.error("[projectx-user] failed to start", e);
-      }
-
-      try {
-        await startProjectXMarketFeed({
-          env,
-          DRY_RUN,
-          broker,
-          status,
-          instrument,
-          getPrisma,
-          emitSafe,
-          getUserTradingState,
-          getUserIdentityForWorker,
-          getStrategySettingsForWorker,
-          getStrategyEnabledForAccount,
-          strategy,
-          token,
-          contractId,
-        });
-      } catch (e) {
-        console.error("[projectx-market] failed to start", e);
+      if (marketToken) {
+        try {
+          await startProjectXUserFeed({
+            env,
+            DRY_RUN,
+            getPrisma,
+            getUserIdentityForWorker,
+            token: marketToken,
+            accountId: status?.accountId ?? null,
+          });
+        } catch (e) {
+          console.error("[projectx-user] failed to start", e);
+        }
       }
     }
+
+    await startMarketFeed({
+      env,
+      DRY_RUN,
+      broker,
+      status,
+      instrument,
+      getPrisma,
+      emitSafe,
+      getUserTradingState,
+      getUserIdentityForWorker,
+      getStrategySettingsForWorker,
+      getStrategyEnabledForAccount,
+      strategy,
+      token: marketToken,
+      contractId: marketContractId,
+    });
   } catch (e) {
     await emitSafe({
       name: "broker.error",

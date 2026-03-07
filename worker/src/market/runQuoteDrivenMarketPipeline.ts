@@ -2,6 +2,7 @@
 
 import { Candle15sAggregator } from "../candles/candle15sAggregator.js";
 import { makeHandleClosed15s } from "../execution/handleClosed15s.js";
+import { demoRuntime } from "../broker/aurademo/demoRuntime.js";
 
 function toNum(v: any): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -91,6 +92,10 @@ export function runQuoteDrivenMarketPipeline(params: {
             : ask != null
               ? ask
               : null;
+    
+    if (lastPrice != null && params.instrument.contractId) {
+      demoRuntime.setLatestPrice(params.instrument.contractId, lastPrice);
+    }
 
     const LIVE_QUOTE_MAX_AGE_MS = 15_000;
     if (ageMs !== null && ageMs <= LIVE_QUOTE_MAX_AGE_MS) {
