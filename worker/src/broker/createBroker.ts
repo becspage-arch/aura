@@ -4,6 +4,7 @@ import type { IBrokerAdapter, BrokerName } from "./IBrokerAdapter.js";
 import { CqgBrokerAdapter } from "./CqgBrokerAdapter.js";
 import { RithmicBrokerAdapter } from "./RithmicBrokerAdapter.js";
 import { ProjectXBrokerAdapter } from "./projectx/ProjectXBrokerAdapter.js";
+import { DemoBrokerAdapter } from "./aurademo/DemoBrokerAdapter.js";
 
 class DisabledBroker implements IBrokerAdapter {
   public readonly name: BrokerName = "mock";
@@ -12,25 +13,17 @@ class DisabledBroker implements IBrokerAdapter {
     console.log("[broker] disabled");
   }
 
-  async authorize() {
-    // no-op
-  }
+  async authorize() {}
 
-  startKeepAlive() {
-    // no-op
-  }
+  startKeepAlive() {}
 
-  stopKeepAlive() {
-    // no-op
-  }
+  stopKeepAlive() {}
 
-  async disconnect() {
-    // no-op
-  }
+  async disconnect() {}
 }
 
-export function createBroker(): IBrokerAdapter {
-  const broker = (process.env.BROKER || "disabled").toLowerCase();
+export function createBroker(brokerName: string): IBrokerAdapter {
+  const broker = (brokerName || "disabled").toLowerCase();
 
   if (broker === "cqg") {
     return new CqgBrokerAdapter();
@@ -42,6 +35,10 @@ export function createBroker(): IBrokerAdapter {
 
   if (broker === "projectx") {
     return new ProjectXBrokerAdapter();
+  }
+
+  if (broker === "aura_demo") {
+    return new DemoBrokerAdapter();
   }
 
   return new DisabledBroker();

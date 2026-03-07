@@ -347,7 +347,7 @@ export async function startBrokerFeed(params: {
     };
   }
 
-  const broker = createBroker();
+  const broker = createBroker(scope.brokerName);
 
   const emitSafe = async (event: BrokerEvent) => {
     try {
@@ -415,7 +415,7 @@ export async function startBrokerFeed(params: {
     };
 
     if (broker.name === "projectx") {
-      const { normalizeBaseSymbol } = await import("../instruments/resolveProjectXContract.js");
+      const { normalizeBaseSymbol } = await import("../instruments/normalizeBaseSymbol.js");
 
       const ss = await getStrategySettingsForWorker();
       const baseSymbolRaw =

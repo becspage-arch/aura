@@ -175,7 +175,7 @@ export async function bootstrapStrategy(params: {
     ? String(ss.symbols[0])
     : "MGC";
 
-  const { normalizeBaseSymbol } = await import("../instruments/resolveProjectXContract.js");
+  const { normalizeBaseSymbol } = await import("../instruments/normalizeBaseSymbol.js");
   const baseSymbol = normalizeBaseSymbol(baseSymbolRaw);
 
   const contractIdRaw =

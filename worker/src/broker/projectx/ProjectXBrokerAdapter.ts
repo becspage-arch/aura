@@ -641,8 +641,11 @@ export class ProjectXBrokerAdapter implements IBrokerAdapter {
       throw new Error("resolveInstrumentForBaseSymbol: accountSimulated unknown (fetch accounts first)");
     }
 
-    const { resolveProjectXContract, normalizeBaseSymbol } = await import(
+    const { resolveProjectXContract } = await import(
       "../../instruments/resolveProjectXContract.js"
+    );
+    const { normalizeBaseSymbol } = await import(
+      "../../instruments/normalizeBaseSymbol.js"
     );
 
     const baseSymbol = normalizeBaseSymbol(baseSymbolInput);

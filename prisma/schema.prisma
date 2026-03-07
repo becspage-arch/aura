@@ -28,6 +28,8 @@ model BrokerAccount {
 
   userId       String
   brokerName   String
+  brokerAccountType BrokerAccountType @default(LIVE)
+
   accountLabel String?
   externalId   String?
 
@@ -72,6 +74,11 @@ enum WorkerLeaseStatus {
   RUNNING
   STOPPED
   ERROR
+}
+
+enum BrokerAccountType {
+  LIVE
+  DEMO
 }
 
 model WorkerLease {

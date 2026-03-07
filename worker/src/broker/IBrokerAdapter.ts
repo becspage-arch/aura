@@ -2,7 +2,7 @@
 
 import type { BrokerCapabilities } from "./BrokerCapabilities.js";
 
-export type BrokerName = "cqg" | "rithmic" | "projectx" | "mock";
+export type BrokerName = "cqg" | "rithmic" | "projectx" | "aura_demo" | "mock";
 
 export interface BrokerContext {
   broker: BrokerName;

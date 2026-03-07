@@ -1,5 +1,7 @@
 // worker/src/instruments/resolveProjectXContract.ts
 
+import { normalizeBaseSymbol } from "./normalizeBaseSymbol.js";
+
 type ContractRow = {
   id: string;
   name?: string;
@@ -20,10 +22,6 @@ type SearchResponse = {
 function toNum(v: any): number | null {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
-}
-
-export function normalizeBaseSymbol(input: unknown): string {
-  return String(input ?? "").trim().toUpperCase();
 }
 
 /**
